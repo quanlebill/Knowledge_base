@@ -13,32 +13,26 @@ interface OperationalHeaderProps {
 }
 
 export const OperationalHeader = ({
-  title,
-  subtitle,
-  breadcrumbs,
-  actions,
-  status,
-  onBack,
-  className,
+  title, subtitle, breadcrumbs, actions, status, onBack, className,
 }: OperationalHeaderProps) => {
   return (
-    <div className={cn('mb-8', className)}>
-      {/* Breadcrumb trail */}
-      <div className="flex items-center gap-1.5 mb-4">
+    <div className={cn('mb-7', className)}>
+      <div className="flex items-center gap-1.5 mb-3">
         {onBack && (
           <button
             onClick={onBack}
-            className="w-7 h-7 flex items-center justify-center rounded-lg border border-[#ECE7DA] text-[#6B6B6B] hover:bg-[#F8F6EF] hover:text-[#171717] transition-all mr-1"
+            aria-label="Back"
+            className="w-7 h-7 flex items-center justify-center rounded-lg border border-[#BFA66A] text-[#3F3F3F] hover:bg-[#FFF9E8] hover:text-[#111111] transition-all mr-1"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
         )}
         {breadcrumbs.map((crumb, i) => (
           <React.Fragment key={crumb.label}>
-            {i > 0 && <span className="text-[#D4CBBA] text-xs">/</span>}
+            {i > 0 && <span className="text-[#777777] text-xs">/</span>}
             <span className={cn(
-              'text-xs font-medium',
-              i === breadcrumbs.length - 1 ? 'text-[#6B6B6B]' : 'text-[#B0A99A]',
+              'text-xs font-semibold',
+              i === breadcrumbs.length - 1 ? 'text-[#3F3F3F]' : 'text-[#5F5F5F]',
             )}>
               {crumb.label}
             </span>
@@ -46,17 +40,16 @@ export const OperationalHeader = ({
         ))}
       </div>
 
-      {/* Title row */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div className="space-y-1.5 min-w-0">
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl sm:text-3xl font-bold text-[#171717] tracking-tight leading-none font-display">
+            <h1 className="text-2xl sm:text-3xl font-bold text-[#111111] tracking-tight leading-none font-display">
               {title}
             </h1>
             {status}
           </div>
           {subtitle && (
-            <p className="text-sm text-[#6B6B6B] leading-relaxed max-w-2xl">{subtitle}</p>
+            <p className="text-sm text-[#3F3F3F] leading-relaxed max-w-2xl">{subtitle}</p>
           )}
         </div>
         {actions && (

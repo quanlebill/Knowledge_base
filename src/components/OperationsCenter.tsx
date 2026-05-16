@@ -7,9 +7,13 @@ import { StatusBadge } from './shared/StatusBadge';
 import { StandardMetricsGrid } from './shared/ObservabilityPanel';
 import { AIOpsCenter } from './AIOpsCenter';
 import { ObservabilityView } from './ObservabilityView';
+import { useAppState } from '../AppStateContext';
+import { Placeholder } from './shared/Placeholder';
 
 const OperationsCenter = () => {
-  const [activeSubTab, setActiveSubTab] = useState<'HEALTH' | 'OBSERVABILITY' | 'FLEET' | 'JOBS'>('HEALTH');
+  const { subTab, setSubTab } = useAppState();
+  const activeSubTab = (subTab['operations-center'] as 'HEALTH' | 'OBSERVABILITY' | 'FLEET' | 'JOBS') ?? 'HEALTH';
+  const setActiveSubTab = (id: string) => setSubTab('operations-center', id);
 
   const mainMetrics = [
     { label: 'System Health', value: '99.9%', trend: 'STABLE', trendType: 'NEUTRAL' as const, icon: Activity, color: 'emerald' as const },
@@ -49,19 +53,14 @@ const OperationsCenter = () => {
       <StandardMetricsGrid metrics={mainMetrics} />
 
       {/* Sub-Navigation */}
-      <div className="flex items-center gap-1.5 p-1 bg-[#F8F6EF] border border-[#ECE7DA] rounded-2xl w-full lg:w-fit overflow-x-auto no-scrollbar">
+      <div className="sub-tab-bar">
         {subTabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveSubTab(tab.id as any)}
-            className={cn(
-              "flex items-center gap-2 px-5 py-2 rounded-xl text-[10px] font-semibold uppercase tracking-wide transition-all shrink-0",
-              activeSubTab === tab.id
-                ? "bg-white text-[#171717] shadow-sm border border-[#ECE7DA]"
-                : "text-[#8B8B8B] hover:text-[#4A4A4A] hover:bg-white/70"
-            )}
+            className={cn('sub-tab', activeSubTab === tab.id && 'active')}
           >
-            <tab.icon className={cn("w-3.5 h-3.5", activeSubTab === tab.id ? "text-[#D9B86C]" : "text-[#C0B9AC]")} />
+            <tab.icon className="tab-icon w-3.5 h-3.5" />
             {tab.label}
           </button>
         ))}
@@ -76,26 +75,30 @@ const OperationsCenter = () => {
         {activeSubTab === 'HEALTH' && <AIOpsCenter />}
         {activeSubTab === 'OBSERVABILITY' && <ObservabilityView />}
         {activeSubTab === 'FLEET' && (
-          <div className="p-20 flex flex-col items-center justify-center text-center space-y-4 bg-white/[0.01] border border-white/5 rounded-[40px] border-dashed">
-            <div className="w-16 h-16 rounded-full bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
-              <Server className="w-8 h-8 text-blue-400 animate-pulse" />
-            </div>
-            <div>
-              <h3 className="text-xl font-bold text-white uppercase italic">Worker Fleet Management</h3>
-              <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Status of all distributed execution workers across the global fabric</p>
-            </div>
-          </div>
+          <Placeholder
+            title="Worker Fleet Management"
+            icon={Server}
+            description="Status of all distributed execution workers across the global fabric. Monitor utilization, autoscale, and triage worker incidents."
+            plannedFeatures={[
+              'Real-time worker health map',
+              'Autoscaling rule configuration',
+              'Worker pool reconciliation',
+              'Per-worker trace inspection',
+            ]}
+          />
         )}
         {activeSubTab === 'JOBS' && (
-          <div className="p-20 flex flex-col items-center justify-center text-center space-y-4 bg-white/[0.01] border border-white/5 rounded-[40px] border-dashed">
-             <div className="w-16 h-16 rounded-full bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
-              <Zap className="w-8 h-8 text-amber-400" />
-            </div>
-            <div>
-              <h3 className="text-xl font-bold text-white uppercase italic">Migration Job Center</h3>
-              <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Background jobs for data migration, embedding updates, and index rebuilding</p>
-            </div>
-          </div>
+          <Placeholder
+            title="Migration Job Center"
+            icon={Zap}
+            description="Background jobs for data migration, embedding updates, and index rebuilding across every data layer."
+            plannedFeatures={[
+              'Job scheduling and dependency graph',
+              'Embedding model migration pipelines',
+              'Index rebuild orchestration',
+              'Job failure replay & checkpoint resume',
+            ]}
+          />
         )}
       </motion.div>
     </div>
