@@ -34,7 +34,7 @@ const GovernanceCenter = () => {
         status={<StatusBadge status="SECURE" size="lg" />}
         actions={
           <div className="flex gap-3">
-              <button className="flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white px-5 py-2.5 rounded-2xl text-xs font-bold transition-all shadow-lg shadow-brand-500/20 active:scale-95">
+              <button className="btn-primary">
                 <FileText className="w-4 h-4" />
                 GENERATE REPORT
               </button>
@@ -45,19 +45,19 @@ const GovernanceCenter = () => {
       <StandardMetricsGrid metrics={mainMetrics} />
 
       {/* Sub-Navigation */}
-      <div className="flex items-center gap-2 p-1.5 bg-white/[0.03] border border-white/5 rounded-[24px] w-full lg:w-fit overflow-x-auto no-scrollbar shadow-inner">
+      <div className="flex items-center gap-1.5 p-1 bg-[#F8F6EF] border border-[#ECE7DA] rounded-2xl w-full lg:w-fit overflow-x-auto no-scrollbar">
         {subTabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveSubTab(tab.id as any)}
             className={cn(
-              "flex items-center gap-2.5 px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all relative shrink-0",
-              activeSubTab === tab.id 
-                ? "bg-white/10 text-white shadow-xl italic" 
-                : "text-slate-500 hover:text-slate-300 hover:bg-white/5"
+              "flex items-center gap-2 px-5 py-2 rounded-xl text-[10px] font-semibold uppercase tracking-wide transition-all shrink-0",
+              activeSubTab === tab.id
+                ? "bg-white text-[#171717] shadow-sm border border-[#ECE7DA]"
+                : "text-[#8B8B8B] hover:text-[#4A4A4A] hover:bg-white/70"
             )}
           >
-            <tab.icon className={cn("w-4 h-4", activeSubTab === tab.id ? "text-brand-400" : "text-slate-500")} />
+            <tab.icon className={cn("w-3.5 h-3.5", activeSubTab === tab.id ? "text-[#D9B86C]" : "text-[#C0B9AC]")} />
             {tab.label}
           </button>
         ))}
