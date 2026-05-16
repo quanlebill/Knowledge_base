@@ -50,7 +50,8 @@ const ReleaseManagementCenter = () => {
         title="Deployment Package Builder"
         subtitle="Bundle Agent Configs, KB Snapshots & Workflow Logic"
         icon={Package}
-        size="lg"
+        size="wide"
+        persistKey="release-package-builder"
       >
         <div className="p-6 space-y-6">
            <div className="drawer-section-card">
@@ -77,7 +78,8 @@ const ReleaseManagementCenter = () => {
         title="Environment Alignment"
         subtitle="Reconcile Configuration Discrepancies across Infrastructure"
         icon={Settings2}
-        size="lg"
+        size="standard"
+        persistKey="release-drift"
       >
         <div className="p-6">
            <div className="space-y-3">

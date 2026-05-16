@@ -170,7 +170,8 @@ const KnowledgeOpsCenter = () => {
         title="Knowledge Ingestion"
         subtitle="Multi-stage AI Processing Factory"
         icon={Zap}
-        size="lg"
+        size="wide"
+        persistKey="kb-ingest"
       >
         <IngestionWizard 
           onCancel={() => setShowIngestionWizard(false)} 
@@ -184,7 +185,8 @@ const KnowledgeOpsCenter = () => {
         title={selectedAsset?.name || 'Asset Detail'}
         subtitle={`${selectedAsset?.layer} LAYER • ${selectedAsset?.version} • ${selectedAsset?.id}`}
         icon={selectedAsset?.layer === 'GOLD' ? Zap : selectedAsset?.layer === 'SILVER' ? Edit2 : Database}
-        size="xl"
+        size="xwide"
+        persistKey="kb-asset-detail"
         tabs={[
           { id: 'PREVIEW', label: 'Preview', icon: Eye },
           { id: 'CHUNKS', label: 'Chunks', icon: Layers },
@@ -222,13 +224,13 @@ const KnowledgeOpsCenter = () => {
         isOpen={showPromoteWizard}
         onClose={() => setShowPromoteWizard(false)}
         title="Promote Knowledge Artifact"
-        subtitle="Lifecycle State Transition"
+        subtitle="Lifecycle State Transition · Bronze → Silver → Gold"
         icon={Sparkles}
-        size="md"
+        size="wide"
+        persistKey="kb-promote"
       >
-        <div className="p-8">
-           {/* Reusing wizard content logic from AssetDetailWorkspace but in a simpler form or properly extracted */}
-           <p className="text-slate-400 text-sm">Promotion Wizard Implementation Here...</p>
+        <div className="p-6">
+           <p className="text-[#2A2A2A] text-sm">Promotion wizard implementation here — select target layer, validate prerequisites, configure embedding refresh, attach approver.</p>
         </div>
       </DetailDrawer>
 
