@@ -109,48 +109,50 @@ const KnowledgeOpsCenter = () => {
         return <EmbeddingManagement />;
       case 'GOVERNANCE':
         return (
-          <div className="space-y-8 animate-in fade-in duration-500">
-             <div className="grid grid-cols-3 gap-8">
-                <div className="glass-panel p-8 rounded-[2.5rem] border-white/5 space-y-6">
-                   <h4 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
-                    <ShieldCheck className="w-5 h-5 text-green-500" />
+          <div className="space-y-6 animate-in fade-in duration-500">
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <div className="section-card space-y-5">
+                   <h4 className="text-sm font-bold uppercase tracking-wide flex items-center gap-2 text-[#111111]">
+                    <ShieldCheck className="w-5 h-5 text-[#2F4F0B]" />
                     Security Baseline
                    </h4>
-                   <div className="space-y-4">
+                   <div className="space-y-2">
                       {['Data Masking', 'PII Detection', 'RBAC Enforcement', 'VPC Isolation'].map(s => (
-                        <div key={s} className="flex justify-between items-center px-4 py-3 bg-white/5 rounded-2xl border border-white/5">
-                           <span className="text-xs text-slate-400">{s}</span>
-                           <CheckCircle2 className="w-4 h-4 text-green-500" />
+                        <div key={s} className="flex justify-between items-center px-4 py-2.5 bg-[#FAF6EA] rounded-xl border border-[#BFA66A]">
+                           <span className="text-sm text-[#2A2A2A] font-medium">{s}</span>
+                           <CheckCircle2 className="w-4 h-4 text-[#2F4F0B]" />
                         </div>
                       ))}
                    </div>
                 </div>
-                <div className="glass-panel p-8 rounded-[2.5rem] border-white/5 space-y-6 flex flex-col">
-                   <h4 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
-                    <HistoryIcon className="w-5 h-5 text-brand-400" />
+                <div className="section-card space-y-5 flex flex-col">
+                   <h4 className="text-sm font-bold uppercase tracking-wide flex items-center gap-2 text-[#111111]">
+                    <HistoryIcon className="w-5 h-5 text-[#8A5A00]" />
                     Audit Logs
                    </h4>
-                   <div className="space-y-4 flex-1">
+                   <div className="space-y-3 flex-1">
                       {[1, 2, 3, 4].map(i => (
-                        <div key={i} className="flex gap-4 text-xs">
-                           <div className="w-px bg-white/10 relative"><div className="absolute top-1 left-[-4px] w-2 h-2 rounded-full bg-slate-700" /></div>
+                        <div key={i} className="flex gap-3">
+                           <div className="w-px bg-[#BFA66A] relative">
+                             <div className="absolute top-1 left-[-3px] w-1.5 h-1.5 rounded-full bg-[#8A5A00]" />
+                           </div>
                            <div>
-                              <div className="font-bold text-slate-300">Artifact Created</div>
-                              <div className="text-[10px] text-slate-600 mt-0.5">Admin performed Batch Ingest • 2h ago</div>
+                              <div className="text-sm font-semibold text-[#111111]">Artifact Created</div>
+                              <div className="text-[11px] text-[#5A5A5A] mt-0.5">Admin performed Batch Ingest • 2h ago</div>
                            </div>
                         </div>
                       ))}
                    </div>
                 </div>
-                <div className="glass-panel p-8 rounded-[2.5rem] border-white/5 space-y-6 flex flex-col">
-                   <h4 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
-                    <Network className="w-5 h-5 text-purple-400" />
+                <div className="section-card space-y-5 flex flex-col">
+                   <h4 className="text-sm font-bold uppercase tracking-wide flex items-center gap-2 text-[#111111]">
+                    <Network className="w-5 h-5 text-[#7C3AED]" />
                     Lineage Control
                    </h4>
-                   <div className="p-10 bg-[#02040d] border border-white/5 rounded-[2.5rem] text-center flex-1 flex flex-col items-center justify-center group cursor-pointer hover:bg-brand-500/[0.02]">
-                      <Share2 className="w-10 h-10 text-slate-700 mb-4 group-hover:text-brand-400 transition-colors" />
-                      <div className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Initialize Root Lineage Map</div>
-                   </div>
+                   <button className="flex-1 p-10 bg-[#FAF6EA] border-2 border-dashed border-[#BFA66A] rounded-2xl text-center flex flex-col items-center justify-center group cursor-pointer hover:border-[#8A5A00] hover:bg-[#FFF9E8] transition-all">
+                      <Share2 className="w-10 h-10 text-[#8A5A00] mb-3 group-hover:text-[#5A4209] transition-colors" />
+                      <div className="text-[12px] font-bold text-[#2A2A2A] uppercase tracking-wide">Initialize Root Lineage Map</div>
+                   </button>
                 </div>
              </div>
           </div>

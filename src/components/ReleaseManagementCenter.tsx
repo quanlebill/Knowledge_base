@@ -52,21 +52,21 @@ const ReleaseManagementCenter = () => {
         icon={Package}
         size="lg"
       >
-        <div className="p-8 space-y-8">
-           <div className="p-6 bg-white/5 border border-white/10 rounded-2xl">
-              <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-4">Select Baseline Artifacts</h4>
-              <div className="space-y-3">
+        <div className="p-6 space-y-6">
+           <div className="drawer-section-card">
+              <h4 className="text-xs font-bold uppercase tracking-widest text-[#5A5A5A] mb-4">Select Baseline Artifacts</h4>
+              <div className="space-y-2">
                  {['GlobalCorp_Agent_v2.4', 'refund_policy_gold_index', 'onboarding_workflow_final'].map(a => (
-                   <div key={a} className="flex justify-between items-center px-4 py-3 bg-white/5 rounded-xl border border-white/5 hover:border-brand-500/30 cursor-pointer transition-all">
-                      <span className="text-xs text-white">{a}</span>
-                      <Plus className="w-4 h-4 text-slate-600" />
-                   </div>
+                   <button key={a} className="w-full flex justify-between items-center px-4 py-3 bg-white rounded-xl border-2 border-[#BFA66A] hover:border-[#8A5A00] hover:bg-[#FFF9E8] cursor-pointer transition-all text-left">
+                      <span className="text-sm text-[#111111] font-medium">{a}</span>
+                      <Plus className="w-4 h-4 text-[#8A5A00]" />
+                   </button>
                  ))}
               </div>
            </div>
-           <div className="p-6 bg-brand-500/10 border border-brand-500/20 rounded-2xl">
-              <h4 className="text-xs font-black uppercase tracking-widest text-brand-400 mb-4">Validation Pipeline</h4>
-              <p className="text-[10px] text-slate-500 uppercase font-bold">Automatic Red-Teaming will begin upon package assembly.</p>
+           <div className="ai-insight-block">
+              <h4 className="insight-label text-xs font-bold uppercase tracking-widest mb-2">Validation Pipeline</h4>
+              <p className="insight-body text-sm">Automatic red-teaming will begin upon package assembly.</p>
            </div>
         </div>
       </DetailDrawer>
@@ -79,25 +79,25 @@ const ReleaseManagementCenter = () => {
         icon={Settings2}
         size="lg"
       >
-        <div className="p-8">
-           <div className="space-y-6">
+        <div className="p-6">
+           <div className="space-y-3">
               {[
                 { key: 'MODEL_TEMP', prod: '0.7', uat: '0.8', status: 'MISMATCH' },
-                { key: 'EMBED_DIM', prod: '1536', uat: '1536', status: 'MATCH' },
+                { key: 'EMBED_DIM',  prod: '1536', uat: '1536', status: 'MATCH' },
                 { key: 'MAX_TOKENS', prod: '4096', uat: '1024', status: 'CRITICAL_DRIFT' },
               ].map(drift => (
-                <div key={drift.key} className="p-5 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-between">
+                <div key={drift.key} className="drawer-section-card flex items-center justify-between">
                    <div>
-                      <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{drift.key}</div>
-                      <div className="flex gap-4 mt-2 text-xs">
-                         <span className="text-slate-600">PROD: <span className="text-white">{drift.prod}</span></span>
-                         <span className="text-slate-600">UAT: <span className="text-white">{drift.uat}</span></span>
+                      <div className="text-[11px] font-bold text-[#5A5A5A] uppercase tracking-wide">{drift.key}</div>
+                      <div className="flex gap-4 mt-1.5 text-[13px]">
+                         <span className="text-[#5A5A5A]">PROD: <span className="text-[#111111] font-bold">{drift.prod}</span></span>
+                         <span className="text-[#5A5A5A]">UAT: <span className="text-[#111111] font-bold">{drift.uat}</span></span>
                       </div>
                    </div>
                    <div className={cn(
-                     "px-3 py-1 rounded text-[8px] font-black uppercase tracking-widest",
-                     drift.status === 'MATCH' ? 'bg-green-500/10 text-green-500' : 
-                     drift.status === 'MISMATCH' ? 'bg-amber-500/10 text-amber-500' : 'bg-red-500/10 text-red-500'
+                     'px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border',
+                     drift.status === 'MATCH'    ? 'badge-healthy' :
+                     drift.status === 'MISMATCH' ? 'badge-warning' : 'badge-failed'
                    )}>{drift.status}</div>
                 </div>
               ))}
