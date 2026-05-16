@@ -1,7 +1,6 @@
 import React from 'react';
-import { Breadcrumbs } from './Breadcrumbs';
-import { cn } from '../../lib/utils';
 import { ChevronLeft } from 'lucide-react';
+import { cn } from '../../lib/utils';
 
 interface OperationalHeaderProps {
   title: string;
@@ -13,42 +12,58 @@ interface OperationalHeaderProps {
   className?: string;
 }
 
-export const OperationalHeader = ({ 
-  title, 
-  subtitle, 
-  breadcrumbs, 
-  actions, 
-  status, 
+export const OperationalHeader = ({
+  title,
+  subtitle,
+  breadcrumbs,
+  actions,
+  status,
   onBack,
-  className 
+  className,
 }: OperationalHeaderProps) => {
   return (
-    <div className={cn("mb-8 space-y-4", className)}>
-      <div className="flex items-center gap-4">
+    <div className={cn('mb-8', className)}>
+      {/* Breadcrumb trail */}
+      <div className="flex items-center gap-1.5 mb-4">
         {onBack && (
-          <button 
+          <button
             onClick={onBack}
-            className="p-2 hover:bg-white/5 rounded-xl border border-white/5 text-slate-400 hover:text-white transition-all shadow-sm"
+            className="w-7 h-7 flex items-center justify-center rounded-lg border border-[#ECE7DA] text-[#6B6B6B] hover:bg-[#F8F6EF] hover:text-[#171717] transition-all mr-1"
           >
-            <ChevronLeft className="w-5 h-5" />
+            <ChevronLeft className="w-4 h-4" />
           </button>
         )}
-        <Breadcrumbs items={breadcrumbs} />
+        {breadcrumbs.map((crumb, i) => (
+          <React.Fragment key={crumb.label}>
+            {i > 0 && <span className="text-[#D4CBBA] text-xs">/</span>}
+            <span className={cn(
+              'text-xs font-medium',
+              i === breadcrumbs.length - 1 ? 'text-[#6B6B6B]' : 'text-[#B0A99A]',
+            )}>
+              {crumb.label}
+            </span>
+          </React.Fragment>
+        ))}
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6">
-        <div className="space-y-2">
+      {/* Title row */}
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+        <div className="space-y-1.5 min-w-0">
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight leading-none uppercase italic">{title}</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-[#171717] tracking-tight leading-none font-display">
+              {title}
+            </h1>
             {status}
           </div>
           {subtitle && (
-            <p className="text-slate-500 font-medium tracking-tight text-xs sm:text-sm uppercase opacity-80 max-w-2xl">{subtitle}</p>
+            <p className="text-sm text-[#6B6B6B] leading-relaxed max-w-2xl">{subtitle}</p>
           )}
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          {actions}
-        </div>
+        {actions && (
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {actions}
+          </div>
+        )}
       </div>
     </div>
   );

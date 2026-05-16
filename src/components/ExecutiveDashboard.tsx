@@ -1,15 +1,16 @@
 import React from 'react';
-import { 
-  TrendingUp, 
-  Activity, 
-  ShieldCheck, 
+import {
+  TrendingUp,
+  Activity,
+  ShieldCheck,
   Database,
   Calendar,
   ChevronRight,
   ArrowRight,
   Zap,
   Globe,
-  Plus
+  Plus,
+  Sparkles,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -53,11 +54,11 @@ export const ExecutiveDashboard = () => {
         status={<StatusBadge status="STABLE" size="lg" />}
         actions={
           <div className="flex gap-3">
-             <button className="flex items-center gap-2 bg-white/5 hover:bg-white/10 text-slate-300 px-5 py-2.5 rounded-2xl text-xs font-bold transition-all border border-white/5">
+             <button className="btn-secondary">
                 <Calendar className="w-4 h-4" />
                 LAST 30 DAYS
               </button>
-              <button className="flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white px-5 py-2.5 rounded-2xl text-xs font-bold transition-all shadow-lg shadow-brand-500/20 active:scale-95">
+              <button className="btn-primary">
                 DOWNLOAD REPORT
               </button>
           </div>
@@ -66,98 +67,103 @@ export const ExecutiveDashboard = () => {
 
       <StandardMetricsGrid metrics={mainMetrics} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Operational Chart */}
-        <div className="lg:col-span-2 p-8 bg-white/[0.02] border border-white/5 rounded-[40px] shadow-2xl">
-          <div className="flex items-center justify-between mb-10">
+        <div className="lg:col-span-2 p-7 bg-white border border-[#ECE7DA] rounded-3xl">
+          <div className="flex items-center justify-between mb-8">
             <div>
-              <h3 className="text-xl font-bold text-white uppercase italic tracking-tight">Processing Throughput</h3>
-              <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1 italic">Semantic ingestion vs Token generation across fabric</p>
+              <h3 className="text-lg font-semibold text-[#171717] tracking-tight font-display">Processing Throughput</h3>
+              <p className="text-xs text-[#8B8B8B] mt-0.5">Semantic ingestion vs token generation across fabric</p>
             </div>
             <div className="flex gap-2">
-               <div className="flex items-center gap-2 px-3 py-1 bg-brand-500/10 rounded-full border border-brand-500/20 text-[9px] font-bold text-brand-400">
-                 <div className="w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse" />
+               <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#FAF1D0] rounded-full border border-[#D9B86C]/30 text-[9px] font-semibold text-[#7C6230]">
+                 <div className="w-1.5 h-1.5 rounded-full bg-[#D9B86C] animate-pulse" />
                  INGESTION
                </div>
-               <div className="flex items-center gap-2 px-3 py-1 bg-blue-500/10 rounded-full border border-blue-500/20 text-[9px] font-bold text-blue-400">
-                 <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+               <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#EFF4FB] rounded-full border border-[#A8C0E4]/40 text-[9px] font-semibold text-[#2D5A9C]">
+                 <div className="w-1.5 h-1.5 rounded-full bg-[#6B9CD4] animate-pulse" />
                  GENERATION
                </div>
             </div>
           </div>
-          
-          <div className="h-[400px] w-full">
+
+          <div className="h-[360px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={DATA}>
                 <defs>
                   <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0273c7" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#0273c7" stopOpacity={0}/>
+                    <stop offset="5%"  stopColor="#D9B86C" stopOpacity={0.25}/>
+                    <stop offset="95%" stopColor="#D9B86C" stopOpacity={0}/>
                   </linearGradient>
                   <linearGradient id="colorCost" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    <stop offset="5%"  stopColor="#6B9CD4" stopOpacity={0.2}/>
+                    <stop offset="95%" stopColor="#6B9CD4" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
-                <XAxis 
-                  dataKey="name" 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fill: '#64748b', fontSize: 10, fontWeight: 900 }} 
+                <CartesianGrid strokeDasharray="3 3" stroke="#F0EBE0" vertical={false} />
+                <XAxis
+                  dataKey="name"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: '#8B8B8B', fontSize: 11 }}
                   dy={10}
                 />
-                <YAxis 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fill: '#64748b', fontSize: 10, fontWeight: 900 }} 
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: '#8B8B8B', fontSize: 11 }}
                 />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid #ffffff10', borderRadius: '16px' }}
-                  itemStyle={{ fontSize: '10px', fontWeight: 'bold' }}
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#FFFFFF', border: '1px solid #ECE7DA', borderRadius: '12px', boxShadow: '0 4px 16px rgba(0,0,0,0.08)', color: '#171717' }}
+                  itemStyle={{ fontSize: '11px', fontWeight: '600', color: '#4A4A4A' }}
+                  labelStyle={{ color: '#171717', fontWeight: '700' }}
                 />
-                <Area type="monotone" dataKey="value" stroke="#0273c7" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
-                <Area type="monotone" dataKey="cost" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorCost)" />
+                <Area type="monotone" dataKey="value" stroke="#D9B86C" strokeWidth={2.5} fillOpacity={1} fill="url(#colorValue)" />
+                <Area type="monotone" dataKey="cost"  stroke="#6B9CD4" strokeWidth={2.5} fillOpacity={1} fill="url(#colorCost)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Global Compliance & Issues */}
-        <div className="space-y-8">
-          <div className="p-8 bg-white/[0.02] border border-white/5 rounded-[40px] shadow-2xl">
-            <h3 className="text-xl font-bold text-white uppercase italic tracking-tight mb-8">Active Risks</h3>
-            <div className="space-y-6">
+        {/* Risks + AI Insights */}
+        <div className="space-y-5">
+          <div className="p-6 bg-white border border-[#ECE7DA] rounded-3xl">
+            <h3 className="text-base font-semibold text-[#171717] tracking-tight font-display mb-5">Active Risks</h3>
+            <div className="space-y-4">
               {TOP_ISSUES.map((issue, i) => (
                 <div key={issue.label} className="group cursor-pointer">
-                  <div className="flex items-start justify-between mb-2">
+                  <div className="flex items-start justify-between mb-1.5">
                     <div className="flex items-center gap-2">
                       <span className={cn(
-                        "w-2 h-2 rounded-full",
-                        issue.risk === 'HIGH' ? 'bg-red-500' : issue.risk === 'MEDIUM' ? 'bg-amber-500' : 'bg-slate-500'
+                        'w-2 h-2 rounded-full shrink-0',
+                        issue.risk === 'HIGH'   ? 'bg-[#C0504A]' :
+                        issue.risk === 'MEDIUM' ? 'bg-[#D9A040]' : 'bg-[#B0A99A]'
                       )} />
-                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                      <span className="text-[9px] font-semibold uppercase tracking-widest text-[#8B8B8B]">
                         {issue.risk} RISK
                       </span>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-slate-700 group-hover:text-brand-400 transition-colors" />
+                    <ChevronRight className="w-4 h-4 text-[#D4CBBA] group-hover:text-[#D9B86C] transition-colors" />
                   </div>
-                  <p className="text-sm font-bold text-slate-200 group-hover:text-white transition-colors">{issue.label}</p>
-                  <p className="text-[9px] text-slate-600 font-medium uppercase mt-1">IMPACT: {issue.impact}</p>
-                  {i < TOP_ISSUES.length - 1 && <div className="h-px bg-white/5 mt-6" />}
+                  <p className="text-[13px] font-medium text-[#232323] group-hover:text-[#171717] transition-colors leading-snug">{issue.label}</p>
+                  <p className="text-[10px] text-[#8B8B8B] mt-1">Impact: {issue.impact}</p>
+                  {i < TOP_ISSUES.length - 1 && <div className="h-px bg-[#F0EBE0] mt-4" />}
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="p-8 bg-brand-500/5 border border-brand-500/10 rounded-[40px] relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-brand-500/10 blur-[60px]" />
-            <h3 className="text-lg font-bold text-white uppercase italic tracking-tight mb-2">AI Copilot Insights</h3>
-            <p className="text-xs text-slate-400 leading-relaxed italic">
-              "System efficiency has increased by 14% since the last model promotion. EU-WEST latency spike is correlated with the new embedding release."
+          {/* AI Insight block */}
+          <div className="p-5 bg-gradient-to-br from-[#FAF1D0] to-[#FEFCF4] border border-[#E2C57E]/60 rounded-3xl relative overflow-hidden">
+            <div className="flex items-center gap-2 mb-3">
+              <Sparkles className="w-4 h-4 text-[#C4A35A]" />
+              <span className="text-[10px] font-semibold text-[#7C6230] uppercase tracking-wide">AI Copilot Insight</span>
+            </div>
+            <p className="text-[13px] text-[#4A4A4A] leading-relaxed">
+              System efficiency has improved 14% since last model promotion. EU-WEST latency spike correlates with the new embedding release.
             </p>
-            <button className="mt-6 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-brand-400 hover:text-white transition-colors">
-              Read Analysis <ArrowRight className="w-3.5 h-3.5" />
+            <button className="mt-4 flex items-center gap-1.5 text-[10px] font-semibold text-[#A07830] hover:text-[#7C6230] transition-colors uppercase tracking-wide">
+              Read Full Analysis <ArrowRight className="w-3 h-3" />
             </button>
           </div>
         </div>

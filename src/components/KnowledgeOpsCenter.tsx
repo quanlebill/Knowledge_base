@@ -188,13 +188,13 @@ const KnowledgeOpsCenter = () => {
         onTabChange={(id) => setAssetTab(id as any)}
         footer={
           <div className="flex gap-3">
-             <button className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-white transition-all flex items-center gap-2">
+             <button className="btn-secondary">
                 <HistoryIcon className="w-3.5 h-3.5" />
                 History
              </button>
-             <button 
+             <button
                 onClick={() => setShowPromoteWizard(true)}
-                className="px-5 py-2 bg-brand-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-brand-600 transition-all shadow-xl shadow-brand-500/20 flex items-center gap-2"
+                className="btn-primary"
              >
                 Promote
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -231,15 +231,15 @@ const KnowledgeOpsCenter = () => {
         status={<StatusBadge status="HEALTHY" size="lg" />}
         actions={
           <div className="flex gap-3">
-             <button 
+             <button
               onClick={() => setActiveSubTab('CONNECTORS')}
-              className="px-5 py-2.5 bg-white/5 border border-white/10 hover:border-white/20 text-slate-400 hover:text-white rounded-2xl text-xs font-black uppercase tracking-widest transition-all"
+              className="btn-secondary"
              >
                 MANAGE HUB
              </button>
-             <button 
+             <button
               onClick={() => setShowIngestionWizard(true)}
-              className="flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white px-5 py-2.5 rounded-2xl text-xs font-bold transition-all shadow-lg shadow-brand-500/20 active:scale-95"
+              className="btn-primary"
              >
                 <Plus className="w-4 h-4" />
                 INGEST KNOWLEDGE
@@ -251,22 +251,22 @@ const KnowledgeOpsCenter = () => {
       <StandardMetricsGrid metrics={mainMetrics} />
 
       {/* Sub-Navigation */}
-      <div className="flex items-center gap-2 p-1.5 bg-white/[0.03] border border-white/5 rounded-[24px] w-full lg:w-fit overflow-x-auto no-scrollbar shadow-inner">
+      <div className="flex items-center gap-1.5 p-1 bg-[#F8F6EF] border border-[#ECE7DA] rounded-2xl w-full lg:w-fit overflow-x-auto no-scrollbar">
         {subTabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveSubTab(tab.id as KnowledgeTabId)}
             className={cn(
-              "flex items-center gap-2.5 px-6 py-2.5 rounded-xl text-xs font-bold transition-all relative shrink-0",
-              activeSubTab === tab.id 
-                ? "bg-white/10 text-white shadow-xl italic" 
-                : "text-slate-500 hover:text-slate-300 hover:bg-white/5"
+              "flex items-center gap-2 px-5 py-2 rounded-xl text-[10px] font-semibold uppercase tracking-wide transition-all shrink-0",
+              activeSubTab === tab.id
+                ? "bg-white text-[#171717] shadow-sm border border-[#ECE7DA]"
+                : "text-[#8B8B8B] hover:text-[#4A4A4A] hover:bg-white/70"
             )}
           >
-            <tab.icon className={cn("w-4 h-4", activeSubTab === tab.id ? "text-brand-400" : "text-slate-500")} />
-            <span className="uppercase tracking-widest text-[10px] font-black">{tab.label}</span>
+            <tab.icon className={cn("w-3.5 h-3.5", activeSubTab === tab.id ? "text-[#D9B86C]" : "text-[#C0B9AC]")} />
+            <span>{tab.label}</span>
             {tab.count && (
-              <span className="px-1.5 py-0.5 rounded-md bg-red-500/20 text-red-500 text-[9px] font-black">{tab.count}</span>
+              <span className="px-1.5 py-0.5 rounded-full bg-[#FBF0EE] text-[#8C3028] text-[8px] font-bold border border-[#E8B4AE]/40">{tab.count}</span>
             )}
           </button>
         ))}
