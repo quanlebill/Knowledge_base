@@ -106,7 +106,8 @@ export const AgentRuntimeView = ({
         title="Agent Architect"
         subtitle="Provision specialized AI agents with discrete capabilities"
         icon={Plus}
-        size="lg"
+        size="wide"
+        persistKey="agent-wizard"
       >
         <NewAgentWizard
           onCancel={handleCloseWizard}
@@ -120,7 +121,8 @@ export const AgentRuntimeView = ({
         title="Fleet Provisioning"
         subtitle="Autoscale agent clusters based on demand"
         icon={Zap}
-        size="md"
+        size="standard"
+        persistKey="agent-provision"
       >
         <ProvisioningView />
       </DetailDrawer>
@@ -131,7 +133,8 @@ export const AgentRuntimeView = ({
         title={selectedAgentId ? `Agent: ${selectedAgentId}` : 'Agent Detail'}
         subtitle="Control Plane • Production Runtime • V2.0"
         icon={Bot}
-        size="xl"
+        size="xwide"
+        persistKey="agent-detail"
         tabs={[
           { id: 'CONFIG',  label: 'Configuration', icon: Settings },
           { id: 'LOGS',    label: 'Real-time Logs', icon: Terminal },

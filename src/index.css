@@ -431,8 +431,9 @@
 .drawer-shell {
   background: #FFFFFF;
   border: 1px solid #BFA66A;
-  border-left: 2px solid #B88719;
-  box-shadow: -8px 0 32px rgba(0,0,0,0.18);
+  border-left: 2px solid #8A5A00;
+  box-shadow: -8px 0 24px rgba(17, 17, 17, 0.16);
+  position: relative;
 }
 .drawer-header {
   background: #111111;
@@ -679,4 +680,253 @@
   background: #F3E2A7;
   color: #111111;
   box-shadow: inset 3px 0 0 #8A5A00;
+}
+
+/* ─── Page-level Tab System ───────────────────────────── */
+.tab-bar {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1.5px solid #BFA66A;
+  overflow-x: auto;
+}
+.tab-bar .tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #3F3F3F;
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  transition: all 0.12s;
+  white-space: nowrap;
+  margin-bottom: -1.5px;
+}
+.tab-bar .tab:hover {
+  color: #111111;
+  background: #FFF9E8;
+}
+.tab-bar .tab.active {
+  color: #111111;
+  font-weight: 700;
+  background: #FFF5D6;
+  border-bottom-color: #8A5A00;
+}
+
+/* ─── Filter Bar ──────────────────────────────────────── */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 14px;
+  background: #FFF8E1;
+  border: 1.5px solid #BFA66A;
+  border-radius: 10px;
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: #FFFFFF;
+  border: 1.5px solid #8A5A00;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #111111;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.filter-chip:hover {
+  background: #FFF9E8;
+  border-color: #B88719;
+}
+.filter-chip.active {
+  background: #F3E2A7;
+  color: #111111;
+  border-color: #8A5A00;
+}
+.filter-chip-remove {
+  margin-left: 4px;
+  color: #5A5A5A;
+  cursor: pointer;
+}
+.filter-chip-remove:hover { color: #9F1D1D; }
+
+/* ─── Log Panel (dark background) ─────────────────────── */
+.log-panel {
+  background: #111111;
+  color: #FFFFFF;
+  border: 1.5px solid #8A5A00;
+  border-radius: 10px;
+  padding: 14px 16px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  overflow: auto;
+}
+.log-panel .log-meta   { color: #CCCCCC; }
+.log-panel .log-info   { color: #E5E5E5; }
+.log-panel .log-warn   { color: #FFD89B; }
+.log-panel .log-error  { color: #FF9B9B; }
+.log-panel .log-debug  { color: #B0E0FF; }
+.log-panel .log-time   { color: #8A5A00; }
+
+/* ─── Code Block (dark) ───────────────────────────────── */
+.code-block {
+  background: #111111;
+  color: #FFFFFF;
+  border: 1.5px solid #8A5A00;
+  border-radius: 10px;
+  padding: 14px 16px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+/* ─── Inline code ─────────────────────────────────────── */
+.inline-code {
+  background: #F3E2A7;
+  color: #111111;
+  border: 1px solid #BFA66A;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  font-weight: 500;
+}
+
+/* ─── Trace Node ──────────────────────────────────────── */
+.trace-node {
+  background: #FFFFFF;
+  border: 1.5px solid #BFA66A;
+  border-radius: 10px;
+  padding: 12px 14px;
+  transition: all 0.12s;
+  cursor: pointer;
+}
+.trace-node:hover {
+  border-color: #8A5A00;
+  background: #FFF9E8;
+}
+.trace-node.active {
+  border: 2px solid #8A5A00;
+  background: #FFF5D6;
+  box-shadow: 0 2px 8px rgba(184,135,25,0.18);
+}
+
+/* ─── Graph Canvas & Node ─────────────────────────────── */
+.graph-canvas {
+  background: #FAF6EA;
+  border: 1.5px solid #BFA66A;
+  border-radius: 12px;
+}
+.graph-node {
+  background: #FFFFFF;
+  border: 2px solid #8A5A00;
+  border-radius: 10px;
+  color: #111111;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(17,17,17,0.10);
+}
+.graph-node.selected {
+  border: 3px solid #111111;
+  box-shadow: 0 4px 12px rgba(17,17,17,0.22);
+}
+.graph-edge {
+  stroke: #8A5A00;
+  stroke-width: 1.5;
+}
+.graph-tooltip {
+  background: #111111;
+  color: #FFFFFF;
+  border: 1px solid #B88719;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.30);
+}
+
+/* ─── Dropdown Menu ───────────────────────────────────── */
+.dropdown-menu {
+  background: #FFFFFF;
+  border: 1.5px solid #8A5A00;
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 8px 24px rgba(17,17,17,0.18);
+  min-width: 180px;
+}
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #111111;
+  cursor: pointer;
+  width: 100%;
+  background: transparent;
+  border: 1px solid transparent;
+  text-align: left;
+  transition: all 0.1s;
+}
+.dropdown-item:hover {
+  background: #F8EBC4;
+  border-color: #BFA66A;
+}
+.dropdown-item.danger { color: #9F1D1D; }
+.dropdown-item.danger:hover { background: #FAD7D7; border-color: #C94A4A; }
+.dropdown-divider {
+  height: 1px;
+  background: #D8CBAA;
+  margin: 4px 0;
+}
+
+/* ─── Popover ─────────────────────────────────────────── */
+.popover {
+  background: #FFFFFF;
+  border: 1.5px solid #8A5A00;
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: 0 8px 24px rgba(17,17,17,0.18);
+  color: #2A2A2A;
+  font-size: 13px;
+}
+
+/* ─── Action Bar (sticky toolbar) ─────────────────────── */
+.action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #FFF8E1;
+  border: 1.5px solid #BFA66A;
+  border-radius: 10px;
+}
+
+/* ─── Stronger global default for ad-hoc cards ───────── */
+.panel-default {
+  background: #FFFFFF;
+  border: 1.5px solid #BFA66A;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(17,17,17,0.08);
+}
+.panel-nested {
+  background: #FFFCF3;
+  border: 1px solid #D6C79F;
+  border-radius: 10px;
+}
+.panel-selected {
+  border: 2px solid #8A5A00;
 }
