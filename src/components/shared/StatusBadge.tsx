@@ -12,25 +12,25 @@ interface StatusBadgeProps {
   size?: 'sm' | 'md' | 'lg';
 }
 
-/* High-contrast warm status palette */
+/* WCAG-readable warm status palette — dark text on pale backgrounds */
 const getStyles = (status: string) => {
   const s = status.toUpperCase();
   if (s.includes('HEALTHY') || s.includes('STABLE') || s.includes('ACTIVE') || s.includes('COMPLETED') || s.includes('SUCCESS') || s.includes('SECURE') || s.includes('OPTIMAL') || s.includes('COMPLIANT')) {
-    return { bg: 'bg-[#E7F2D4]', border: 'border-[#8AA63F]', text: 'text-[#3F6212]', icon: CheckCircle2 };
+    return { bg: 'bg-[#E7F2D4]', border: 'border-[#6B8E23]', text: 'text-[#2F4F0B]', icon: CheckCircle2 };
   }
   if (s.includes('WARNING') || s.includes('PENDING') || s.includes('DRIFT') || s.includes('DEGRADED') || s.includes('ACTION')) {
-    return { bg: 'bg-[#FFF1BF]', border: 'border-[#D9A441]', text: 'text-[#7A4D00]', icon: AlertCircle };
+    return { bg: 'bg-[#FFF1BF]', border: 'border-[#B88719]', text: 'text-[#5C3900]', icon: AlertCircle };
   }
   if (s.includes('CRITICAL') || s.includes('FAILED') || s.includes('ERROR') || s.includes('BLOCKED')) {
-    return { bg: 'bg-[#FAD7D7]', border: 'border-[#C94A4A]', text: 'text-[#9F1D1D]', icon: XCircle };
+    return { bg: 'bg-[#FAD7D7]', border: 'border-[#9F1D1D]', text: 'text-[#7A1010]', icon: XCircle };
   }
   if (s.includes('PROCESSING') || s.includes('RUNNING') || s.includes('SYNCING') || s.includes('DEPLOYING') || s.includes('AUTOSCALING')) {
-    return { bg: 'bg-[#E8E2FF]', border: 'border-[#8B5CF6]', text: 'text-[#4C1D95]', icon: Clock };
+    return { bg: 'bg-[#E8E2FF]', border: 'border-[#7C3AED]', text: 'text-[#3B0764]', icon: Clock };
   }
   if (s.includes('INACTIVE') || s.includes('DORMANT') || s.includes('PAUSED') || s.includes('DRAFT')) {
-    return { bg: 'bg-[#EFEAE0]', border: 'border-[#B8AA91]', text: 'text-[#3F3F3F]', icon: Clock };
+    return { bg: 'bg-[#EFEAE0]', border: 'border-[#8A5A00]', text: 'text-[#2A2A2A]', icon: Clock };
   }
-  return { bg: 'bg-[#EFEAE0]', border: 'border-[#B8AA91]', text: 'text-[#3F3F3F]', icon: Clock };
+  return { bg: 'bg-[#EFEAE0]', border: 'border-[#8A5A00]', text: 'text-[#2A2A2A]', icon: Clock };
 };
 
 const sizeStyles = {
