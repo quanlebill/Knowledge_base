@@ -8,10 +8,21 @@ import { StandardMetricsGrid } from './shared/ObservabilityPanel';
 import { DeploymentOverview as DeploymentCenter } from './DeploymentCenter/Overview';
 import { DetailDrawer } from './shared/DetailDrawer';
 
+import { useAppState } from '../AppStateContext';
+import { Placeholder } from './shared/Placeholder';
+
+type ReleaseSubTab = 'OVERVIEW' | 'PIPELINE' | 'PACKAGE' | 'ENV' | 'VALIDATION' | 'ROLLBACK' | 'HISTORY' | 'DRIFT';
+
 const ReleaseManagementCenter = () => {
-  const [activeSubTab, setActiveSubTab] = useState<'PIPELINE' | 'VALIDATION' | 'ROLLBACK' | 'DRIFT'>('PIPELINE');
-  const [showPackageBuilder, setShowPackageBuilder] = useState(false);
-  const [showDriftManager, setShowDriftManager] = useState(false);
+  const { subTab, setSubTab } = useAppState();
+  const activeSubTab = (subTab['release-management'] as ReleaseSubTab) ?? 'PIPELINE';
+  const setActiveSubTab = (id: ReleaseSubTab) => setSubTab('release-management', id);
+
+  /* PACKAGE & DRIFT secondary-nav items drive the drawers */
+  const showPackageBuilder = activeSubTab === 'PACKAGE';
+  const showDriftManager   = activeSubTab === 'DRIFT';
+  const setShowPackageBuilder = (v: boolean) => setActiveSubTab(v ? 'PACKAGE' : 'PIPELINE');
+  const setShowDriftManager   = (v: boolean) => setActiveSubTab(v ? 'DRIFT' : 'PIPELINE');
 
   const mainMetrics = [
     { label: 'Active Pipelines', value: '18', trend: 'OPTIMAL', trendType: 'NEUTRAL' as const, icon: Rocket, color: 'brand' as const },
@@ -21,10 +32,14 @@ const ReleaseManagementCenter = () => {
   ];
 
   const subTabs = [
-    { id: 'PIPELINE', label: 'Release Pipeline', icon: Rocket },
-    { id: 'VALIDATION', label: 'Validation Center', icon: ShieldCheck },
-    { id: 'ROLLBACK', label: 'Rollback Ledger', icon: RefreshCcw },
-    { id: 'DRIFT', label: 'Environment Drift', icon: AlertTriangle },
+    { id: 'OVERVIEW',   label: 'Overview',     icon: GitBranch },
+    { id: 'PIPELINE',   label: 'Pipeline',     icon: Rocket },
+    { id: 'PACKAGE',    label: 'Package',      icon: Package },
+    { id: 'ENV',        label: 'Environments', icon: Settings2 },
+    { id: 'VALIDATION', label: 'Validation',   icon: ShieldCheck },
+    { id: 'ROLLBACK',   label: 'Rollback',     icon: RefreshCcw },
+    { id: 'HISTORY',    label: 'History',      icon: History },
+    { id: 'DRIFT',      label: 'Drift',        icon: AlertTriangle },
   ];
 
   return (
@@ -111,19 +126,14 @@ const ReleaseManagementCenter = () => {
       <StandardMetricsGrid metrics={mainMetrics} />
 
       {/* Sub-Navigation */}
-      <div className="flex items-center gap-1.5 p-1 bg-[#F8F6EF] border border-[#ECE7DA] rounded-2xl w-full lg:w-fit overflow-x-auto no-scrollbar">
+      <div className="sub-tab-bar max-w-full">
         {subTabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveSubTab(tab.id as any)}
-            className={cn(
-              "flex items-center gap-2 px-5 py-2 rounded-xl text-[10px] font-semibold uppercase tracking-wide transition-all shrink-0",
-              activeSubTab === tab.id
-                ? "bg-white text-[#171717] shadow-sm border border-[#ECE7DA]"
-                : "text-[#8B8B8B] hover:text-[#4A4A4A] hover:bg-white/70"
-            )}
+            className={cn('sub-tab', activeSubTab === tab.id && 'active')}
           >
-            <tab.icon className={cn("w-3.5 h-3.5", activeSubTab === tab.id ? "text-[#D9B86C]" : "text-[#C0B9AC]")} />
+            <tab.icon className="tab-icon w-3.5 h-3.5" />
             {tab.label}
           </button>
         ))}
@@ -135,51 +145,77 @@ const ReleaseManagementCenter = () => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        {activeSubTab === 'PIPELINE' && (
-          <DeploymentCenter 
-            onNewDeployment={() => setShowPackageBuilder(true)} 
-            onOpenApprovals={() => {}} 
-            onOpenDrift={() => setShowDriftManager(true)} 
+        {(activeSubTab === 'OVERVIEW' || activeSubTab === 'PIPELINE') && (
+          <DeploymentCenter
+            onNewDeployment={() => setShowPackageBuilder(true)}
+            onOpenApprovals={() => {}}
+            onOpenDrift={() => setShowDriftManager(true)}
+          />
+        )}
+        {activeSubTab === 'ENV' && (
+          <Placeholder
+            title="Environment Management"
+            icon={Settings2}
+            description="Configure Dev, UAT, Staging, and Production environments. Manage secrets, AI provider keys, autoscaling, and infra-level overrides per environment."
+            plannedFeatures={[
+              'Per-environment configuration matrix',
+              'Environment promotion gates',
+              'Resource quota management',
+              'Per-environment AI provider rotation',
+            ]}
           />
         )}
         {activeSubTab === 'VALIDATION' && (
-          <div className="p-20 flex flex-col items-center justify-center text-center space-y-4 bg-white/[0.01] border border-white/5 rounded-[40px] border-dashed">
-            <div className="w-16 h-16 rounded-full bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
-              <ShieldCheck className="w-8 h-8 text-emerald-400 animate-pulse" />
-            </div>
-            <div>
-              <h3 className="text-xl font-bold text-white uppercase italic">Validation Center</h3>
-              <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Automatic QA, security scans, and Red-Teaming for every AI release</p>
-            </div>
-          </div>
+          <Placeholder
+            title="Validation Center"
+            icon={ShieldCheck}
+            description="Automatic QA, security scans, and red-teaming for every AI release before it reaches production."
+            plannedFeatures={[
+              'Automated regression suite per release',
+              'Red-team prompt-injection battery',
+              'Hallucination & grounding score gates',
+              'Performance & cost regression checks',
+            ]}
+          />
         )}
         {activeSubTab === 'ROLLBACK' && (
-          <div className="p-20 flex flex-col items-center justify-center text-center space-y-4 bg-white/[0.01] border border-white/5 rounded-[40px] border-dashed">
-            <div className="w-16 h-16 rounded-full bg-slate-500/10 flex items-center justify-center border border-white/5">
-              <RefreshCcw className="w-8 h-8 text-slate-500" />
-            </div>
-            <div>
-              <h3 className="text-xl font-bold text-white uppercase italic">Rollback Ledger</h3>
-              <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Immutable history of releases and one-click restoration of semantic states</p>
-            </div>
-          </div>
+          <Placeholder
+            title="Rollback Center"
+            icon={RefreshCcw}
+            description="Immutable history of releases and one-click restoration of semantic states across the fleet."
+            plannedFeatures={[
+              'One-click rollback to any tagged release',
+              'Partial rollback per agent / per workflow',
+              'Rollback impact preview',
+              'Auto-rollback on anomaly detection',
+            ]}
+          />
+        )}
+        {activeSubTab === 'HISTORY' && (
+          <Placeholder
+            title="Release History"
+            icon={History}
+            description="Audited timeline of every deployment, validation result, and rollback across every environment."
+            plannedFeatures={[
+              'Filterable release timeline',
+              'Side-by-side release diff',
+              'Validation report attachments',
+              'Compliance-ready audit export',
+            ]}
+          />
         )}
         {activeSubTab === 'DRIFT' && (
-          <div className="p-20 flex flex-col items-center justify-center text-center space-y-4 bg-white/[0.01] border border-white/5 rounded-[40px] border-dashed">
-            <div className="w-16 h-16 rounded-full bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
-              <AlertTriangle className="w-8 h-8 text-amber-400" />
-            </div>
-            <div>
-              <h3 className="text-xl font-bold text-white uppercase italic">Environment Drift Detection</h3>
-              <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Identify discrepancies between Local, Staging, and Production AI configurations</p>
-              <button 
-                onClick={() => setShowDriftManager(true)}
-                className="mt-6 px-6 py-2 bg-brand-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-brand-600 transition-all"
-              >
-                Sync Environments
-              </button>
-            </div>
-          </div>
+          <Placeholder
+            title="Environment Drift Detection"
+            icon={AlertTriangle}
+            description="Identify configuration discrepancies between Local, Staging, and Production AI environments before they cause incidents."
+            plannedFeatures={[
+              'Real-time drift scoring across envs',
+              'Drift remediation playbooks',
+              'Automatic alignment proposals',
+              'Drift policy enforcement',
+            ]}
+          />
         )}
       </motion.div>
     </div>

@@ -53,16 +53,22 @@ import { AssetInventory } from './knowledge/AssetInventory';
 import { JobCenter } from './knowledge/JobCenter';
 import { GraphRAGView } from './GraphRAG';
 import { KnowledgeDocument } from '../types';
+import { useAppState } from '../AppStateContext';
 
-type KnowledgeTabId = 'FLEET' | 'CONNECTORS' | 'INVENTORY' | 'PIPELINES' | 'CONFLICTS' | 'GRAPH' | 'PLAYGROUND' | 'EMBEDDINGS' | 'GOVERNANCE';
+type KnowledgeTabId = 'FLEET' | 'CONNECTORS' | 'INGEST' | 'INVENTORY' | 'PIPELINES' | 'CONFLICTS' | 'GRAPH' | 'PLAYGROUND' | 'EMBEDDINGS' | 'GOVERNANCE';
 
-// Deleted redundant functions and constants below
 const KnowledgeOpsCenter = () => {
-  const [activeSubTab, setActiveSubTab] = useState<KnowledgeTabId>('FLEET');
-  const [showIngestionWizard, setShowIngestionWizard] = useState(false);
+  const { subTab, setSubTab } = useAppState();
+  const activeSubTab = (subTab['knowledge-ops'] as KnowledgeTabId) ?? 'FLEET';
+  const setActiveSubTab = (id: KnowledgeTabId) => setSubTab('knowledge-ops', id);
+
   const [selectedAsset, setSelectedAsset] = useState<KnowledgeDocument | null>(null);
   const [assetTab, setAssetTab] = useState<'PREVIEW' | 'CHUNKS' | 'LOGS' | 'TIMELINE' | 'GRAPH'>('PREVIEW');
   const [showPromoteWizard, setShowPromoteWizard] = useState(false);
+
+  /* Ingest is driven by the secondary nav now */
+  const showIngestionWizard = activeSubTab === 'INGEST';
+  const setShowIngestionWizard = (v: boolean) => setActiveSubTab(v ? 'INGEST' : 'FLEET');
 
   const mainMetrics = [
     { label: 'Knowledge Fleet', value: '1,248', trend: '+12%', trendType: 'UP' as const, icon: Database, color: 'brand' as const },
@@ -251,22 +257,17 @@ const KnowledgeOpsCenter = () => {
       <StandardMetricsGrid metrics={mainMetrics} />
 
       {/* Sub-Navigation */}
-      <div className="flex items-center gap-1.5 p-1 bg-[#F8F6EF] border border-[#ECE7DA] rounded-2xl w-full lg:w-fit overflow-x-auto no-scrollbar">
+      <div className="sub-tab-bar max-w-full">
         {subTabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveSubTab(tab.id as KnowledgeTabId)}
-            className={cn(
-              "flex items-center gap-2 px-5 py-2 rounded-xl text-[10px] font-semibold uppercase tracking-wide transition-all shrink-0",
-              activeSubTab === tab.id
-                ? "bg-white text-[#171717] shadow-sm border border-[#ECE7DA]"
-                : "text-[#8B8B8B] hover:text-[#4A4A4A] hover:bg-white/70"
-            )}
+            className={cn('sub-tab', activeSubTab === tab.id && 'active')}
           >
-            <tab.icon className={cn("w-3.5 h-3.5", activeSubTab === tab.id ? "text-[#D9B86C]" : "text-[#C0B9AC]")} />
+            <tab.icon className="tab-icon w-3.5 h-3.5" />
             <span>{tab.label}</span>
             {tab.count && (
-              <span className="px-1.5 py-0.5 rounded-full bg-[#FBF0EE] text-[#8C3028] text-[8px] font-bold border border-[#E8B4AE]/40">{tab.count}</span>
+              <span className="px-1.5 py-0.5 rounded-full bg-[#FAD7D7] text-[#9F1D1D] text-[9px] font-bold border border-[#C94A4A]">{tab.count}</span>
             )}
           </button>
         ))}

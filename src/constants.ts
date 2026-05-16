@@ -29,16 +29,30 @@ import {
   Cpu,
   LayoutGrid,
   Users,
+  Terminal,
+  Sliders,
+  Plus,
+  Package,
+  GitBranch,
+  Flag,
+  Coins,
+  Key,
+  Boxes,
+  CircleDot,
+  Eye,
+  ShieldHalf,
+  BookOpen,
+  Code,
 } from 'lucide-react';
 import { Role, Industry, NavItem } from './types';
 
 export const NAV_ITEMS: NavItem[] = [
   // Core Modules
   { id: 'dashboard',          label: 'Executive Pulse',      icon: LayoutDashboard, roles: ['EXECUTIVE', 'PLATFORM_ADMIN'] },
-  { id: 'knowledge-ops',      label: 'Knowledge Operations', icon: Database,        roles: ['PLATFORM_ADMIN', 'AI_ENGINEER'] },
+  { id: 'knowledge-ops',      label: 'Knowledge Base',       icon: Database,        roles: ['PLATFORM_ADMIN', 'AI_ENGINEER'] },
   { id: 'ai-runtime',         label: 'AI Runtime',           icon: Bot,             roles: ['AI_ENGINEER', 'PLATFORM_ADMIN', 'BUSINESS_OPERATOR'] },
   { id: 'operations-center',  label: 'Operations Center',    icon: Activity,        roles: ['PLATFORM_ADMIN', 'AI_ENGINEER'] },
-  { id: 'release-management', label: 'Release Management',   icon: Zap,             roles: ['AI_ENGINEER', 'PLATFORM_ADMIN'] },
+  { id: 'release-management', label: 'Deployment Center',    icon: Zap,             roles: ['AI_ENGINEER', 'PLATFORM_ADMIN'] },
   { id: 'governance',         label: 'Governance & Audit',   icon: ShieldCheck,     roles: ['PLATFORM_ADMIN', 'EXECUTIVE'] },
 
   // Industry Specific
@@ -48,26 +62,43 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'settings', label: 'Settings', icon: Settings, roles: ['PLATFORM_ADMIN', 'AI_ENGINEER', 'BUSINESS_OPERATOR', 'EXECUTIVE'] },
 ];
 
-/* Contextual sub-nav items shown in the secondary panel per module */
-export const MODULE_SUB_ITEMS: Record<string, { id: string; label: string; icon: any; badge?: number }[]> = {
+export interface SubNavItem {
+  id: string;
+  label: string;
+  icon: any;
+  badge?: number | string;
+  comingSoon?: boolean;
+}
+
+/* Contextual sub-nav items shown in the secondary panel per module.
+ * IDs MUST match the sub-tab IDs used inside each center component
+ * so secondary-nav clicks correctly drive the in-module state.
+ */
+export const MODULE_SUB_ITEMS: Record<string, SubNavItem[]> = {
   'dashboard': [],
 
   'knowledge-ops': [
-    { id: 'FLEET',      label: 'Fleet Overview',   icon: Database },
-    { id: 'CONNECTORS', label: 'Connectors',        icon: Globe },
-    { id: 'INVENTORY',  label: 'Data Layers',       icon: Layers },
-    { id: 'PIPELINES',  label: 'Pipeline Ops',      icon: Activity },
-    { id: 'CONFLICTS',  label: 'Conflicts',         icon: ShieldAlert, badge: 12 },
-    { id: 'GRAPH',      label: 'Knowledge Graph',   icon: Network },
-    { id: 'PLAYGROUND', label: 'Playground',        icon: Sparkles },
-    { id: 'EMBEDDINGS', label: 'Embeddings',        icon: Hash },
-    { id: 'GOVERNANCE', label: 'Governance',        icon: ShieldCheck },
+    { id: 'FLEET',      label: 'Fleet Overview',      icon: Database },
+    { id: 'CONNECTORS', label: 'Register Connectors', icon: Globe },
+    { id: 'INGEST',     label: 'Ingest Knowledge',    icon: Plus,        comingSoon: false },
+    { id: 'INVENTORY',  label: 'Bronze · Silver · Gold', icon: Layers },
+    { id: 'PIPELINES',  label: 'Job Center',          icon: Activity },
+    { id: 'CONFLICTS',  label: 'Conflict Manager',    icon: ShieldAlert, badge: 12 },
+    { id: 'GRAPH',      label: 'Knowledge Graph',     icon: Network },
+    { id: 'PLAYGROUND', label: 'Playground',          icon: Sparkles },
+    { id: 'EMBEDDINGS', label: 'Embedding Mgmt',      icon: Hash },
+    { id: 'GOVERNANCE', label: 'Audit & Lineage',     icon: ShieldCheck },
   ],
 
   'ai-runtime': [
-    { id: 'AGENTS',    label: 'Agent Registry',    icon: Bot },
-    { id: 'WORKFLOWS', label: 'Workflow Engine',   icon: Layers },
-    { id: 'TRACES',    label: 'Execution Traces',  icon: History },
+    { id: 'AGENTS',     label: 'Agent Registry',  icon: Bot },
+    { id: 'CLI',        label: 'CLI',             icon: Terminal },
+    { id: 'NEW_AGENT',  label: 'New Agent',       icon: Plus },
+    { id: 'CONFIG',     label: 'Config Registry', icon: Sliders },
+    { id: 'TRACES',     label: 'Recent Traces',   icon: History },
+    { id: 'PROVISION',  label: 'Quick Provision', icon: Zap },
+    { id: 'RUNS',       label: 'Run Registry',    icon: Activity },
+    { id: 'WORKFLOWS',  label: 'Workflow Engine', icon: Layers },
   ],
 
   'operations-center': [
@@ -78,17 +109,21 @@ export const MODULE_SUB_ITEMS: Record<string, { id: string; label: string; icon:
   ],
 
   'release-management': [
-    { id: 'PIPELINE',   label: 'Release Pipeline',    icon: Rocket },
-    { id: 'VALIDATION', label: 'Validation Center',   icon: ShieldCheck },
-    { id: 'ROLLBACK',   label: 'Rollback Ledger',     icon: RefreshCcw },
-    { id: 'DRIFT',      label: 'Environment Drift',   icon: AlertTriangle },
+    { id: 'OVERVIEW',   label: 'Overview',             icon: LayoutGrid },
+    { id: 'PIPELINE',   label: 'Release Pipeline',     icon: Rocket },
+    { id: 'PACKAGE',    label: 'Package Builder',      icon: Package },
+    { id: 'ENV',        label: 'Environment Mgmt',     icon: Server },
+    { id: 'VALIDATION', label: 'Validation Center',    icon: ShieldCheck },
+    { id: 'ROLLBACK',   label: 'Rollback Center',      icon: RefreshCcw },
+    { id: 'HISTORY',    label: 'Release History',      icon: History },
+    { id: 'DRIFT',      label: 'Drift Detection',      icon: AlertTriangle },
   ],
 
   'governance': [
-    { id: 'GOVERNANCE',  label: 'Policy Control',       icon: ShieldCheck },
-    { id: 'AUDIT',       label: 'System Audit',         icon: History },
-    { id: 'SECURITY',    label: 'Security Intelligence', icon: Fingerprint },
-    { id: 'COMPLIANCE',  label: 'Compliance Reports',   icon: FileText },
+    { id: 'GOVERNANCE', label: 'Policy Control',        icon: ShieldCheck },
+    { id: 'AUDIT',      label: 'Audit Logs',            icon: History },
+    { id: 'SECURITY',   label: 'Security Intelligence', icon: Fingerprint },
+    { id: 'COMPLIANCE', label: 'Compliance Reports',    icon: FileText },
   ],
 
   'national-ops': [],
@@ -96,26 +131,33 @@ export const MODULE_SUB_ITEMS: Record<string, { id: string; label: string; icon:
   'settings': [
     { id: 'OVERVIEW',      label: 'Overview',         icon: LayoutGrid },
     { id: 'ORGANIZATION',  label: 'Organization',     icon: Building2 },
-    { id: 'AUTH',          label: 'Auth & SSO',       icon: Lock },
-    { id: 'IAM',           label: 'Access Control',   icon: Users },
-    { id: 'API',           label: 'API Keys',         icon: Cpu },
-    { id: 'BILLING',       label: 'Billing & Quotas', icon: Scale },
+    { id: 'WORKSPACES',    label: 'Workspaces',       icon: Boxes },
+    { id: 'IAM',           label: 'Users & Roles',    icon: Users },
+    { id: 'AUTH',          label: 'SSO',              icon: Lock },
+    { id: 'RBAC',          label: 'RBAC',             icon: ShieldHalf },
+    { id: 'AI_PROVIDERS',  label: 'AI Providers',     icon: Cpu },
+    { id: 'MODEL_REG',     label: 'Model Registry',   icon: Boxes },
+    { id: 'SECRETS',       label: 'Secrets',          icon: Key },
+    { id: 'SECURITY',      label: 'Security',         icon: ShieldCheck },
+    { id: 'BILLING',       label: 'Billing & Quotas', icon: Coins },
+    { id: 'API',           label: 'API & SDK',        icon: Code },
+    { id: 'FLAGS',         label: 'Feature Flags',    icon: Flag },
   ],
 };
 
 export const INDUSTRIES = [
-  { id: 'GENERAL',    label: 'Cross-Industry',   icon: LayoutGrid },
-  { id: 'GOVERNMENT', label: 'Gov & Public',     icon: Building2 },
+  { id: 'GENERAL',    label: 'Cross-Industry',     icon: LayoutGrid },
+  { id: 'GOVERNMENT', label: 'Gov & Public',       icon: Building2 },
   { id: 'BANKING',    label: 'Financial Services', icon: Lock },
-  { id: 'RAILWAY',    label: 'Railway & Metro',  icon: TrainFront },
-  { id: 'HEALTHCARE', label: 'Medical & Health', icon: Stethoscope },
+  { id: 'RAILWAY',    label: 'Railway & Metro',    icon: TrainFront },
+  { id: 'HEALTHCARE', label: 'Medical & Health',   icon: Stethoscope },
 ];
 
 export const ROLES = [
-  { id: 'PLATFORM_ADMIN',   label: 'Platform Admin' },
-  { id: 'AI_ENGINEER',      label: 'AI Engineer' },
+  { id: 'PLATFORM_ADMIN',    label: 'Platform Admin' },
+  { id: 'AI_ENGINEER',       label: 'AI Engineer' },
   { id: 'BUSINESS_OPERATOR', label: 'Business Operator' },
-  { id: 'EXECUTIVE',        label: 'Executive' },
+  { id: 'EXECUTIVE',         label: 'Executive' },
 ];
 
 export const ENVIRONMENTS: { id: string }[] = [

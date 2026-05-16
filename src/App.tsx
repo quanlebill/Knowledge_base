@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { AppStateProvider, useAppState } from './AppStateContext';
 import { AppLayout } from './components/Layout';
 import { ExecutiveDashboard } from './components/ExecutiveDashboard';
@@ -11,16 +11,15 @@ import SettingsView from './components/Settings/Overview';
 import { GovernmentView } from './components/GovernmentView';
 
 function AppContent() {
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const { role, industry } = useAppState();
+  const { activeModule, setActiveModule, industry } = useAppState();
 
   const renderView = () => {
-    // Override dashboard based on industry for Executives
-    if (activeTab === 'dashboard' && industry === 'GOVERNMENT') {
+    // Industry overrides for Executive dashboard
+    if (activeModule === 'dashboard' && industry === 'GOVERNMENT') {
       return <GovernmentView />;
     }
 
-    switch (activeTab) {
+    switch (activeModule) {
       case 'dashboard':
         return <ExecutiveDashboard />;
       case 'knowledge-ops':
@@ -39,15 +38,15 @@ function AppContent() {
         return <SettingsView />;
       default:
         return (
-          <div className="h-full flex items-center justify-center text-slate-500 font-display italic">
-            Module "{activeTab}" is initializing in {industry} context...
+          <div className="h-full flex items-center justify-center text-[#5F5F5F] font-display italic">
+            Module "{activeModule}" is initializing in {industry} context...
           </div>
         );
     }
   };
 
   return (
-    <AppLayout activeTab={activeTab} setActiveTab={setActiveTab}>
+    <AppLayout activeTab={activeModule} setActiveTab={setActiveModule}>
       {renderView()}
     </AppLayout>
   );
@@ -60,4 +59,3 @@ export default function App() {
     </AppStateProvider>
   );
 }
-

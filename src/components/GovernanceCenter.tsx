@@ -7,9 +7,13 @@ import { StatusBadge } from './shared/StatusBadge';
 import { StandardMetricsGrid } from './shared/ObservabilityPanel';
 import { AuditLogsView as AuditLogs } from './AuditLogs';
 import { GovernanceView } from './Governance';
+import { useAppState } from '../AppStateContext';
+import { Placeholder } from './shared/Placeholder';
 
 const GovernanceCenter = () => {
-  const [activeSubTab, setActiveSubTab] = useState<'GOVERNANCE' | 'AUDIT' | 'SECURITY' | 'COMPLIANCE'>('GOVERNANCE');
+  const { subTab, setSubTab } = useAppState();
+  const activeSubTab = (subTab['governance'] as 'GOVERNANCE' | 'AUDIT' | 'SECURITY' | 'COMPLIANCE') ?? 'GOVERNANCE';
+  const setActiveSubTab = (id: string) => setSubTab('governance', id);
 
   const mainMetrics = [
     { label: 'Security Score', value: 'A+', trend: 'COMPLIANT', trendType: 'NEUTRAL' as const, icon: ShieldCheck, color: 'brand' as const },
@@ -45,19 +49,14 @@ const GovernanceCenter = () => {
       <StandardMetricsGrid metrics={mainMetrics} />
 
       {/* Sub-Navigation */}
-      <div className="flex items-center gap-1.5 p-1 bg-[#F8F6EF] border border-[#ECE7DA] rounded-2xl w-full lg:w-fit overflow-x-auto no-scrollbar">
+      <div className="sub-tab-bar">
         {subTabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveSubTab(tab.id as any)}
-            className={cn(
-              "flex items-center gap-2 px-5 py-2 rounded-xl text-[10px] font-semibold uppercase tracking-wide transition-all shrink-0",
-              activeSubTab === tab.id
-                ? "bg-white text-[#171717] shadow-sm border border-[#ECE7DA]"
-                : "text-[#8B8B8B] hover:text-[#4A4A4A] hover:bg-white/70"
-            )}
+            className={cn('sub-tab', activeSubTab === tab.id && 'active')}
           >
-            <tab.icon className={cn("w-3.5 h-3.5", activeSubTab === tab.id ? "text-[#D9B86C]" : "text-[#C0B9AC]")} />
+            <tab.icon className="tab-icon w-3.5 h-3.5" />
             {tab.label}
           </button>
         ))}
@@ -72,26 +71,30 @@ const GovernanceCenter = () => {
         {activeSubTab === 'GOVERNANCE' && <GovernanceView />}
         {activeSubTab === 'AUDIT' && <AuditLogs />}
         {activeSubTab === 'SECURITY' && (
-          <div className="p-20 flex flex-col items-center justify-center text-center space-y-4 bg-white/[0.01] border border-white/5 rounded-[40px] border-dashed">
-            <div className="w-16 h-16 rounded-full bg-slate-500/10 flex items-center justify-center border border-white/5">
-              <Fingerprint className="w-8 h-8 text-slate-500 animate-pulse" />
-            </div>
-            <div>
-              <h3 className="text-xl font-bold text-white uppercase italic">Security Intelligence</h3>
-              <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Real-time threat detection and PII leakage monitoring for all AI interactions</p>
-            </div>
-          </div>
+          <Placeholder
+            title="Security Intelligence"
+            icon={Fingerprint}
+            description="Real-time threat detection and PII leakage monitoring for every AI interaction across the platform."
+            plannedFeatures={[
+              'PII leakage detection across prompts',
+              'Prompt-injection threat scoring',
+              'Anomalous access pattern alerts',
+              'SIEM integration & response playbooks',
+            ]}
+          />
         )}
         {activeSubTab === 'COMPLIANCE' && (
-          <div className="p-20 flex flex-col items-center justify-center text-center space-y-4 bg-white/[0.01] border border-white/5 rounded-[40px] border-dashed">
-            <div className="w-16 h-16 rounded-full bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
-              <FileText className="w-8 h-8 text-blue-400" />
-            </div>
-            <div>
-              <h3 className="text-xl font-bold text-white uppercase italic">Compliance Reports</h3>
-              <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">SOC 2, ISO 27001, and regulatory compliance evidence collection</p>
-            </div>
-          </div>
+          <Placeholder
+            title="Compliance Reports"
+            icon={FileText}
+            description="SOC 2, ISO 27001, HIPAA, and regulatory compliance evidence collection — automated and continuously audited."
+            plannedFeatures={[
+              'Continuous control monitoring',
+              'Evidence collection automation',
+              'Auditor-ready report export',
+              'Per-tenant compliance scope',
+            ]}
+          />
         )}
       </motion.div>
     </div>
