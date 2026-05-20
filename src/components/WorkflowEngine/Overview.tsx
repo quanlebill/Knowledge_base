@@ -1,35 +1,36 @@
-import React, { useState } from 'react';
-import { 
-  Plus, 
-  Search, 
-  Filter, 
-  GitMerge, 
-  Play, 
-  Clock, 
-  CheckCircle2, 
-  AlertCircle, 
-  MoreVertical, 
-  History, 
-  Code, 
+import React, { useState, useEffect } from 'react';
+import {
+  Plus,
+  Search,
+  Filter,
+  GitMerge,
+  Play,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  MoreVertical,
+  History,
+  Code,
   Settings2,
   Rocket,
-  Shield,
   LayoutGrid,
   List,
-  ExternalLink,
   Copy,
-  Archive,
-  Ban,
-  ArrowRight
+  Bot,
+  ShieldCheck,
+  Activity,
+  ArrowRight,
+  X,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { WorkflowStatus, WorkflowType, Workflow } from '../../types/workflow';
-import WorkflowBuilder from './Builder';
+import WorkflowBuilder, { type TemplateId } from './Builder';
 import ExecutionCenter from './ExecutionCenter';
 import WorkflowTemplates from './Templates';
 import SchedulingCenter from './SchedulingCenter';
 import WorkflowObservability from './Observability';
-import { DetailDrawer } from '../shared/DetailDrawer';
+
+// ─── Mock Data ────────────────────────────────────────────────────────────────
 
 const MOCK_WORKFLOWS: Workflow[] = [
   {
@@ -47,7 +48,7 @@ const MOCK_WORKFLOWS: Workflow[] = [
     owner: 'Linh Nguyen',
     tags: ['Customer Support', 'Critical', 'Secure'],
     nodes: [],
-    edges: []
+    edges: [],
   },
   {
     id: 'wf-2',
@@ -64,7 +65,7 @@ const MOCK_WORKFLOWS: Workflow[] = [
     owner: 'Sarah Chen',
     tags: ['Knowledge', 'GraphRAG', 'Sync'],
     nodes: [],
-    edges: []
+    edges: [],
   },
   {
     id: 'wf-3',
@@ -81,68 +82,204 @@ const MOCK_WORKFLOWS: Workflow[] = [
     owner: 'Dr. Pham',
     tags: ['Legal', 'Human-in-the-loop', 'Privacy'],
     nodes: [],
-    edges: []
-  }
+    edges: [],
+  },
 ];
 
+// ─── Template Definitions ─────────────────────────────────────────────────────
+
+const TEMPLATES: Array<{
+  id: TemplateId;
+  name: string;
+  desc: string;
+  nodeCount: number;
+  Icon: React.ElementType;
+  color: string;
+  isDefault?: boolean;
+}> = [
+  {
+    id: 'blank',
+    name: 'Blank Canvas',
+    desc: 'Flow trống, chỉ có Trigger node.',
+    nodeCount: 1,
+    Icon: LayoutGrid,
+    color: '#64748b',
+  },
+  {
+    id: 'multi-agent',
+    name: 'Full Agent',
+    desc: 'Flow chuẩn đầy đủ — KB Search + MCP Tool song song.',
+    nodeCount: 8,
+    Icon: Bot,
+    color: '#3b82f6',
+    isDefault: true,
+  },
+  {
+    id: 'hitl',
+    name: 'Human-in-the-loop',
+    desc: 'Cần người review trước khi trả lời.',
+    nodeCount: 9,
+    Icon: ShieldCheck,
+    color: '#f97316',
+  },
+];
+
+// ─── Template Modal ────────────────────────────────────────────────────────────
+
+interface TemplateModalProps {
+  onSelect: (t: TemplateId) => void;
+  onClose: () => void;
+}
+
+const TemplateModal = ({ onSelect, onClose }: TemplateModalProps) => {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  return (
+  <AnimatePresence>
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center"
+    >
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/75 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      {/* Dialog */}
+      <motion.div
+        initial={{ scale: 0.95, opacity: 0, y: 12 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.95, opacity: 0, y: 12 }}
+        transition={{ type: 'spring', stiffness: 340, damping: 30 }}
+        className="relative z-10 bg-slate-900 border border-white/10 rounded-[28px] p-8 w-[740px] shadow-2xl"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between mb-7">
+          <div>
+            <h2 className="text-xl font-bold text-white tracking-tight">Choose a Template</h2>
+            <p className="text-xs text-slate-500 mt-1 font-medium">
+              Select a starting point — you can customise everything in the canvas.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-white/10 rounded-xl transition-all text-slate-500 hover:text-white"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Template Cards */}
+        <div className="grid grid-cols-3 gap-4">
+          {TEMPLATES.map(t => (
+            <button
+              key={t.id}
+              onClick={() => onSelect(t.id)}
+              className="group text-left p-5 rounded-2xl transition-all relative bg-white/[0.02] border border-transparent hover:border-white/20 hover:bg-white/[0.05]"
+            >
+              {t.isDefault && (
+                <span
+                  className="absolute top-3 right-3 text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full"
+                  style={{ background: `${t.color}25`, color: t.color }}
+                >
+                  Default
+                </span>
+              )}
+              <div className="flex items-center justify-between mb-4">
+                <div
+                  className="p-2.5 rounded-xl"
+                  style={{ background: `${t.color}20`, border: `1px solid ${t.color}30` }}
+                >
+                  <t.Icon size={18} style={{ color: t.color }} />
+                </div>
+                <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest mt-6">
+                  {t.nodeCount} {t.nodeCount === 1 ? 'node' : 'nodes'}
+                </span>
+              </div>
+              <div className="text-sm font-bold text-white mb-1.5">
+                {t.name}
+              </div>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                {t.desc}
+              </p>
+            </button>
+          ))}
+        </div>
+      </motion.div>
+    </motion.div>
+  </AnimatePresence>
+  );
+};
+
+// ─── Workflow Engine ──────────────────────────────────────────────────────────
+
+type ActiveTab = 'REGISTRY' | 'BUILDER' | 'EXECUTIONS' | 'TEMPLATES' | 'SCHEDULING' | 'OBSERVABILITY';
+
 const WorkflowEngine = () => {
-  const [activeTab, setActiveTab] = useState<'REGISTRY' | 'BUILDER' | 'EXECUTIONS' | 'TEMPLATES' | 'SCHEDULING' | 'OBSERVABILITY'>('REGISTRY');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('REGISTRY');
   const [selectedWorkflow, setSelectedWorkflow] = useState<Workflow | null>(null);
-  const [showNewWorkflowDrawer, setShowNewWorkflowDrawer] = useState(false);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<TemplateId>('multi-agent');
+
+  const handleNewWorkflow = () => setShowTemplateModal(true);
+
+  const handleTemplateSelect = (t: TemplateId) => {
+    setSelectedTemplate(t);
+    setSelectedWorkflow(null);
+    setShowTemplateModal(false);
+    setActiveTab('BUILDER');
+  };
+
+  const handleEditWorkflow = (wf: Workflow) => {
+    setSelectedWorkflow(wf);
+    setActiveTab('BUILDER');
+  };
+
+  const handleBuilderClose = () => {
+    setSelectedWorkflow(null);
+    setActiveTab('REGISTRY');
+  };
 
   const renderTab = () => {
     switch (activeTab) {
-      case 'BUILDER': return <WorkflowBuilder onClose={() => setActiveTab('REGISTRY')} workflow={selectedWorkflow} />;
-      case 'EXECUTIONS': return <ExecutionCenter />;
-      case 'TEMPLATES': return <WorkflowTemplates onUse={(t) => { setSelectedWorkflow(null); setActiveTab('BUILDER'); }} />;
-      case 'SCHEDULING': return <SchedulingCenter />;
-      case 'OBSERVABILITY': return <WorkflowObservability />;
-      default: return renderRegistry();
+      case 'BUILDER':
+        return (
+          <WorkflowBuilder
+            onClose={handleBuilderClose}
+            workflow={selectedWorkflow}
+            template={selectedTemplate}
+          />
+        );
+      case 'EXECUTIONS':
+        return <ExecutionCenter />;
+      case 'TEMPLATES':
+        return <WorkflowTemplates onUse={() => { setSelectedWorkflow(null); setActiveTab('BUILDER'); }} />;
+      case 'SCHEDULING':
+        return <SchedulingCenter />;
+      case 'OBSERVABILITY':
+        return <WorkflowObservability />;
+      default:
+        return renderRegistry();
     }
   };
 
   const renderRegistry = () => (
     <div className="flex flex-col h-full bg-slate-950 overflow-hidden relative">
-      <DetailDrawer
-        isOpen={showNewWorkflowDrawer}
-        onClose={() => setShowNewWorkflowDrawer(false)}
-        title="Orchestration Architect"
-        subtitle="Provision a new distributed AI workflow"
-        icon={GitMerge}
-        size="lg"
-      >
-        <div className="p-8 space-y-8">
-           <div className="space-y-4">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block ml-1">Workflow Identity</label>
-              <input type="text" placeholder="e.g. Multi-Agent Customer Support" className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-sm text-white focus:outline-none focus:ring-1 focus:ring-brand-500" />
-           </div>
-           
-           <div className="space-y-4">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block ml-1">Starting Point</label>
-              <div className="grid grid-cols-2 gap-4">
-                 {[
-                   { id: 'blank', label: 'Blank Canvas', icon: LayoutGrid, desc: 'Start from scratch' },
-                   { id: 'template', label: 'Use Template', icon: Rocket, desc: 'Pick from library' },
-                   { id: 'clone', label: 'Clone Existing', icon: Copy, desc: 'Duplicate a workflow' },
-                   { id: 'yaml', label: 'Import YAML', icon: Code, desc: 'Upload config-as-code' },
-                 ].map(opt => (
-                   <div key={opt.id} className="p-4 bg-white/5 border border-white/10 rounded-2xl hover:bg-brand-500/10 hover:border-brand-500/50 cursor-pointer group transition-all">
-                      <opt.icon className="w-5 h-5 text-slate-500 group-hover:text-brand-400 mb-3" />
-                      <div className="text-xs font-bold text-white mb-1 group-hover:text-brand-400">{opt.label}</div>
-                      <div className="text-[10px] text-slate-600">{opt.desc}</div>
-                   </div>
-                 ))}
-              </div>
-           </div>
 
-           <button 
-             onClick={() => { setShowNewWorkflowDrawer(false); setActiveTab('BUILDER'); }}
-             className="w-full py-4 bg-brand-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-brand-600 transition-all shadow-xl shadow-brand-500/20"
-           >
-             Initialize & Build <ArrowRight className="w-4 h-4" />
-           </button>
-        </div>
-      </DetailDrawer>
+      {/* Template selection modal */}
+      {showTemplateModal && (
+        <TemplateModal
+          onSelect={handleTemplateSelect}
+          onClose={() => setShowTemplateModal(false)}
+        />
+      )}
 
       {/* Registry Header */}
       <div className="p-8 border-b border-white/5 bg-slate-900/50 backdrop-blur-md">
@@ -158,8 +295,8 @@ const WorkflowEngine = () => {
               Control plane for enterprise AI orchestration. Manage distributed agents, retrieval pipelines, and human-in-the-loop approval flows.
             </p>
           </div>
-          <button 
-            onClick={() => setShowNewWorkflowDrawer(true)}
+          <button
+            onClick={handleNewWorkflow}
             className="flex items-center gap-2 px-5 py-2.5 bg-brand-500 hover:bg-brand-400 text-white rounded-xl font-bold transition-all shadow-lg shadow-brand-500/20"
           >
             <Plus className="w-4 h-4" />
@@ -170,8 +307,8 @@ const WorkflowEngine = () => {
         <div className="flex items-center gap-4">
           <div className="flex-1 relative group">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-brand-400 transition-colors" />
-            <input 
-              type="text" 
+            <input
+              type="text"
               placeholder="Search workflows by name, tenant, or tags..."
               className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-12 pr-4 text-white focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/50 transition-all"
             />
@@ -202,7 +339,7 @@ const WorkflowEngine = () => {
           </thead>
           <tbody>
             {MOCK_WORKFLOWS.map((wf) => (
-              <motion.tr 
+              <motion.tr
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 key={wf.id}
@@ -212,36 +349,48 @@ const WorkflowEngine = () => {
                   <div className="flex items-center gap-4">
                     <div className={`p-3 rounded-xl bg-slate-800 border border-white/10 ${
                       wf.type === WorkflowType.MULTI_AGENT ? 'text-brand-400' :
-                      wf.type === WorkflowType.KB_PIPELINE ? 'text-emerald-400' :
-                      'text-amber-400'
+                      wf.type === WorkflowType.KB_PIPELINE ? 'text-emerald-400' : 'text-amber-400'
                     }`}>
                       <GitMerge className="w-5 h-5" />
                     </div>
                     <div>
-                      <div className="text-white font-bold mb-1 hover:text-brand-400 transition-colors cursor-pointer" onClick={() => { setSelectedWorkflow(wf); setActiveTab('BUILDER'); }}>{wf.name}</div>
+                      <div
+                        className="text-white font-bold mb-1 hover:text-brand-400 transition-colors cursor-pointer"
+                        onClick={() => handleEditWorkflow(wf)}
+                      >
+                        {wf.name}
+                      </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">{wf.type.replace('_', ' ')}</span>
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                          {wf.type.replace(/_/g, ' ')}
+                        </span>
                         {wf.tags.slice(0, 1).map(tag => (
-                          <span key={tag} className="text-[9px] px-1.5 py-0.5 bg-brand-500/10 text-brand-400 rounded-md border border-brand-500/20">{tag}</span>
+                          <span key={tag} className="text-[9px] px-1.5 py-0.5 bg-brand-500/10 text-brand-400 rounded-md border border-brand-500/20">
+                            {tag}
+                          </span>
                         ))}
                       </div>
                     </div>
                   </div>
                 </td>
+
                 <td className="px-6 py-5 border-y border-white/5">
                   <div className="text-slate-300 font-medium text-sm">{wf.tenant}</div>
                   <div className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">{wf.project}</div>
                 </td>
+
                 <td className="px-6 py-5 border-y border-white/5">
                   <div className="flex items-center gap-2 mb-1">
                     <div className={`w-1.5 h-1.5 rounded-full ${
-                      wf.status === WorkflowStatus.PUBLISHED ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' :
-                      wf.status === WorkflowStatus.ERROR ? 'bg-red-500' : 'bg-slate-500'
+                      wf.status === WorkflowStatus.PUBLISHED
+                        ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]'
+                        : wf.status === WorkflowStatus.ERROR ? 'bg-red-500' : 'bg-slate-500'
                     }`} />
                     <span className="text-xs font-bold text-white uppercase tracking-tight">{wf.status}</span>
                   </div>
                   <div className="text-xs text-brand-400 font-mono tracking-tighter">{wf.version}</div>
                 </td>
+
                 <td className="px-6 py-5 border-y border-white/5">
                   <div className="flex items-center gap-4">
                     <div>
@@ -255,17 +404,54 @@ const WorkflowEngine = () => {
                     </div>
                   </div>
                 </td>
+
                 <td className="px-6 py-5 border-y border-white/5">
                   <div className="text-xs text-slate-300 font-medium italic">Deployed {wf.lastDeployment}</div>
                   <div className="text-[10px] text-slate-500 font-bold">Executed {wf.lastExecution}</div>
                 </td>
+
                 <td className="px-6 py-5 last:rounded-r-2xl border-y border-r border-white/5 text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    <button className="p-2 hover:bg-white/10 rounded-lg transition-all text-slate-400 hover:text-white"><Play className="w-4 h-4 text-emerald-400" /></button>
-                    <button className="p-2 hover:bg-white/10 rounded-lg transition-all text-slate-400 hover:text-white"><History className="w-4 h-4 text-brand-400" /></button>
-                    <button className="p-2 hover:bg-white/10 rounded-lg transition-all text-slate-400 hover:text-white"><Code className="w-4 h-4" /></button>
-                    <div className="w-px h-4 bg-white/10 mx-1" />
-                    <button className="p-2 hover:bg-white/10 rounded-lg transition-all text-slate-400 hover:text-white"><MoreVertical className="w-4 h-4" /></button>
+                  <div className="flex items-center justify-end gap-1.5">
+                    <button
+                      onClick={() => handleEditWorkflow(wf)}
+                      className="p-2 hover:bg-white/10 rounded-lg transition-all text-slate-400 hover:text-emerald-400"
+                      title="Run"
+                    >
+                      <Play className="w-4 h-4" />
+                    </button>
+                    <button
+                      className="p-2 hover:bg-white/10 rounded-lg transition-all text-slate-400 hover:text-brand-400"
+                      title="History"
+                    >
+                      <History className="w-4 h-4" />
+                    </button>
+                    <button
+                      className="p-2 hover:bg-white/10 rounded-lg transition-all text-slate-400 hover:text-slate-200"
+                      title="YAML"
+                    >
+                      <Code className="w-4 h-4" />
+                    </button>
+                    {/* Clone in 3-dot menu */}
+                    <div className="w-px h-4 bg-white/10 mx-0.5" />
+                    <div className="relative group/menu">
+                      <button className="p-2 hover:bg-white/10 rounded-lg transition-all text-slate-400 hover:text-white">
+                        <MoreVertical className="w-4 h-4" />
+                      </button>
+                      <div className="absolute right-0 top-full mt-1 w-36 bg-slate-900 border border-white/10 rounded-xl shadow-2xl overflow-hidden opacity-0 pointer-events-none group-hover/menu:opacity-100 group-hover/menu:pointer-events-auto transition-all z-20">
+                        <button
+                          onClick={() => handleEditWorkflow(wf)}
+                          className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[11px] font-bold text-slate-300 hover:bg-white/10 transition-all"
+                        >
+                          <Settings2 className="w-3.5 h-3.5" /> Edit
+                        </button>
+                        <button className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[11px] font-bold text-slate-300 hover:bg-white/10 transition-all">
+                          <Copy className="w-3.5 h-3.5" /> Clone
+                        </button>
+                        <button className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[11px] font-bold text-slate-300 hover:bg-white/10 transition-all">
+                          <ArrowRight className="w-3.5 h-3.5" /> Deploy
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </td>
               </motion.tr>
@@ -277,25 +463,28 @@ const WorkflowEngine = () => {
       {/* Tab Switcher */}
       <div className="p-4 border-t border-white/5 bg-slate-900/50 backdrop-blur-md flex justify-center">
         <div className="flex bg-white/5 p-1 rounded-2xl border border-white/10 shadow-2xl">
-          {[
-            { id: 'REGISTRY', label: 'Registry', icon: List },
-            { id: 'BUILDER', label: 'Builder', icon: GitMerge },
-            { id: 'EXECUTIONS', label: 'Executions', icon: History },
-            { id: 'TEMPLATES', label: 'Templates', icon: Rocket },
-            { id: 'SCHEDULING', label: 'Scheduling', icon: Clock },
-            { id: 'OBSERVABILITY', label: 'Observability', icon: Settings2 },
-          ].map((tab) => (
+          {([
+            { id: 'REGISTRY',    label: 'Registry',     Icon: List },
+            { id: 'BUILDER',     label: 'Builder',      Icon: GitMerge },
+            { id: 'EXECUTIONS',  label: 'Executions',   Icon: History },
+            { id: 'TEMPLATES',   label: 'Templates',    Icon: Rocket },
+            { id: 'SCHEDULING',  label: 'Scheduling',   Icon: Clock },
+            { id: 'OBSERVABILITY', label: 'Observability', Icon: Settings2 },
+          ] as const).map(({ id, label, Icon }) => (
             <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
+              key={id}
+              onClick={() => {
+                if (id === 'BUILDER') { handleNewWorkflow(); return; }
+                setActiveTab(id);
+              }}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                activeTab === tab.id 
-                  ? 'bg-brand-500 text-white shadow-lg shadow-brand-500/20' 
+                activeTab === id
+                  ? 'bg-brand-500 text-white shadow-lg shadow-brand-500/20'
                   : 'text-slate-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <tab.icon className="w-4 h-4" />
-              {tab.label}
+              <Icon className="w-4 h-4" />
+              {label}
             </button>
           ))}
         </div>
