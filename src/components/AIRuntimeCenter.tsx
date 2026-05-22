@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Bot, Layers, History, Plus, Zap, Activity, Clock, Shield, Terminal, Sliders } from 'lucide-react';
+import { Bot, Layers, History, Plus, Zap, Activity, Shield, Terminal, Sliders, MessageSquare, MessageCircle, ScrollText } from 'lucide-react';
+import AgentPlayground from './AgentPlayground';
+import Conversations from './Conversations';
+import SystemLogs from './SystemLogs';
 import { cn } from '../lib/utils';
 import { useAppState } from '../AppStateContext';
 import { MODULE_SUB_ITEMS } from '../constants';
@@ -41,12 +44,15 @@ const AIRuntimeCenter = () => {
 
   /* Top in-page pill tabs — mirror the secondary nav as compact pills */
   const pillTabs = [
-    { id: 'AGENTS',    label: 'Agents',    icon: Bot },
-    { id: 'CLI',       label: 'CLI',       icon: Terminal },
-    { id: 'CONFIG',    label: 'Config',    icon: Sliders },
-    { id: 'TRACES',    label: 'Traces',    icon: History },
-    { id: 'RUNS',      label: 'Runs',      icon: Activity },
-    { id: 'WORKFLOWS', label: 'Workflows', icon: Layers },
+    { id: 'PLAYGROUND',    label: 'Playground',    icon: MessageSquare },
+    { id: 'AGENTS',        label: 'Agents',        icon: Bot },
+    { id: 'WORKFLOWS',     label: 'Workflows',     icon: Layers },
+    { id: 'CONVERSATIONS', label: 'Conversations', icon: MessageCircle },
+    { id: 'LOGS',          label: 'Logs',          icon: ScrollText },
+    { id: 'CLI',           label: 'CLI',           icon: Terminal },
+    { id: 'CONFIG',        label: 'Config',        icon: Sliders },
+    { id: 'TRACES',        label: 'Traces',        icon: History },
+    { id: 'RUNS',          label: 'Runs',          icon: Activity },
   ];
 
   const handleNewAgent  = () => setActiveSubTab('NEW_AGENT');
@@ -97,6 +103,12 @@ const AIRuntimeCenter = () => {
       >
         {activeSubTab === 'WORKFLOWS' ? (
           <WorkflowEngine />
+        ) : activeSubTab === 'PLAYGROUND' ? (
+          <AgentPlayground embedded />
+        ) : activeSubTab === 'CONVERSATIONS' ? (
+          <Conversations />
+        ) : activeSubTab === 'LOGS' ? (
+          <SystemLogs />
         ) : (
           <AgentRuntimeView
             view={externalRegistryView}

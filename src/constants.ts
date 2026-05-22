@@ -43,6 +43,9 @@ import {
   ShieldHalf,
   BookOpen,
   Code,
+  MessageSquare,
+  MessageCircle,
+  ScrollText,
 } from 'lucide-react';
 import { Role, Industry, NavItem } from './types';
 
@@ -91,14 +94,17 @@ export const MODULE_SUB_ITEMS: Record<string, SubNavItem[]> = {
   ],
 
   'ai-runtime': [
-    { id: 'AGENTS',     label: 'Agent Registry',  icon: Bot },
-    { id: 'CLI',        label: 'CLI',             icon: Terminal },
-    { id: 'NEW_AGENT',  label: 'New Agent',       icon: Plus },
-    { id: 'CONFIG',     label: 'Config Registry', icon: Sliders },
-    { id: 'TRACES',     label: 'Recent Traces',   icon: History },
-    { id: 'PROVISION',  label: 'Quick Provision', icon: Zap },
-    { id: 'RUNS',       label: 'Run Registry',    icon: Activity },
-    { id: 'WORKFLOWS',  label: 'Workflow Engine', icon: Layers },
+    { id: 'PLAYGROUND',    label: 'Playground',      icon: MessageSquare },
+    { id: 'AGENTS',        label: 'Agent Registry',  icon: Bot },
+    { id: 'NEW_AGENT',     label: 'New Agent',       icon: Plus },
+    { id: 'WORKFLOWS',     label: 'Workflow Engine', icon: Layers },
+    { id: 'CONVERSATIONS', label: 'Conversations',   icon: MessageCircle },
+    { id: 'LOGS',          label: 'Logs',            icon: ScrollText },
+    { id: 'CLI',           label: 'CLI',             icon: Terminal },
+    { id: 'CONFIG',        label: 'Config Registry', icon: Sliders },
+    { id: 'TRACES',        label: 'Recent Traces',   icon: History },
+    { id: 'PROVISION',     label: 'Quick Provision', icon: Zap },
+    { id: 'RUNS',          label: 'Run Registry',    icon: Activity },
   ],
 
   'operations-center': [
