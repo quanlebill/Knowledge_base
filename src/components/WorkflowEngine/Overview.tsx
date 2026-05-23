@@ -22,6 +22,8 @@ import {
   X,
   Database,
   Zap,
+  Trash2,
+  FileCode,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactDOM from 'react-dom';
@@ -245,6 +247,8 @@ const WorkflowEngine = () => {
   const [toast, setToast] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
+  const [cloneTarget, setCloneTarget] = useState<Workflow | null>(null);
+  const [cloneModalName, setCloneModalName] = useState('');
 
   const handleMenuOpen = useCallback((e: React.MouseEvent<HTMLButtonElement>, id: string) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -264,6 +268,13 @@ const WorkflowEngine = () => {
     const t = setTimeout(() => setToast(null), 3000);
     return () => clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    if (!cloneTarget) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setCloneTarget(null); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [cloneTarget]);
 
   const handleRunWorkflow = (wf: Workflow) => {
     setFilterWorkflowName(wf.name);
@@ -422,7 +433,7 @@ const WorkflowEngine = () => {
         <div
           onMouseDown={(e) => e.stopPropagation()}
           style={{ position: 'fixed', top: menuPos.top, right: menuPos.right, zIndex: 9999 }}
-          className="w-36 bg-white border border-[#BFA66A]/50 rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-100"
+          className="w-44 bg-white border border-[#BFA66A]/50 rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-100"
         >
           {MOCK_WORKFLOWS.filter(w => w.id === openMenuId).map(wf => (
             <React.Fragment key={wf.id}>
@@ -430,19 +441,26 @@ const WorkflowEngine = () => {
                 onClick={() => { setOpenMenuId(null); handleEditWorkflow(wf); }}
                 className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[11px] font-semibold text-[#2A2A2A] hover:bg-[#FFF9E8] transition-colors"
               >
-                <Settings2 className="w-3.5 h-3.5" /> Edit
+                <Settings2 className="w-3.5 h-3.5 text-[#8A8A7A]" /> Edit
+              </button>
+              <button
+                onClick={() => { setOpenMenuId(null); setCloneModalName(`Copy of ${wf.name}`); setCloneTarget(wf); }}
+                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[11px] font-semibold text-[#2A2A2A] hover:bg-[#FFF9E8] transition-colors"
+              >
+                <Copy className="w-3.5 h-3.5 text-[#8A8A7A]" /> Clone
               </button>
               <button
                 onClick={() => setOpenMenuId(null)}
                 className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[11px] font-semibold text-[#2A2A2A] hover:bg-[#FFF9E8] transition-colors"
               >
-                <Copy className="w-3.5 h-3.5" /> Clone
+                <FileCode className="w-3.5 h-3.5 text-[#8A8A7A]" /> Export YAML
               </button>
+              <div className="h-px bg-[#ECE7DA] mx-3" />
               <button
                 onClick={() => setOpenMenuId(null)}
-                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[11px] font-semibold text-[#2A2A2A] hover:bg-[#FFF9E8] transition-colors"
+                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[11px] font-semibold text-red-600 hover:bg-red-50 transition-colors"
               >
-                <ArrowRight className="w-3.5 h-3.5" /> Deploy
+                <Trash2 className="w-3.5 h-3.5" /> Delete
               </button>
             </React.Fragment>
           ))}
@@ -559,6 +577,55 @@ const WorkflowEngine = () => {
       >
         {renderContent()}
       </motion.div>
+
+      {/* Clone Workflow Modal */}
+      <AnimatePresence>
+        {cloneTarget && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/30 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="bg-white border border-[#ECE7DA] rounded-2xl shadow-2xl p-6 w-[420px]"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base font-bold text-[#111111]">Clone Workflow</h3>
+                <button onClick={() => setCloneTarget(null)} className="p-1.5 hover:bg-[#F3E2A7] rounded-lg transition-colors text-[#8A8A7A]">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-xs text-[#8A8A7A] mb-4">Nhập tên cho workflow mới được clone từ <span className="font-semibold text-[#2A2A2A]">{cloneTarget.name}</span></p>
+              <input
+                autoFocus
+                type="text"
+                value={cloneModalName}
+                onChange={(e) => setCloneModalName(e.target.value)}
+                className="w-full bg-[#FAFAF5] border border-[#ECE7DA] rounded-xl py-2.5 px-4 text-sm text-[#111111] focus:outline-none focus:border-[#BFA66A] mb-5"
+              />
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setCloneTarget(null)} className="btn-secondary">Cancel</button>
+                <button
+                  onClick={() => {
+                    setToast(`✓ Workflow "${cloneModalName}" cloned successfully`);
+                    setCloneTarget(null);
+                  }}
+                  disabled={!cloneModalName.trim()}
+                  className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Copy className="w-4 h-4" /> Clone
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

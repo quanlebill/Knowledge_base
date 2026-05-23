@@ -101,8 +101,8 @@ const CustomFlowNode = (props: NodeProps) => {
     <div
       style={{
         position: 'relative',
-        background: selected ? `${cfg.color}18` : '#0d1117',
-        border: `2px solid ${selected ? cfg.color : 'rgba(255,255,255,0.08)'}`,
+        background: selected ? `${cfg.color}22` : '#1e293b',
+        border: `2px solid ${selected ? cfg.color : 'rgba(255,255,255,0.15)'}`,
         borderRadius: 14,
         padding: '11px 16px',
         minWidth: 178,
@@ -129,7 +129,7 @@ const CustomFlowNode = (props: NodeProps) => {
             height: 18,
             borderRadius: '50%',
             background: '#EF4444',
-            border: '2px solid #0d1117',
+            border: '2px solid #1e293b',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -146,7 +146,7 @@ const CustomFlowNode = (props: NodeProps) => {
         <Handle
           type="target"
           position={Position.Top}
-          style={{ background: cfg.color, border: '2px solid #0d1117', width: 10, height: 10 }}
+          style={{ background: cfg.color, border: '2px solid #1e293b', width: 10, height: 10 }}
         />
       )}
 
@@ -173,7 +173,7 @@ const CustomFlowNode = (props: NodeProps) => {
         <Handle
           type="source"
           position={Position.Bottom}
-          style={{ background: cfg.color, border: '2px solid #0d1117', width: 10, height: 10 }}
+          style={{ background: cfg.color, border: '2px solid #1e293b', width: 10, height: 10 }}
         />
       )}
     </div>
@@ -230,7 +230,7 @@ const EdgeWithDelete = (props: EdgeProps) => {
             <span
               style={{
                 ...(labelStyle as React.CSSProperties || {}),
-                background: '#0d1117',
+                background: '#1e293b',
                 padding: '2px 6px',
                 borderRadius: 4,
                 display: 'inline-block',
@@ -407,7 +407,7 @@ const TextInput = ({
 );
 
 const Readonly = ({ value }: { value: string }) => (
-  <div className="w-full bg-white/[0.03] border border-white/[0.06] rounded-xl py-2 px-3 text-xs font-mono text-slate-400">
+  <div className="w-full bg-white/[0.03] border border-white/10 rounded-xl py-2 px-3 text-xs font-mono text-slate-400">
     {value}
   </div>
 );
@@ -452,7 +452,7 @@ const Slider = ({
 );
 
 const InfoNote = ({ text }: { text: string }) => (
-  <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+  <div className="p-3 rounded-xl bg-white/[0.03] border border-white/10">
     <p className="text-[11px] text-slate-500 italic leading-relaxed">{text}</p>
   </div>
 );
@@ -480,9 +480,9 @@ const ConfigPanel = ({ node, onClose, onUpdate }: ConfigPanelProps) => {
       animate={{ x: 0, opacity: 1 }}
       exit={{ x: 320, opacity: 0 }}
       transition={{ type: 'spring', stiffness: 340, damping: 34 }}
-      className="w-80 border-l border-white/[0.06] bg-[#050505] flex flex-col shrink-0"
+      className="w-80 border-l border-white/10 bg-[#111827] flex flex-col shrink-0"
     >
-      <div className="p-5 border-b border-white/[0.06] flex items-center justify-between shrink-0">
+      <div className="p-5 border-b border-white/10 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
           <div style={{ background: `${cfg.color}20`, borderRadius: 8, padding: 6, display: 'flex' }}>
             <cfg.Icon size={14} color={cfg.color} />
@@ -634,8 +634,8 @@ const NodeLibrary = ({ usedTypes }: NodeLibraryProps) => {
   );
 
   return (
-    <div className="w-52 border-r border-white/[0.06] bg-[#050505] flex flex-col shrink-0">
-      <div className="p-3 border-b border-white/[0.06]">
+    <div className="w-52 border-r border-white/10 bg-[#111827] flex flex-col shrink-0">
+      <div className="p-3 border-b border-white/10">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-700" />
           <input
@@ -682,7 +682,7 @@ const NodeLibrary = ({ usedTypes }: NodeLibraryProps) => {
         )}
       </div>
 
-      <div className="p-3 border-t border-white/[0.06]">
+      <div className="p-3 border-t border-white/10">
         <p className="text-[9px] text-slate-700 leading-relaxed">
           Kéo node vào canvas để thêm vào workflow
         </p>
@@ -705,7 +705,7 @@ const ContextMenu = ({
   onClose: () => void;
 }) => (
   <div
-    className="fixed z-[200] min-w-[148px] bg-slate-900 border border-white/10 rounded-xl shadow-2xl overflow-hidden"
+    className="fixed z-[200] min-w-[148px] bg-[#1e293b] border border-white/15 rounded-xl shadow-2xl overflow-hidden"
     style={{ left: menu.x, top: menu.y }}
     onClick={e => e.stopPropagation()}
   >
@@ -741,7 +741,7 @@ const ConfirmExitModal = ({ onConfirm, onCancel }: { onConfirm: () => void; onCa
       animate={{ scale: 1, opacity: 1 }}
       exit={{ scale: 0.95, opacity: 0 }}
       transition={{ type: 'spring', stiffness: 400, damping: 32 }}
-      className="relative z-10 bg-slate-900 border border-white/10 rounded-2xl p-7 w-[380px] shadow-2xl"
+      className="relative z-10 bg-[#1e293b] border border-white/15 rounded-2xl p-7 w-[380px] shadow-2xl"
     >
       <h3 className="text-base font-bold text-white mb-2">Leave without saving?</h3>
       <p className="text-sm text-slate-400 leading-relaxed mb-6">
@@ -918,11 +918,11 @@ ${edges.map(e => `  - from: "${e.source}"  to: "${e.target}"`).join('\n')}`;
   return (
     <BuilderToastCtx.Provider value={addToast}>
       <div
-        className="fixed inset-0 z-[100] flex flex-col bg-[#0a0a0a] text-slate-200"
+        className="fixed inset-0 z-[100] flex flex-col bg-[#0d1117] text-slate-200"
         onClick={() => setCtxMenu(null)}
       >
         {/* ── Toolbar ─────────────────────────────────────────────────────────── */}
-        <div className="h-14 border-b border-white/[0.06] bg-[#050505] flex items-center justify-between px-5 shrink-0">
+        <div className="h-14 border-b border-white/10 bg-[#0d1117] flex items-center justify-between px-5 shrink-0">
           <div className="flex items-center gap-4">
             <button
               onClick={requestExit}
@@ -1009,23 +1009,23 @@ ${edges.map(e => `  - from: "${e.source}"  to: "${e.target}"`).join('\n')}`;
                     edgeTypes={edgeTypes}
                     fitView
                     fitViewOptions={{ padding: 0.2 }}
-                    style={{ background: '#080b0f' }}
+                    style={{ background: '#0f172a' }}
                     connectionLineStyle={{ stroke: '#ffffff44', strokeWidth: 2 }}
                     deleteKeyCode="Delete"
                   >
                     <Background
                       variant={BackgroundVariant.Dots}
-                      color="rgba(255,255,255,0.03)"
+                      color="rgba(255,255,255,0.08)"
                       gap={24}
                       size={1.5}
                     />
                     <Controls
                       style={{
-                        background: '#0d1117',
-                        border: '1px solid rgba(255,255,255,0.07)',
+                        background: '#1e293b',
+                        border: '1px solid rgba(255,255,255,0.12)',
                         borderRadius: 10,
                         overflow: 'hidden',
-                        boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+                        boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
                       }}
                     />
                   </ReactFlow>
@@ -1037,7 +1037,7 @@ ${edges.map(e => `  - from: "${e.source}"  to: "${e.target}"`).join('\n')}`;
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -10 }}
                   transition={{ duration: 0.12 }}
-                  className="absolute inset-0 bg-[#050505] p-8 overflow-auto custom-scrollbar"
+                  className="absolute inset-0 bg-[#111827] p-8 overflow-auto custom-scrollbar"
                 >
                   <pre className="font-mono text-sm text-slate-400 leading-relaxed whitespace-pre-wrap">
                     {yamlPreview}
@@ -1059,7 +1059,7 @@ ${edges.map(e => `  - from: "${e.source}"  to: "${e.target}"`).join('\n')}`;
         </div>
 
         {/* ── Status Bar ───────────────────────────────────────────────────────── */}
-        <div className="h-9 bg-[#050505] border-t border-white/[0.06] px-5 flex items-center justify-between shrink-0">
+        <div className="h-9 bg-[#111827] border-t border-white/10 px-5 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-5">
             <div className="flex items-center gap-1.5">
               <CheckCircle2 className="w-3 h-3 text-emerald-500" />

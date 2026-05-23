@@ -1,11 +1,13 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Bot, Cpu, Plus, Terminal, Search, Filter, Zap,
   MoreHorizontal, Database, Network, Wrench, GitBranch,
-  ShieldAlert, Activity, BarChart3,
+  ShieldAlert, Activity, BarChart3, Copy, Trash2, Settings2, X, CheckCircle2,
 } from 'lucide-react';
+import ReactDOM from 'react-dom';
+import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../lib/utils';
-import { Agent, AgentType, AgentStatus } from '../../types/agent';
+import { AgentType, AgentStatus } from '../../types/agent';
 import { MOCK_AGENTS } from '../../constants/agentMock';
 
 interface OverviewProps {
@@ -21,6 +23,38 @@ export const AgentRegistryOverview: React.FC<OverviewProps> = ({
   onOpenProvision,
   onSelectAgent,
 }) => {
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
+  const [cloneTarget, setCloneTarget] = useState<{ id: string; name: string } | null>(null);
+  const [cloneModalName, setCloneModalName] = useState('');
+  const [toast, setToast] = useState<string | null>(null);
+
+  const handleMenuOpen = useCallback((e: React.MouseEvent<HTMLButtonElement>, id: string) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+    setOpenMenuId(id);
+  }, []);
+
+  useEffect(() => {
+    if (!openMenuId) return;
+    const close = () => setOpenMenuId(null);
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [openMenuId]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  useEffect(() => {
+    if (!cloneTarget) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setCloneTarget(null); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [cloneTarget]);
+
   const stats = {
     total:     MOCK_AGENTS.length,
     active:    MOCK_AGENTS.filter(a => a.status === 'ACTIVE').length,
@@ -50,6 +84,7 @@ export const AgentRegistryOverview: React.FC<OverviewProps> = ({
   };
 
   return (
+    <>
     <div className="space-y-5">
       {/* Section header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -118,12 +153,12 @@ export const AgentRegistryOverview: React.FC<OverviewProps> = ({
         </div>
 
         {/* Desktop table */}
-        <div className="hidden xl:block">
+        <div className="hidden lg:block">
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-[#BFA66A]/30 bg-white">
-                {['Agent Identity', 'Environment', 'KB Connection', 'Performance', 'Status', 'Ops'].map((h, i) => (
-                  <th key={h} className={cn('px-5 py-3 text-[10px] font-bold text-[#5A5A5A] uppercase tracking-widest', i === 5 && 'text-right')}>
+                {['Agent', 'Environment', 'KB', 'Latency / Health', 'Error Rate', 'Status', ''].map((h, i) => (
+                  <th key={h} className={cn('px-5 py-3 text-[10px] font-bold text-[#5A5A5A] uppercase tracking-widest', i === 6 && 'text-right')}>
                     {h}
                   </th>
                 ))}
@@ -134,50 +169,92 @@ export const AgentRegistryOverview: React.FC<OverviewProps> = ({
                 <tr
                   key={agent.id}
                   onClick={() => onSelectAgent(agent.id)}
-                  className="hover:bg-[#FFF9E8] transition-colors cursor-pointer"
+                  className="hover:bg-[#FFF9E8] transition-colors cursor-pointer group"
                 >
+                  {/* Agent identity */}
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-3">
                       <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center border shrink-0', getStatusStyle(agent.status))}>
                         {getTypeIcon(agent.type)}
                       </div>
                       <div>
-                        <div className="font-semibold text-[#111111] text-sm">{agent.name}</div>
-                        <div className="flex items-center gap-1.5 text-[10px] font-mono text-[#5A5A5A] mt-0.5">
-                          <span className="text-[#B88719] font-semibold">{agent.id}</span>
-                          <span className="opacity-40">·</span>
-                          <span>{agent.version}</span>
-                          <span className="opacity-40">·</span>
-                          <span className="italic">{agent.tenant}</span>
+                        <div className="font-semibold text-[#111111] text-sm leading-snug">{agent.name}</div>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <span className="text-[10px] font-mono text-[#B88719]">{agent.id}</span>
+                          <span className="text-[#BFA66A]/50">·</span>
+                          <span className="text-[10px] font-mono text-[#8A8A7A]">v{agent.version}</span>
                         </div>
+                        <div className="text-[10px] text-[#8A8A7A] italic mt-0.5 truncate max-w-[180px]">{agent.owner}</div>
                       </div>
                     </div>
                   </td>
+
+                  {/* Environment */}
                   <td className="px-5 py-4">
-                    <div className="text-sm font-semibold text-[#2A2A2A]">{agent.project}</div>
-                    <div className="text-[9px] font-bold text-[#8A8A7A] uppercase tracking-wide mt-0.5">{agent.environment}</div>
-                  </td>
-                  <td className="px-5 py-4 font-mono">
-                    <div className="flex items-center gap-1.5">
-                      <Database className="w-3.5 h-3.5 text-[#B88719] shrink-0" />
-                      <span className="text-[11px] text-[#2A2A2A]">{agent.kbConnection}</span>
+                    <div className="text-sm font-semibold text-[#2A2A2A] leading-snug">{agent.project}</div>
+                    <div className="inline-block mt-1 px-2 py-0.5 text-[9px] font-bold tracking-widest uppercase rounded bg-[#F3E2A7] text-[#7C5A0E] border border-[#BFA66A]/40">
+                      {agent.environment}
                     </div>
                   </td>
-                  <td className="px-5 py-4 font-mono">
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <span className="text-[9px] text-[#8A8A7A] font-bold uppercase">Err:</span>
-                      <span className={cn('font-semibold', agent.errorRate > 5 ? 'text-red-600' : 'text-emerald-600')}>
-                        {agent.errorRate}%
+
+                  {/* KB */}
+                  <td className="px-5 py-4">
+                    <div className="flex items-center gap-1.5">
+                      <Database className="w-3 h-3 text-[#B88719] shrink-0" />
+                      <span className="text-[11px] font-mono text-[#2A2A2A] truncate max-w-[120px]">
+                        {agent.kbConnection === 'none' ? <span className="text-[#8A8A7A] italic">—</span> : agent.kbConnection}
                       </span>
                     </div>
                   </td>
+
+                  {/* Latency / Health */}
                   <td className="px-5 py-4">
-                    <span className={cn('px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wide border', getStatusStyle(agent.status))}>
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <Zap className="w-3 h-3 text-[#B88719] shrink-0" />
+                      <span className="text-xs font-mono font-semibold text-[#2A2A2A]">{agent.latency}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-20 h-1.5 rounded-full bg-[#F0E8D5] overflow-hidden">
+                        <div
+                          className={cn('h-full rounded-full', agent.healthScore >= 95 ? 'bg-emerald-500' : agent.healthScore >= 80 ? 'bg-amber-500' : 'bg-red-500')}
+                          style={{ width: `${agent.healthScore}%` }}
+                        />
+                      </div>
+                      <span className={cn('text-[10px] font-bold', agent.healthScore >= 95 ? 'text-emerald-600' : agent.healthScore >= 80 ? 'text-amber-600' : 'text-red-600')}>
+                        {agent.healthScore}%
+                      </span>
+                    </div>
+                  </td>
+
+                  {/* Error rate */}
+                  <td className="px-5 py-4">
+                    <span className={cn(
+                      'text-sm font-bold font-mono',
+                      agent.errorRate === 0 ? 'text-emerald-600' : agent.errorRate > 5 ? 'text-red-600' : 'text-amber-600',
+                    )}>
+                      {agent.errorRate === 0 ? '0%' : `${agent.errorRate}%`}
+                    </span>
+                    <div className="text-[9px] text-[#8A8A7A] uppercase tracking-wide mt-0.5 font-semibold">Last: {agent.lastRun}</div>
+                  </td>
+
+                  {/* Status */}
+                  <td className="px-5 py-4">
+                    <span className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wide border', getStatusStyle(agent.status))}>
+                      {agent.status === 'ACTIVE' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />}
+                      {agent.status === 'FAILED' && <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />}
                       {agent.status.replace('_', ' ')}
                     </span>
                   </td>
+
+                  {/* Actions */}
                   <td className="px-5 py-4 text-right">
-                    <MoreHorizontal className="w-4 h-4 text-[#8A8A7A] inline-block hover:text-[#111111] transition-colors" />
+                    <button
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => { e.stopPropagation(); handleMenuOpen(e, agent.id); }}
+                      className="p-1.5 hover:bg-[#F3E2A7] rounded-lg transition-colors text-[#C8BCA8] hover:text-[#5A5A5A]"
+                    >
+                      <MoreHorizontal className="w-4 h-4" />
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -185,8 +262,42 @@ export const AgentRegistryOverview: React.FC<OverviewProps> = ({
           </table>
         </div>
 
+        {/* Portal dropdown */}
+        {openMenuId && ReactDOM.createPortal(
+          <div
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{ position: 'fixed', top: menuPos.top, right: menuPos.right, zIndex: 9999 }}
+            className="w-44 bg-white border border-[#BFA66A]/50 rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-100"
+          >
+            {MOCK_AGENTS.filter(a => a.id === openMenuId).map(agent => (
+              <React.Fragment key={agent.id}>
+                <button
+                  onClick={() => setOpenMenuId(null)}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[11px] font-semibold text-[#2A2A2A] hover:bg-[#FFF9E8] transition-colors"
+                >
+                  <Settings2 className="w-3.5 h-3.5 text-[#8A8A7A]" /> Edit
+                </button>
+                <button
+                  onClick={() => { setOpenMenuId(null); setCloneModalName(`Copy of ${agent.name}`); setCloneTarget({ id: agent.id, name: agent.name }); }}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[11px] font-semibold text-[#2A2A2A] hover:bg-[#FFF9E8] transition-colors"
+                >
+                  <Copy className="w-3.5 h-3.5 text-[#8A8A7A]" /> Clone
+                </button>
+                <div className="h-px bg-[#ECE7DA] mx-3" />
+                <button
+                  onClick={() => setOpenMenuId(null)}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[11px] font-semibold text-red-600 hover:bg-red-50 transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Delete
+                </button>
+              </React.Fragment>
+            ))}
+          </div>,
+          document.body
+        )}
+
         {/* Mobile/Tablet card list */}
-        <div className="xl:hidden divide-y divide-[#BFA66A]/20">
+        <div className="lg:hidden divide-y divide-[#BFA66A]/20">
           {MOCK_AGENTS.map(agent => (
             <div
               key={agent.id}
@@ -222,5 +333,75 @@ export const AgentRegistryOverview: React.FC<OverviewProps> = ({
         </div>
       </div>
     </div>
+
+      {/* Toast */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="fixed top-5 right-5 z-[9999] flex items-center gap-2.5 px-4 py-3 bg-[#111111] text-white text-[12px] font-semibold rounded-xl shadow-xl"
+          >
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            {toast}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Clone Agent Modal */}
+      <AnimatePresence>
+        {cloneTarget && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/30 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="bg-white border border-[#ECE7DA] rounded-2xl shadow-2xl p-6 w-[420px]"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base font-bold text-[#111111]">Clone Agent</h3>
+                <button onClick={() => setCloneTarget(null)} className="p-1.5 hover:bg-[#F3E2A7] rounded-lg transition-colors text-[#8A8A7A]">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-xs text-[#8A8A7A] mb-4">Nhập tên cho agent mới được clone từ <span className="font-semibold text-[#2A2A2A]">{cloneTarget.name}</span></p>
+              <input
+                autoFocus
+                type="text"
+                value={cloneModalName}
+                onChange={(e) => setCloneModalName(e.target.value)}
+                className="w-full bg-[#FAFAF5] border border-[#ECE7DA] rounded-xl py-2.5 px-4 text-sm text-[#111111] focus:outline-none focus:border-[#BFA66A] mb-5"
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setCloneTarget(null)}
+                  className="btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    setToast(`Agent "${cloneModalName}" cloned successfully`);
+                    setCloneTarget(null);
+                  }}
+                  disabled={!cloneModalName.trim()}
+                  className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Copy className="w-4 h-4" /> Clone
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 };
