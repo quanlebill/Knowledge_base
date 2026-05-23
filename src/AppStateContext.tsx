@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { Role, Industry, TenantContext, User, Environment } from './types';
+import { useAuth } from './lib/AuthProvider';
 
 interface AppStateContextType {
   role: Role;
@@ -37,7 +38,8 @@ const writeHash = (module: string, sub?: string) => {
   if (typeof window === 'undefined') return;
   const next = sub ? `#${module}/${sub}` : `#${module}`;
   if (window.location.hash !== next) {
-    window.history.replaceState(null, '', next);
+    // Preserve query params so Keycloak can read ?code=&state= on auth redirect
+    window.history.replaceState(null, '', window.location.search + next);
   }
 };
 
@@ -52,12 +54,15 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
     environment: 'PROD',
   });
 
-  const [user] = useState<User>({
-    id: 'u_123',
-    name: 'Alex Rivera',
-    email: 'alex.rivera@globalcorp.ai',
-    role: 'AI_ENGINEER',
-  });
+  const { user: authUser } = useAuth();
+  const user: User = {
+    id:    authUser?.id    ?? 'u_anon',
+    name:  authUser?.name  ?? authUser?.email ?? 'User',
+    email: authUser?.email ?? '',
+    role:  (authUser?.roles?.find(r =>
+      ['PLATFORM_ADMIN','AI_ENGINEER','BUSINESS_OPERATOR','EXECUTIVE_VIEWER'].includes(r.toUpperCase())
+    )?.toUpperCase() as Role) ?? 'AI_ENGINEER',
+  };
 
   /* Routing state — initialized from URL hash */
   const initial = parseHash();

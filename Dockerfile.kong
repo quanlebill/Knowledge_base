@@ -1,0 +1,3 @@
+# Kong community 3.6 — no extra plugins needed
+# JWT verification uses built-in jwt plugin + keycloak JWKS key sync
+FROM kong:3.6-ubuntu

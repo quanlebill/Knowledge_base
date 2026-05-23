@@ -1,0 +1,169 @@
+# ─── Auth & Gateway Stack ────────────────────────────────────────────
+# Services: PostgreSQL · Keycloak · Kong · Frontend (Vite dev)
+# Run: docker compose up -d
+
+networks:
+  aeroflow-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  kong_data:
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: aeroflow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aeroflow
+      POSTGRES_PASSWORD: aeroflow_secret
+      POSTGRES_DB: aeroflow
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/sql/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - aeroflow-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aeroflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Keycloak ────────────────────────────────────────────────────────
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    container_name: aeroflow-keycloak
+    restart: unless-stopped
+    command: start-dev --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/aeroflow
+      KC_DB_USERNAME: aeroflow
+      KC_DB_PASSWORD: aeroflow_secret
+      KC_DB_SCHEMA: keycloak
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_PORT: 8080
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_HTTP_ENABLED: "true"
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    volumes:
+      - ./infra/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - aeroflow-net
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && printf 'GET /realms/master HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && timeout 3 cat <&3 | grep -q '200 OK'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
+
+  # ── Kong Database Migration ─────────────────────────────────────────
+  kong-migration:
+    build:
+      context: .
+      dockerfile: Dockerfile.kong
+    container_name: aeroflow-kong-migration
+    command: kong migrations bootstrap
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: postgres
+      KONG_PG_PORT: 5432
+      KONG_PG_DATABASE: aeroflow
+      KONG_PG_USER: aeroflow
+      KONG_PG_PASSWORD: aeroflow_secret
+      KONG_PG_SCHEMA: kong
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - aeroflow-net
+    restart: on-failure
+
+  # ── Kong Gateway (custom image with oidc plugin) ────────────────────
+  kong:
+    build:
+      context: .
+      dockerfile: Dockerfile.kong
+    container_name: aeroflow-kong
+    restart: unless-stopped
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: postgres
+      KONG_PG_PORT: 5432
+      KONG_PG_DATABASE: aeroflow
+      KONG_PG_USER: aeroflow
+      KONG_PG_PASSWORD: aeroflow_secret
+      KONG_PG_SCHEMA: kong
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+      KONG_PROXY_LISTEN: "0.0.0.0:8000"
+      KONG_PLUGINS: bundled
+    ports:
+      - "8000:8000"   # Proxy
+      - "8001:8001"   # Admin API
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kong-migration:
+        condition: service_completed_successfully
+    networks:
+      - aeroflow-net
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── Kong Admin UI (optional) ────────────────────────────────────────
+  konga:
+    image: pantsel/konga:latest
+    container_name: aeroflow-konga
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+    ports:
+      - "1337:1337"
+    depends_on:
+      kong:
+        condition: service_healthy
+    networks:
+      - aeroflow-net
+
+  # ── Frontend (Vite dev server) ──────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: aeroflow-frontend
+    restart: unless-stopped
+    volumes:
+      - .:/app
+      - /app/node_modules
+    ports:
+      - "5173:3000"
+    environment:
+      VITE_KEYCLOAK_URL: http://localhost:8080
+      VITE_KEYCLOAK_REALM: aeroflow
+      VITE_KEYCLOAK_CLIENT: aeroflow-frontend
+      VITE_API_BASE_URL: http://localhost:8000
+    depends_on:
+      keycloak:
+        condition: service_started
+    networks:
+      - aeroflow-net
