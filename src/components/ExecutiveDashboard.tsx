@@ -11,6 +11,9 @@ import {
   Globe,
   Plus,
   Sparkles,
+  Bot,
+  Layers,
+  Clock,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -35,6 +38,13 @@ const TOP_ISSUES = [
   { label: 'Ingestion pipeline failed in EU-WEST-1', risk: 'HIGH', impact: '24 bots' },
   { label: 'Unresolved knowledge conflict in Compliance', risk: 'MEDIUM', impact: '4 users' },
   { label: 'Embedding cost spike detected', risk: 'LOW', impact: 'Finance alert' },
+];
+
+const AI_RUNTIME_METRICS = [
+  { label: 'Active Agents',  value: '482',    trend: '+5',      trendUp: true,  icon: Bot      },
+  { label: 'Workflow Runs',  value: '1.2M',   trend: '+18%',    trendUp: true,  icon: Layers   },
+  { label: 'Avg Latency',    value: '1.4s',   trend: '−120ms',  trendUp: false, icon: Clock    },
+  { label: 'Success Rate',   value: '99.98%', trend: 'OPTIMAL', trendUp: true,  icon: Activity },
 ];
 
 export const ExecutiveDashboard = () => {
@@ -166,6 +176,43 @@ export const ExecutiveDashboard = () => {
               Read Full Analysis <ArrowRight className="w-3 h-3" />
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* AI Runtime snapshot */}
+      <div className="p-6 bg-white border border-[#ECE7DA] rounded-3xl">
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-[#F3E2A7] rounded-xl border border-[#BFA66A]/50">
+              <Activity className="w-4 h-4 text-[#7C5A0E]" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-[#171717] font-display">AI Runtime</h3>
+              <p className="text-[11px] text-[#8B8B8B]">Live agent & workflow health</p>
+            </div>
+          </div>
+          <button
+            className="flex items-center gap-1.5 text-[11px] font-semibold text-[#8A5A00] hover:text-[#5A3A00] transition-colors"
+          >
+            View full runtime <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {AI_RUNTIME_METRICS.map(m => (
+            <div key={m.label} className="flex items-center gap-3 p-3.5 bg-[#FAFAF5] border border-[#ECE7DA] rounded-2xl">
+              <div className="p-2 bg-[#F3E2A7]/60 rounded-lg border border-[#BFA66A]/30 shrink-0">
+                <m.icon className="w-4 h-4 text-[#B88719]" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-xl font-bold font-display text-[#111111] leading-tight">{m.value}</div>
+                <div className="text-[10px] text-[#8B8B8B] font-medium truncate">{m.label}</div>
+              </div>
+              <span className={cn('ml-auto text-[10px] font-semibold shrink-0', m.trendUp ? 'text-emerald-600' : 'text-sky-600')}>
+                {m.trend}
+              </span>
+            </div>
+          ))}
         </div>
       </div>
     </div>

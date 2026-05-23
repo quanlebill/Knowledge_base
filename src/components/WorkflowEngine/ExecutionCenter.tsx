@@ -16,6 +16,7 @@ import {
   Ban,
   MoreVertical,
   Activity,
+  X,
   Cpu,
   Database,
   Bot,
@@ -83,8 +84,19 @@ const MOCK_EXECUTIONS: WorkflowExecution[] = [
   }
 ];
 
-const ExecutionCenter = () => {
+interface ExecutionCenterProps {
+  initialSearch?: string;
+}
+
+const ExecutionCenter = ({ initialSearch }: ExecutionCenterProps = {}) => {
   const [selectedExecution, setSelectedExecution] = useState<WorkflowExecution | null>(null);
+  const [search, setSearch] = useState(initialSearch ?? '');
+
+  const displayedExecutions = MOCK_EXECUTIONS.filter(e =>
+    !search.trim()
+      ? true
+      : e.workflowName.toLowerCase().includes(search.toLowerCase()) || e.id.includes(search)
+  );
 
   const renderTrace = () => {
     if (!selectedExecution) return null;
@@ -97,9 +109,6 @@ const ExecutionCenter = () => {
       >
         <div className="p-6 border-b border-white/5 bg-slate-900/50 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <button onClick={() => setSelectedExecution(null)} className="p-2 hover:bg-white/10 rounded-lg transition-all">
-              <ArrowRight className="w-4 h-4 rotate-180" />
-            </button>
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-[10px] font-black text-brand-400 uppercase tracking-widest leading-none">TRACE ID</span>
@@ -109,8 +118,15 @@ const ExecutionCenter = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button className="flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-bold transition-all"><Play className="w-3.5 h-3.5" /> Replay</button>
-            <button className="flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-bold transition-all"><Code className="w-3.5 h-3.5" /> JSON Trace</button>
+            <button className="flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-white rounded-lg text-xs font-bold transition-all"><Play className="w-3.5 h-3.5" /> Replay</button>
+            <button className="flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-white rounded-lg text-xs font-bold transition-all"><Code className="w-3.5 h-3.5" /> JSON Trace</button>
+            <button
+              onClick={() => setSelectedExecution(null)}
+              className="p-2 hover:bg-white/10 rounded-lg transition-all text-slate-400 hover:text-white"
+              title="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
         </div>
 
@@ -209,8 +225,10 @@ const ExecutionCenter = () => {
           <div className="flex items-center gap-4">
             <div className="flex-1 relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-              <input 
-                type="text" 
+              <input
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
                 placeholder="Search executions by trace ID, workflow name, or environment..."
                 className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-12 pr-4 text-white focus:outline-none focus:ring-1 focus:ring-brand-500"
               />
@@ -231,7 +249,7 @@ const ExecutionCenter = () => {
               </tr>
             </thead>
             <tbody>
-              {MOCK_EXECUTIONS.map((exec) => (
+              {displayedExecutions.map((exec) => (
                 <tr 
                   key={exec.id} 
                   onClick={() => setSelectedExecution(exec)}

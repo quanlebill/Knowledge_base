@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus,
   Search,
@@ -12,7 +12,6 @@ import {
   History,
   Code,
   Settings2,
-  Rocket,
   LayoutGrid,
   List,
   Copy,
@@ -21,12 +20,14 @@ import {
   Activity,
   ArrowRight,
   X,
+  Database,
+  Zap,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import ReactDOM from 'react-dom';
 import { WorkflowStatus, WorkflowType, Workflow } from '../../types/workflow';
 import WorkflowBuilder, { type TemplateId } from './Builder';
 import ExecutionCenter from './ExecutionCenter';
-import WorkflowTemplates from './Templates';
 import SchedulingCenter from './SchedulingCenter';
 import WorkflowObservability from './Observability';
 
@@ -88,284 +89,260 @@ const MOCK_WORKFLOWS: Workflow[] = [
 
 // ─── Template Definitions ─────────────────────────────────────────────────────
 
-const TEMPLATES: Array<{
-  id: TemplateId;
+type TemplateCategory = 'ALL' | 'RAG' | 'MULTI_AGENT' | 'HITL' | 'AUTOMATION' | 'KNOWLEDGE';
+
+const TEMPLATE_LIBRARY: Array<{
+  builderTemplate: TemplateId;
   name: string;
   desc: string;
   nodeCount: number;
   Icon: React.ElementType;
   color: string;
-  isDefault?: boolean;
+  category: TemplateCategory;
+  isPopular?: boolean;
 }> = [
-  {
-    id: 'blank',
-    name: 'Blank Canvas',
-    desc: 'Flow trống, chỉ có Trigger node.',
-    nodeCount: 1,
-    Icon: LayoutGrid,
-    color: '#64748b',
-  },
-  {
-    id: 'multi-agent',
-    name: 'Full Agent',
-    desc: 'Flow chuẩn đầy đủ — KB Search + MCP Tool song song.',
-    nodeCount: 8,
-    Icon: Bot,
-    color: '#3b82f6',
-    isDefault: true,
-  },
-  {
-    id: 'hitl',
-    name: 'Human-in-the-loop',
-    desc: 'Cần người review trước khi trả lời.',
-    nodeCount: 9,
-    Icon: ShieldCheck,
-    color: '#f97316',
-  },
+  { builderTemplate: 'blank',        name: 'Blank Canvas',             desc: 'Bắt đầu từ canvas trống — chỉ có Trigger node.',                       nodeCount: 1,  Icon: LayoutGrid, color: '#64748b', category: 'AUTOMATION' },
+  { builderTemplate: 'multi-agent',  name: 'Full RAG Agent',           desc: 'KB Search + Reranker + Reasoner — flow chuẩn cho hỏi đáp tài liệu.',    nodeCount: 8,  Icon: Bot,        color: '#3b82f6', category: 'RAG',        isPopular: true },
+  { builderTemplate: 'hitl',         name: 'Human-in-the-Loop',        desc: 'Cần người review và phê duyệt trước khi trả kết quả.',                   nodeCount: 9,  Icon: ShieldCheck, color: '#f97316', category: 'HITL',       isPopular: true },
+  { builderTemplate: 'multi-agent',  name: 'GraphRAG Pipeline',        desc: 'Kết hợp vector search và knowledge graph để trả lời phức tạp.',          nodeCount: 12, Icon: Activity,   color: '#10b981', category: 'KNOWLEDGE',  isPopular: true },
+  { builderTemplate: 'multi-agent',  name: 'Multi-Agent Triage',       desc: 'Planner phân loại câu hỏi và điều phối sang agent chuyên biệt.',         nodeCount: 10, Icon: Bot,        color: '#8b5cf6', category: 'MULTI_AGENT' },
+  { builderTemplate: 'blank',        name: 'Document Processing',      desc: 'Extract, chunk, embed và index tài liệu vào knowledge base.',            nodeCount: 7,  Icon: Code,       color: '#6366f1', category: 'RAG' },
+  { builderTemplate: 'blank',        name: 'Scheduled KB Sync',        desc: 'Tự động cập nhật knowledge base theo lịch CRON.',                       nodeCount: 6,  Icon: Clock,      color: '#06b6d4', category: 'AUTOMATION' },
+  { builderTemplate: 'hitl',         name: 'Compliance Review Bot',    desc: 'Review tài liệu pháp lý với Human-in-the-Loop và audit trail đầy đủ.',   nodeCount: 11, Icon: ShieldCheck, color: '#ef4444', category: 'HITL' },
+  { builderTemplate: 'multi-agent',  name: 'Customer Support',         desc: 'Bot hỗ trợ khách hàng — tích hợp CRM, KB và escalation tự động.',       nodeCount: 9,  Icon: Bot,        color: '#22c55e', category: 'MULTI_AGENT' },
+  { builderTemplate: 'multi-agent',  name: 'Code Review Agent',        desc: 'Phân tích code, kiểm tra security và đề xuất refactor.',                 nodeCount: 8,  Icon: Code,       color: '#a855f7', category: 'MULTI_AGENT' },
+  { builderTemplate: 'blank',        name: 'Data Extraction Pipeline', desc: 'Trích xuất dữ liệu có cấu trúc từ tài liệu phi cấu trúc.',              nodeCount: 5,  Icon: Database,   color: '#f59e0b', category: 'RAG' },
+  { builderTemplate: 'blank',        name: 'Event-Driven Orchestrator',desc: 'Trigger workflow từ webhook, message queue hoặc database event.',        nodeCount: 7,  Icon: Zap,        color: '#ec4899', category: 'AUTOMATION' },
 ];
 
-// ─── Template Modal ────────────────────────────────────────────────────────────
+const CATEGORY_LABELS: Record<TemplateCategory, string> = {
+  ALL: 'Tất cả', RAG: 'RAG', MULTI_AGENT: 'Multi-Agent',
+  HITL: 'Human-in-Loop', AUTOMATION: 'Automation', KNOWLEDGE: 'Knowledge',
+};
 
-interface TemplateModalProps {
+// ─── Template Picker (full-page) ──────────────────────────────────────────────
+
+interface TemplatePickerProps {
   onSelect: (t: TemplateId) => void;
   onClose: () => void;
 }
 
-const TemplateModal = ({ onSelect, onClose }: TemplateModalProps) => {
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onClose]);
+const TemplatePicker = ({ onSelect, onClose }: TemplatePickerProps) => {
+  const [search, setSearch] = useState('');
+  const [category, setCategory] = useState<TemplateCategory>('ALL');
+
+  const filtered = TEMPLATE_LIBRARY.filter(t => {
+    const matchCat = category === 'ALL' || t.category === category;
+    const matchSearch = t.name.toLowerCase().includes(search.toLowerCase()) || t.desc.toLowerCase().includes(search.toLowerCase());
+    return matchCat && matchSearch;
+  });
 
   return (
-  <AnimatePresence>
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center"
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.18 }}
+      className="space-y-5"
     >
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/75 backdrop-blur-sm"
-        onClick={onClose}
-      />
-
-      {/* Dialog */}
-      <motion.div
-        initial={{ scale: 0.95, opacity: 0, y: 12 }}
-        animate={{ scale: 1, opacity: 1, y: 0 }}
-        exit={{ scale: 0.95, opacity: 0, y: 12 }}
-        transition={{ type: 'spring', stiffness: 340, damping: 30 }}
-        className="relative z-10 bg-slate-900 border border-white/10 rounded-[28px] p-8 w-[740px] shadow-2xl"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between mb-7">
-          <div>
-            <h2 className="text-xl font-bold text-white tracking-tight">Choose a Template</h2>
-            <p className="text-xs text-slate-500 mt-1 font-medium">
-              Select a starting point — you can customise everything in the canvas.
-            </p>
+      {/* Header */}
+      <div className="bg-white border border-[#ECE7DA] rounded-2xl p-6">
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-[#F3E2A7] rounded-xl border border-[#ECE7DA] transition-colors text-[#5A5A5A]"
+            >
+              <ArrowRight className="w-4 h-4 rotate-180" />
+            </button>
+            <div>
+              <h2 className="text-lg font-display font-bold text-[#111111]">Chọn Template</h2>
+              <p className="text-xs text-[#8A8A7A] mt-0.5">Bắt đầu từ template có sẵn hoặc tạo workflow trống</p>
+            </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-white/10 rounded-xl transition-all text-slate-500 hover:text-white"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8A8A7A]" />
+            <input
+              type="text"
+              placeholder="Tìm template..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-56 bg-[#FAFAF5] border border-[#ECE7DA] rounded-xl py-2 pl-10 pr-4 text-sm text-[#111111] placeholder-[#8A8A7A] focus:outline-none focus:border-[#BFA66A]"
+            />
+          </div>
         </div>
 
-        {/* Template Cards */}
-        <div className="grid grid-cols-3 gap-4">
-          {TEMPLATES.map(t => (
+        {/* Category filters */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {(Object.keys(CATEGORY_LABELS) as TemplateCategory[]).map(cat => (
             <button
-              key={t.id}
-              onClick={() => onSelect(t.id)}
-              className="group text-left p-5 rounded-2xl transition-all relative bg-white/[0.02] border border-transparent hover:border-white/20 hover:bg-white/[0.05]"
+              key={cat}
+              onClick={() => setCategory(cat)}
+              className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors border ${
+                category === cat
+                  ? 'bg-[#111111] text-white border-[#111111]'
+                  : 'bg-white text-[#5A5A5A] border-[#ECE7DA] hover:border-[#BFA66A] hover:text-[#2A2A2A]'
+              }`}
             >
-              {t.isDefault && (
-                <span
-                  className="absolute top-3 right-3 text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full"
-                  style={{ background: `${t.color}25`, color: t.color }}
-                >
-                  Default
-                </span>
-              )}
-              <div className="flex items-center justify-between mb-4">
-                <div
-                  className="p-2.5 rounded-xl"
-                  style={{ background: `${t.color}20`, border: `1px solid ${t.color}30` }}
-                >
-                  <t.Icon size={18} style={{ color: t.color }} />
-                </div>
-                <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest mt-6">
-                  {t.nodeCount} {t.nodeCount === 1 ? 'node' : 'nodes'}
-                </span>
-              </div>
-              <div className="text-sm font-bold text-white mb-1.5">
-                {t.name}
-              </div>
-              <p className="text-[11px] text-slate-500 leading-relaxed">
-                {t.desc}
-              </p>
+              {CATEGORY_LABELS[cat]}
             </button>
           ))}
         </div>
-      </motion.div>
+      </div>
+
+      {/* Template grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {filtered.map((t, i) => (
+          <motion.button
+            key={i}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.03 }}
+            onClick={() => onSelect(t.builderTemplate)}
+            className="group text-left bg-white border border-[#ECE7DA] rounded-2xl p-5 hover:border-[#BFA66A] hover:shadow-md transition-all relative"
+          >
+            {t.isPopular && (
+              <span className="absolute top-3 right-3 text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-[#F3E2A7] text-[#7C5A0E] border border-[#BFA66A]/40">
+                Popular
+              </span>
+            )}
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2.5 rounded-xl" style={{ background: `${t.color}15`, border: `1px solid ${t.color}30` }}>
+                <t.Icon size={18} style={{ color: t.color }} />
+              </div>
+              <span className="text-[9px] font-bold text-[#8A8A7A] uppercase tracking-widest">
+                {t.nodeCount} nodes
+              </span>
+            </div>
+            <div className="text-sm font-bold text-[#111111] mb-1.5 group-hover:text-[#B88719] transition-colors">
+              {t.name}
+            </div>
+            <p className="text-[11px] text-[#8A8A7A] leading-relaxed line-clamp-2">{t.desc}</p>
+            <div className="mt-4 pt-3 border-t border-[#ECE7DA] flex items-center justify-between">
+              <span className="text-[9px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full" style={{ background: `${t.color}10`, color: t.color }}>
+                {CATEGORY_LABELS[t.category]}
+              </span>
+              <span className="text-[10px] font-semibold text-[#B88719] opacity-0 group-hover:opacity-100 transition-opacity">
+                Dùng template →
+              </span>
+            </div>
+          </motion.button>
+        ))}
+      </div>
     </motion.div>
-  </AnimatePresence>
   );
 };
 
 // ─── Workflow Engine ──────────────────────────────────────────────────────────
 
-type ActiveTab = 'REGISTRY' | 'BUILDER' | 'EXECUTIONS' | 'TEMPLATES' | 'SCHEDULING' | 'OBSERVABILITY';
+type ActiveTab = 'REGISTRY' | 'BUILDER' | 'TEMPLATE_PICKER' | 'EXECUTIONS' | 'SCHEDULING' | 'OBSERVABILITY';
 
 const WorkflowEngine = () => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('REGISTRY');
   const [selectedWorkflow, setSelectedWorkflow] = useState<Workflow | null>(null);
-  const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateId>('multi-agent');
+  const [builderSource, setBuilderSource] = useState<'REGISTRY' | 'TEMPLATE_PICKER'>('REGISTRY');
+  const [filterWorkflowName, setFilterWorkflowName] = useState<string | undefined>(undefined);
+  const [toast, setToast] = useState<string | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
 
-  const handleNewWorkflow = () => setShowTemplateModal(true);
+  const handleMenuOpen = useCallback((e: React.MouseEvent<HTMLButtonElement>, id: string) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+    setOpenMenuId(id);
+  }, []);
+
+  useEffect(() => {
+    if (!openMenuId) return;
+    const close = () => setOpenMenuId(null);
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [openMenuId]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const handleRunWorkflow = (wf: Workflow) => {
+    setFilterWorkflowName(wf.name);
+    setToast(`✓ "${wf.name}" triggered`);
+    setActiveTab('EXECUTIONS');
+  };
+
+  const handleNewWorkflow = () => setActiveTab('TEMPLATE_PICKER');
 
   const handleTemplateSelect = (t: TemplateId) => {
     setSelectedTemplate(t);
     setSelectedWorkflow(null);
-    setShowTemplateModal(false);
+    setBuilderSource('TEMPLATE_PICKER');
     setActiveTab('BUILDER');
   };
 
   const handleEditWorkflow = (wf: Workflow) => {
     setSelectedWorkflow(wf);
+    setBuilderSource('REGISTRY');
     setActiveTab('BUILDER');
   };
 
   const handleBuilderClose = () => {
     setSelectedWorkflow(null);
-    setActiveTab('REGISTRY');
+    setActiveTab(builderSource);
   };
 
-  const renderTab = () => {
-    switch (activeTab) {
-      case 'BUILDER':
-        return (
-          <WorkflowBuilder
-            onClose={handleBuilderClose}
-            workflow={selectedWorkflow}
-            template={selectedTemplate}
-          />
-        );
-      case 'EXECUTIONS':
-        return <ExecutionCenter />;
-      case 'TEMPLATES':
-        return <WorkflowTemplates onUse={() => { setSelectedWorkflow(null); setActiveTab('BUILDER'); }} />;
-      case 'SCHEDULING':
-        return <SchedulingCenter />;
-      case 'OBSERVABILITY':
-        return <WorkflowObservability />;
-      default:
-        return renderRegistry();
-    }
-  };
+  const WORKFLOW_TABS = [
+    { id: 'REGISTRY',      label: 'Registry',      Icon: List     },
+    { id: 'EXECUTIONS',    label: 'Executions',    Icon: History  },
+    { id: 'SCHEDULING',    label: 'Scheduling',    Icon: Clock    },
+    { id: 'OBSERVABILITY', label: 'Observability', Icon: Activity },
+  ] as const;
 
   const renderRegistry = () => (
-    <div className="flex flex-col h-full bg-slate-950 overflow-hidden relative">
-
-      {/* Template selection modal */}
-      {showTemplateModal && (
-        <TemplateModal
-          onSelect={handleTemplateSelect}
-          onClose={() => setShowTemplateModal(false)}
-        />
-      )}
-
-      {/* Registry Header */}
-      <div className="p-8 border-b border-white/5 bg-slate-900/50 backdrop-blur-md">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="p-2.5 bg-brand-500/10 rounded-xl">
-                <GitMerge className="w-6 h-6 text-brand-400" />
-              </div>
-              <h1 className="text-2xl font-bold text-white tracking-tight">Workflow Registry</h1>
-            </div>
-            <p className="text-slate-400 text-sm max-w-2xl">
-              Control plane for enterprise AI orchestration. Manage distributed agents, retrieval pipelines, and human-in-the-loop approval flows.
-            </p>
-          </div>
-          <button
-            onClick={handleNewWorkflow}
-            className="flex items-center gap-2 px-5 py-2.5 bg-brand-500 hover:bg-brand-400 text-white rounded-xl font-bold transition-all shadow-lg shadow-brand-500/20"
-          >
-            <Plus className="w-4 h-4" />
-            New Workflow
-          </button>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <div className="flex-1 relative group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-brand-400 transition-colors" />
-            <input
-              type="text"
-              placeholder="Search workflows by name, tenant, or tags..."
-              className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-12 pr-4 text-white focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500/50 transition-all"
-            />
-          </div>
-          <button className="flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 text-slate-300 rounded-xl border border-white/10 transition-all uppercase text-[10px] font-black tracking-widest">
-            <Filter className="w-4 h-4" />
-            Filters
-          </button>
-          <div className="flex bg-white/5 p-1 rounded-xl border border-white/10">
-            <button className="p-2 bg-brand-500 text-white rounded-lg"><LayoutGrid className="w-4 h-4" /></button>
-            <button className="p-2 text-slate-500 hover:text-slate-300 transition-colors"><List className="w-4 h-4" /></button>
-          </div>
-        </div>
-      </div>
+    <div className="flex flex-col relative">
 
       {/* Registry Table */}
-      <div className="flex-1 overflow-auto p-8 custom-scrollbar">
-        <table className="w-full border-separate border-spacing-y-4">
+      <div className="warm-panel rounded-xl mb-5 overflow-x-auto">
+        <table className="w-full text-left">
           <thead>
-            <tr className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
-              <th className="px-6 pb-2 text-left">Workflow / Type</th>
-              <th className="px-6 pb-2 text-left">Tenant & Environment</th>
-              <th className="px-6 pb-2 text-left">Status / Version</th>
-              <th className="px-6 pb-2 text-left">Performance</th>
-              <th className="px-6 pb-2 text-left">Last Activity</th>
-              <th className="px-6 pb-2 text-right">Actions</th>
+            <tr className="border-b border-[#BFA66A]/30 bg-[#FFF9E8]">
+              {['Workflow / Type', 'Tenant & Environment', 'Status / Version', 'Performance', 'Last Activity', 'Actions'].map((h, i) => (
+                <th key={h} className={`px-5 py-3 text-[10px] font-bold text-[#5A5A5A] uppercase tracking-wider ${i === 5 ? 'text-right' : ''} ${i === 0 ? 'rounded-tl-xl' : ''} ${i === 5 ? 'rounded-tr-xl' : ''}`}>
+                  {h}
+                </th>
+              ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-[#BFA66A]/15">
             {MOCK_WORKFLOWS.map((wf) => (
               <motion.tr
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 key={wf.id}
-                className="group bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 rounded-2xl transition-all"
+                className="hover:bg-[#FFF9E8] transition-colors"
               >
-                <td className="px-6 py-5 first:rounded-l-2xl border-y border-l border-white/5">
-                  <div className="flex items-center gap-4">
-                    <div className={`p-3 rounded-xl bg-slate-800 border border-white/10 ${
-                      wf.type === WorkflowType.MULTI_AGENT ? 'text-brand-400' :
-                      wf.type === WorkflowType.KB_PIPELINE ? 'text-emerald-400' : 'text-amber-400'
+                <td className="px-5 py-4">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2.5 rounded-xl border ${
+                      wf.type === WorkflowType.MULTI_AGENT ? 'bg-blue-50 border-blue-200 text-blue-600' :
+                      wf.type === WorkflowType.KB_PIPELINE ? 'bg-emerald-50 border-emerald-200 text-emerald-600' :
+                                                              'bg-amber-50 border-amber-200 text-amber-600'
                     }`}>
-                      <GitMerge className="w-5 h-5" />
+                      <GitMerge className="w-4 h-4" />
                     </div>
                     <div>
                       <div
-                        className="text-white font-bold mb-1 hover:text-brand-400 transition-colors cursor-pointer"
+                        className="text-[#111111] font-semibold text-sm mb-0.5 hover:text-[#B88719] transition-colors cursor-pointer"
                         onClick={() => handleEditWorkflow(wf)}
                       >
                         {wf.name}
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                        <span className="text-[10px] font-semibold text-[#8A8A7A] uppercase tracking-wider">
                           {wf.type.replace(/_/g, ' ')}
                         </span>
                         {wf.tags.slice(0, 1).map(tag => (
-                          <span key={tag} className="text-[9px] px-1.5 py-0.5 bg-brand-500/10 text-brand-400 rounded-md border border-brand-500/20">
+                          <span key={tag} className="text-[9px] px-1.5 py-0.5 bg-[#F3E2A7] text-[#7C5A0E] rounded border border-[#BFA66A]/40">
                             {tag}
                           </span>
                         ))}
@@ -374,84 +351,64 @@ const WorkflowEngine = () => {
                   </div>
                 </td>
 
-                <td className="px-6 py-5 border-y border-white/5">
-                  <div className="text-slate-300 font-medium text-sm">{wf.tenant}</div>
-                  <div className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">{wf.project}</div>
+                <td className="px-5 py-4">
+                  <div className="text-sm font-semibold text-[#2A2A2A]">{wf.tenant}</div>
+                  <div className="text-[10px] text-[#8A8A7A] font-semibold uppercase tracking-tight mt-0.5">{wf.project}</div>
                 </td>
 
-                <td className="px-6 py-5 border-y border-white/5">
+                <td className="px-5 py-4">
                   <div className="flex items-center gap-2 mb-1">
                     <div className={`w-1.5 h-1.5 rounded-full ${
-                      wf.status === WorkflowStatus.PUBLISHED
-                        ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]'
-                        : wf.status === WorkflowStatus.ERROR ? 'bg-red-500' : 'bg-slate-500'
+                      wf.status === WorkflowStatus.PUBLISHED ? 'bg-emerald-500' :
+                      wf.status === WorkflowStatus.ERROR     ? 'bg-red-500' : 'bg-gray-400'
                     }`} />
-                    <span className="text-xs font-bold text-white uppercase tracking-tight">{wf.status}</span>
+                    <span className="text-xs font-bold text-[#111111] uppercase tracking-tight">{wf.status}</span>
                   </div>
-                  <div className="text-xs text-brand-400 font-mono tracking-tighter">{wf.version}</div>
+                  <div className="text-xs text-[#B88719] font-mono">{wf.version}</div>
                 </td>
 
-                <td className="px-6 py-5 border-y border-white/5">
+                <td className="px-5 py-4">
                   <div className="flex items-center gap-4">
                     <div>
-                      <div className="text-xs font-bold text-white">{wf.successRate}%</div>
-                      <div className="text-[9px] text-slate-500 uppercase font-black tracking-widest">Success</div>
+                      <div className="text-sm font-bold text-[#111111]">{wf.successRate}%</div>
+                      <div className="text-[9px] text-[#8A8A7A] uppercase font-semibold tracking-widest">Success</div>
                     </div>
-                    <div className="w-px h-6 bg-white/10" />
+                    <div className="w-px h-5 bg-[#BFA66A]/30" />
                     <div>
-                      <div className="text-xs font-bold text-white">{wf.avgDuration}</div>
-                      <div className="text-[9px] text-slate-500 uppercase font-black tracking-widest">Avg Dur</div>
+                      <div className="text-sm font-bold text-[#111111]">{wf.avgDuration}</div>
+                      <div className="text-[9px] text-[#8A8A7A] uppercase font-semibold tracking-widest">Avg Dur</div>
                     </div>
                   </div>
                 </td>
 
-                <td className="px-6 py-5 border-y border-white/5">
-                  <div className="text-xs text-slate-300 font-medium italic">Deployed {wf.lastDeployment}</div>
-                  <div className="text-[10px] text-slate-500 font-bold">Executed {wf.lastExecution}</div>
+                <td className="px-5 py-4">
+                  <div className="text-xs text-[#2A2A2A] font-medium italic">Deployed {wf.lastDeployment}</div>
+                  <div className="text-[10px] text-[#8A8A7A] font-semibold mt-0.5">Executed {wf.lastExecution}</div>
                 </td>
 
-                <td className="px-6 py-5 last:rounded-r-2xl border-y border-r border-white/5 text-right">
-                  <div className="flex items-center justify-end gap-1.5">
+                <td className="px-5 py-4 text-right">
+                  <div className="flex items-center justify-end gap-1">
                     <button
-                      onClick={() => handleEditWorkflow(wf)}
-                      className="p-2 hover:bg-white/10 rounded-lg transition-all text-slate-400 hover:text-emerald-400"
+                      onClick={() => handleRunWorkflow(wf)}
+                      className="p-1.5 hover:bg-[#F3E2A7] rounded-lg transition-colors text-[#5A5A5A] hover:text-emerald-700"
                       title="Run"
                     >
                       <Play className="w-4 h-4" />
                     </button>
-                    <button
-                      className="p-2 hover:bg-white/10 rounded-lg transition-all text-slate-400 hover:text-brand-400"
-                      title="History"
-                    >
+                    <button className="p-1.5 hover:bg-[#F3E2A7] rounded-lg transition-colors text-[#5A5A5A] hover:text-[#B88719]" title="History">
                       <History className="w-4 h-4" />
                     </button>
-                    <button
-                      className="p-2 hover:bg-white/10 rounded-lg transition-all text-slate-400 hover:text-slate-200"
-                      title="YAML"
-                    >
+                    <button className="p-1.5 hover:bg-[#F3E2A7] rounded-lg transition-colors text-[#5A5A5A]" title="YAML">
                       <Code className="w-4 h-4" />
                     </button>
-                    {/* Clone in 3-dot menu */}
-                    <div className="w-px h-4 bg-white/10 mx-0.5" />
-                    <div className="relative group/menu">
-                      <button className="p-2 hover:bg-white/10 rounded-lg transition-all text-slate-400 hover:text-white">
-                        <MoreVertical className="w-4 h-4" />
-                      </button>
-                      <div className="absolute right-0 top-full mt-1 w-36 bg-slate-900 border border-white/10 rounded-xl shadow-2xl overflow-hidden opacity-0 pointer-events-none group-hover/menu:opacity-100 group-hover/menu:pointer-events-auto transition-all z-20">
-                        <button
-                          onClick={() => handleEditWorkflow(wf)}
-                          className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[11px] font-bold text-slate-300 hover:bg-white/10 transition-all"
-                        >
-                          <Settings2 className="w-3.5 h-3.5" /> Edit
-                        </button>
-                        <button className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[11px] font-bold text-slate-300 hover:bg-white/10 transition-all">
-                          <Copy className="w-3.5 h-3.5" /> Clone
-                        </button>
-                        <button className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[11px] font-bold text-slate-300 hover:bg-white/10 transition-all">
-                          <ArrowRight className="w-3.5 h-3.5" /> Deploy
-                        </button>
-                      </div>
-                    </div>
+                    <div className="w-px h-4 bg-[#BFA66A]/30 mx-0.5" />
+                    <button
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => { e.stopPropagation(); handleMenuOpen(e, wf.id); }}
+                      className="p-1.5 hover:bg-[#F3E2A7] rounded-lg transition-colors text-[#5A5A5A] hover:text-[#111111]"
+                    >
+                      <MoreVertical className="w-4 h-4" />
+                    </button>
                   </div>
                 </td>
               </motion.tr>
@@ -460,39 +417,150 @@ const WorkflowEngine = () => {
         </table>
       </div>
 
-      {/* Tab Switcher */}
-      <div className="p-4 border-t border-white/5 bg-slate-900/50 backdrop-blur-md flex justify-center">
-        <div className="flex bg-white/5 p-1 rounded-2xl border border-white/10 shadow-2xl">
-          {([
-            { id: 'REGISTRY',    label: 'Registry',     Icon: List },
-            { id: 'BUILDER',     label: 'Builder',      Icon: GitMerge },
-            { id: 'EXECUTIONS',  label: 'Executions',   Icon: History },
-            { id: 'TEMPLATES',   label: 'Templates',    Icon: Rocket },
-            { id: 'SCHEDULING',  label: 'Scheduling',   Icon: Clock },
-            { id: 'OBSERVABILITY', label: 'Observability', Icon: Settings2 },
-          ] as const).map(({ id, label, Icon }) => (
-            <button
-              key={id}
-              onClick={() => {
-                if (id === 'BUILDER') { handleNewWorkflow(); return; }
-                setActiveTab(id);
-              }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                activeTab === id
-                  ? 'bg-brand-500 text-white shadow-lg shadow-brand-500/20'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              {label}
-            </button>
+      {/* Portal dropdown — rendered outside overflow containers */}
+      {openMenuId && ReactDOM.createPortal(
+        <div
+          onMouseDown={(e) => e.stopPropagation()}
+          style={{ position: 'fixed', top: menuPos.top, right: menuPos.right, zIndex: 9999 }}
+          className="w-36 bg-white border border-[#BFA66A]/50 rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-100"
+        >
+          {MOCK_WORKFLOWS.filter(w => w.id === openMenuId).map(wf => (
+            <React.Fragment key={wf.id}>
+              <button
+                onClick={() => { setOpenMenuId(null); handleEditWorkflow(wf); }}
+                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[11px] font-semibold text-[#2A2A2A] hover:bg-[#FFF9E8] transition-colors"
+              >
+                <Settings2 className="w-3.5 h-3.5" /> Edit
+              </button>
+              <button
+                onClick={() => setOpenMenuId(null)}
+                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[11px] font-semibold text-[#2A2A2A] hover:bg-[#FFF9E8] transition-colors"
+              >
+                <Copy className="w-3.5 h-3.5" /> Clone
+              </button>
+              <button
+                onClick={() => setOpenMenuId(null)}
+                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[11px] font-semibold text-[#2A2A2A] hover:bg-[#FFF9E8] transition-colors"
+              >
+                <ArrowRight className="w-3.5 h-3.5" /> Deploy
+              </button>
+            </React.Fragment>
           ))}
-        </div>
-      </div>
+        </div>,
+        document.body
+      )}
+
     </div>
   );
 
-  return renderTab();
+  if (activeTab === 'BUILDER') {
+    return (
+      <WorkflowBuilder
+        onClose={handleBuilderClose}
+        workflow={selectedWorkflow}
+        template={selectedTemplate}
+      />
+    );
+  }
+
+  if (activeTab === 'TEMPLATE_PICKER') {
+    return (
+      <TemplatePicker
+        onSelect={handleTemplateSelect}
+        onClose={() => setActiveTab('REGISTRY')}
+      />
+    );
+  }
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'EXECUTIONS':    return <ExecutionCenter key={filterWorkflowName ?? 'all'} initialSearch={filterWorkflowName} />;
+      case 'SCHEDULING':    return <SchedulingCenter />;
+      case 'OBSERVABILITY': return <WorkflowObservability />;
+      default:              return renderRegistry();
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+
+      {/* Toast */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="fixed top-5 right-5 z-[9999] flex items-center gap-2.5 px-4 py-3 bg-[#111111] text-white text-[12px] font-semibold rounded-xl shadow-xl"
+          >
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            {toast}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Unified header panel */}
+      <div className="bg-white border border-[#ECE7DA] rounded-2xl overflow-hidden">
+
+        {/* Tab bar + action in one row */}
+        <div className="flex items-center border-b border-[#ECE7DA] px-6">
+          <div className="flex items-center flex-1 overflow-x-auto">
+            {WORKFLOW_TABS.map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                onClick={() => { if (id !== 'EXECUTIONS') setFilterWorkflowName(undefined); setActiveTab(id); }}
+                className={`flex items-center gap-1.5 px-4 py-3.5 text-[11px] font-semibold whitespace-nowrap border-b-2 transition-colors ${
+                  activeTab === id
+                    ? 'border-[#B88719] text-[#B88719]'
+                    : 'border-transparent text-[#8A8A7A] hover:text-[#2A2A2A] hover:border-[#D4CBBA]'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="pl-4 py-2 shrink-0">
+            <button onClick={handleNewWorkflow} className="btn-primary">
+              <Plus className="w-4 h-4" />
+              New Workflow
+            </button>
+          </div>
+        </div>
+
+        {/* Search + filters — Registry only */}
+        {activeTab === 'REGISTRY' && (
+          <div className="px-6 pt-4 pb-4 flex items-center gap-3">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8A8A7A]" />
+              <input
+                type="text"
+                placeholder="Search workflows by name, tenant, or tags..."
+                className="w-full bg-[#FAFAF5] border border-[#ECE7DA] rounded-xl py-2 pl-10 pr-4 text-sm text-[#111111] placeholder-[#8A8A7A] focus:outline-none focus:border-[#BFA66A]"
+              />
+            </div>
+            <button className="btn-secondary text-[10px]">
+              <Filter className="w-4 h-4" /> Filters
+            </button>
+            <div className="flex bg-[#F4E8C3] p-1 rounded-xl border border-[#BFA66A]">
+              <button className="p-1.5 bg-[#111111] text-white rounded-lg"><LayoutGrid className="w-4 h-4" /></button>
+              <button className="p-1.5 text-[#5A5A5A] hover:text-[#111111] transition-colors"><List className="w-4 h-4" /></button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Tab content */}
+      <motion.div
+        key={activeTab}
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.15 }}
+      >
+        {renderContent()}
+      </motion.div>
+    </div>
+  );
 };
 
 export default WorkflowEngine;

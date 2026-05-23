@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Search, X, Download, ChevronDown, ChevronRight,
-  Clock, Zap, Bot, User, MessageCircle,
+  Clock, Zap, Bot, User, MessageCircle, Send,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -227,6 +227,31 @@ function MsgBubble({ msg }: { msg: ChatMsg }) {
 
 /* ─── Drawer ──────────────────────────────────────────────── */
 function ConvDrawer({ conv, onClose }: { conv: Conversation; onClose: () => void }) {
+  const [messages, setMessages] = useState<ChatMsg[]>(conv.messages);
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const handleSend = () => {
+    const text = input.trim();
+    if (!text || sending) return;
+    const now = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', content: text, timestamp: now }]);
+    setInput('');
+    setSending(true);
+    setTimeout(() => {
+      setMessages(prev => [
+        ...prev,
+        { id: (Date.now() + 1).toString(), role: 'assistant', content: 'This is a mock response. Connect to the backend to continue the conversation with real AI responses.', timestamp: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' }), tokens: 48, latencyMs: 640 },
+      ]);
+      setSending(false);
+    }, 1000);
+  };
+
   return (
     <motion.div
       initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
@@ -252,7 +277,7 @@ function ConvDrawer({ conv, onClose }: { conv: Conversation; onClose: () => void
         <div className="flex items-center gap-4 px-3 text-[11px] text-[#5A5A5A]">
           <span>Started: {conv.startedAt}</span>
           <span>Duration: {conv.duration}</span>
-          <span>{conv.messageCount} messages</span>
+          <span>{messages.length} messages</span>
           <span className={cn('ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold',
             conv.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500')}>
             {conv.status === 'active' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />}
@@ -262,7 +287,42 @@ function ConvDrawer({ conv, onClose }: { conv: Conversation; onClose: () => void
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4">
-        {conv.messages.map(msg => <MsgBubble key={msg.id} msg={msg} />)}
+        {messages.map(msg => <MsgBubble key={msg.id} msg={msg} />)}
+        {sending && (
+          <div className="flex gap-2.5">
+            <div className="w-7 h-7 rounded-full bg-[#F8F7F2] border border-[#D9CDB8] flex items-center justify-center shrink-0">
+              <Bot size={12} className="text-[#5A5A5A]" />
+            </div>
+            <div className="bg-white border border-[#E5DED0] rounded-xl rounded-tl-sm px-3 py-2.5 flex items-center gap-1.5">
+              {[0, 1, 2].map(i => (
+                <span key={i} className="w-1.5 h-1.5 rounded-full bg-[#BFA66A] animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+              ))}
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Continue chat input */}
+      <div className="px-4 pb-4 pt-2 border-t border-[#BFA66A]/30 shrink-0 bg-white">
+        <div className="flex gap-2 items-end bg-[#FCFBF7] border border-[#BFA66A]/60 rounded-xl px-3 py-2 focus-within:border-[#8A5A00] transition-colors">
+          <textarea
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+            placeholder="Continue this conversation… (Enter to send)"
+            rows={1}
+            className="flex-1 bg-transparent text-sm text-[#111111] placeholder-[#8A8A7A] resize-none focus:outline-none leading-relaxed"
+            style={{ maxHeight: 100 }}
+          />
+          <button
+            onClick={handleSend}
+            disabled={!input.trim() || sending}
+            className="shrink-0 w-8 h-8 rounded-lg bg-[#111111] hover:bg-[#333] disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
+          >
+            <Send size={13} className="text-white" />
+          </button>
+        </div>
       </div>
     </motion.div>
   );

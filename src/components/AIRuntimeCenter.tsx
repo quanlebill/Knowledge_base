@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Bot, Layers, History, Plus, Zap, Activity, Shield, Terminal, Sliders, MessageSquare, MessageCircle, ScrollText } from 'lucide-react';
+import { Bot, Layers, History, Plus, Zap, Activity, Terminal, Sliders, MessageSquare, MessageCircle, ScrollText } from 'lucide-react';
 import AgentPlayground from './AgentPlayground';
 import Conversations from './Conversations';
 import SystemLogs from './SystemLogs';
@@ -9,7 +9,6 @@ import { useAppState } from '../AppStateContext';
 import { MODULE_SUB_ITEMS } from '../constants';
 import { OperationalHeader } from './shared/OperationalHeader';
 import { StatusBadge } from './shared/StatusBadge';
-import { StandardMetricsGrid } from './shared/ObservabilityPanel';
 import { AgentRuntimeView, RegistryView } from './AgentRuntime';
 import WorkflowEngine from './WorkflowEngine/Overview';
 
@@ -34,13 +33,6 @@ const AIRuntimeCenter = () => {
   const externalRegistryView = registryViewMap[activeSubTab] ?? undefined;
   const openWizard    = activeSubTab === 'NEW_AGENT';
   const openProvision = activeSubTab === 'PROVISION';
-
-  const mainMetrics = [
-    { label: 'Active Agents', value: '482',    trend: '+5',      trendType: 'UP' as const, icon: Bot,    color: 'brand' as const },
-    { label: 'Workflow Runs', value: '1.2M',   trend: '+18%',    trendType: 'UP' as const, icon: Layers, color: 'blue' as const },
-    { label: 'Avg Latency',   value: '1.4s',   trend: '-120ms',  trendType: 'DOWN' as const, icon: Zap,    color: 'emerald' as const },
-    { label: 'Success Rate',  value: '99.98%', trend: 'OPTIMAL', trendType: 'NEUTRAL' as const, icon: Shield, color: 'amber' as const },
-  ];
 
   /* Top in-page pill tabs — mirror the secondary nav as compact pills */
   const pillTabs = [
@@ -78,8 +70,6 @@ const AIRuntimeCenter = () => {
           </div>
         }
       />
-
-      <StandardMetricsGrid metrics={mainMetrics} />
 
       {/* Sub-tab pill bar (in-page mirror of secondary nav) */}
       <div className="sub-tab-bar">
