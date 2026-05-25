@@ -68,6 +68,58 @@ aeroflow-frontend           Up
 
 ---
 
+## Tài khoản
+
+### Keycloak — Master Realm (Admin)
+
+| Username | Password | Vai trò |
+|---|---|---|
+| `admin` | `admin` | Keycloak master admin — quản lý toàn bộ realm |
+
+> **Production:** Đổi ngay, dùng secrets manager.
+
+---
+
+### Realm `aeroflow` — Test Users
+
+| Username | Password | Role | Email |
+|---|---|---|---|
+| `platform-admin` | `Admin@1234` | `platform-admin` | admin@aeroflow.local |
+| `ai-engineer` | `Engineer@1234` | `ai-engineer` | engineer@aeroflow.local |
+| `business-operator` | `Operator@1234` | `business-operator` | operator@aeroflow.local |
+| `executive-viewer` | `Viewer@1234` | `executive-viewer` | viewer@aeroflow.local |
+
+> Các tài khoản này được import sẵn từ `realm-export.json` khi stack khởi động lần đầu.
+
+---
+
+### Realm `aeroflow` — Service Accounts (Clients)
+
+| Client ID | Secret | Dùng cho |
+|---|---|---|
+| `aeroflow-backend` | `aeroflow-backend-secret-change-in-prod` | Kong token introspection |
+| `aeroflow-admin` | `aeroflow-admin-secret` | python-keycloak admin tasks |
+
+---
+
+### Kafka Users
+
+| Username | Password | ACL |
+|---|---|---|
+| `admin` | `KafkaAdmin@1234` | Super user — inter-broker |
+| `audit-bridge` | `AuditBridge@1234` | Write + Describe on `audit.auth.events` (Keycloak SPI) |
+| `audit-consumer` | `AuditConsumer@1234` | Read + Describe on `audit.auth.events`, Read on group `audit-consumer-group` |
+
+---
+
+### PostgreSQL
+
+| Username | Password | Database |
+|---|---|---|
+| `aeroflow` | `aeroflow_secret` | `aeroflow` |
+
+---
+
 ## Bước 3 — Setup Kong (chạy một lần)
 
 ```bash
