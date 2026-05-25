@@ -27,7 +27,7 @@ import { FleetOverview } from './fleet/FleetOverview';
 import { AssetInventory } from './inventory/AssetInventory';
 import { PolicyCenter } from './policy/PolicyCenter';
 import { WarehouseWizard } from './warehouse/WarehouseWizard';
-import { GraphRAGView } from './graph/GraphRAG';
+import { KnowledgeHubView } from './knowledge-hub/KnowledgeHub';
 import { KnowledgeDocument } from '../../types';
 import { useAppState } from '../../AppStateContext';
 import { mockMutate } from '../../lib/mockApi';
@@ -96,7 +96,7 @@ const KnowledgeOpsCenter = () => {
         );
       case 'INVENTORY':  return <AssetInventory onSelectAsset={handleSelectAsset} />;
       case 'KNOWLEDGE':
-        return <GraphRAGView />;
+        return <KnowledgeHubView />;
       case 'CONFLICTS':  return <ConflictWorkspace />;
       case 'POLICY':     return <PolicyCenter />;
       default:           return null;

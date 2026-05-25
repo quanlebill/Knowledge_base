@@ -1,14 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, Globe, Film, Server, Database, Network, GitBranch, AlertCircle, Loader2 } from 'lucide-react';
 import { mockGet } from '../../../lib/mockApi';
-
-interface FleetStats {
-  content: { documents: number; web: number; media: number; warehouses: number };
-  qdrant_collections: number;
-  neo4j_nodes: number;
-  neo4j_relationships: number;
-  unresolved_conflict_batches: number;
-}
+import { FleetStats } from './fleet.data';
 
 interface StatCardProps {
   icon: React.ElementType;

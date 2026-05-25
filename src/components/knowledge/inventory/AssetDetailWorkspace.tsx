@@ -36,6 +36,10 @@ import { cn } from '../../../lib/utils';
 import { useAppState } from '../../../AppStateContext';
 import { KnowledgeDocument, KnowledgeLayer } from '../../../types';
 import { mockGet, mockMutate } from '../../../lib/mockApi';
+import {
+  ChunkVersion, Chunk, TableColumn, DocTable,
+  WarehouseConfigTable, WarehouseConfigVersion, MOCK_DISCOVERY,
+} from './inventory.data';
 
 interface AssetDetailWorkspaceProps {
   document: KnowledgeDocument;
@@ -44,70 +48,6 @@ interface AssetDetailWorkspaceProps {
   onClose?: () => void;
   onPromote?: (doc: KnowledgeDocument) => void;
 }
-
-interface ChunkVersion {
-  version_number: string;
-  create_at: string;
-  status: string;
-  embedding_models: string;
-  entities: string[];
-  intent: string;
-  text: string;
-}
-
-interface Chunk {
-  id: string;
-  title: string;
-  text: string;
-  versions: ChunkVersion[];
-}
-
-interface TableColumn {
-  name: string;
-  type: string;
-  nullable: boolean;
-}
-
-interface DocTable {
-  id: string;
-  name: string;
-  description: string;
-  columns: TableColumn[];
-  rows: Record<string, string | null>[];
-}
-
-interface WarehouseConfigTable {
-  name: string;
-  schema: string;
-  rowCount?: string;
-  description: string;
-}
-
-interface WarehouseConfigVersion {
-  id: string;
-  version_number: string;
-  status: 'Active' | 'Inactive';
-  created_at: string;
-  connection: Record<string, string>;
-  tables: WarehouseConfigTable[];
-}
-
-const MOCK_DISCOVERY: Record<string, Omit<WarehouseConfigTable, 'description'>[]> = {
-  snowflake: [
-    { name: 'ORDERS', schema: 'PUBLIC', rowCount: '142,000' },
-    { name: 'PRODUCTS', schema: 'PUBLIC', rowCount: '8,500' },
-    { name: 'CUSTOMERS', schema: 'PUBLIC', rowCount: '45,000' },
-    { name: 'INVENTORY', schema: 'PUBLIC', rowCount: '23,100' },
-    { name: 'TRANSACTIONS', schema: 'FINANCE', rowCount: '890,000' },
-  ],
-  databricks: [
-    { name: 'user_embeddings', schema: 'feature_store', rowCount: '900,000' },
-    { name: 'item_features', schema: 'feature_store', rowCount: '25,000' },
-    { name: 'training_logs', schema: 'ml_ops', rowCount: '45,600' },
-    { name: 'model_registry', schema: 'ml_ops', rowCount: '340' },
-    { name: 'raw_events', schema: 'bronze', rowCount: '12,400,000' },
-  ],
-};
 
 export const AssetDetailWorkspace = ({
   document,

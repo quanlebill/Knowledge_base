@@ -1,45 +1,22 @@
 ﻿import React, { useState, useRef } from 'react';
-import { 
-  FileText, 
-  Globe, 
-  ArrowRight, 
-  Cpu, 
+import {
+  FileText,
+  ArrowRight,
+  Cpu,
   Zap,
   ChevronLeft,
-  Video,
-  Image as ImageIcon,
   Lock,
   Upload,
   Calendar,
   User,
   Link2,
   Check,
-  AlertCircle
+  AlertCircle,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../../lib/utils';
 import { useAppState } from '../../../AppStateContext';
-
-const STEPS = [
-  { id: 'source', label: 'Select Source Type' },
-  { id: 'metadata', label: 'Configure Properties' }
-];
-
-const SOURCES = [
-  { id: 'video', name: 'Video Asset', icon: Video, desc: 'Ingest high-quality streaming payloads (MP4, MKV/AVI)' },
-  { id: 'image', name: 'Image Asset', icon: ImageIcon, desc: 'Process structural graphic resources (PNG, JPEG, WebP)' },
-  { id: 'doc', name: 'Document Hub', icon: FileText, desc: 'Extract semantic elements & text (PDF, Word, Markdown)' },
-  { id: 'web', name: 'Web Portal', icon: Globe, desc: 'Crawl absolute URL endpoints, HTML markup and assets' },
-];
-
-const formatBytes = (bytes: number, decimals = 1) => {
-  if (bytes === 0) return '0 Bytes';
-  const k = 1024;
-  const dm = decimals < 0 ? 0 : decimals;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
-};
+import { STEPS, SOURCES, formatBytes } from './ingest.data';
 
 export const IngestionWizard = ({ onComplete, onCancel }: { onComplete: () => void, onCancel: () => void }) => {
   const { addDocument, user } = useAppState();

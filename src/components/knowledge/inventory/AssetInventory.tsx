@@ -18,25 +18,7 @@ import { cn } from '../../../lib/utils';
 import { KnowledgeDocument } from '../../../types';
 import { useAppState } from '../../../AppStateContext';
 import { mockMutate } from '../../../lib/mockApi';
-
-type SourceFilter = 'ALL' | 'DOC' | 'MEDIA' | 'WEB' | 'WAREHOUSE';
-
-const getSourceCategory = (type: string | undefined): SourceFilter => {
-  if (!type) return 'DOC';
-  if (type.startsWith('Doc/')) return 'DOC';
-  if (type.startsWith('Video/') || type.startsWith('Image/')) return 'MEDIA';
-  if (type.toLowerCase() === 'web') return 'WEB';
-  if (type.startsWith('Warehouse/')) return 'WAREHOUSE';
-  return 'DOC';
-};
-
-const SOURCE_FILTER_LABELS: Record<SourceFilter, string> = {
-  ALL: 'All',
-  DOC: 'Doc',
-  MEDIA: 'Media',
-  WEB: 'Web',
-  WAREHOUSE: 'Warehouse',
-};
+import { SourceFilter, SOURCE_FILTER_LABELS, getSourceCategory } from './inventory.data';
 
 interface AssetInventoryProps {
   onSelectAsset: (asset: KnowledgeDocument) => void;
