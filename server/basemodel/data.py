@@ -60,8 +60,8 @@ class RequestConfirmDataUpload(BaseModel):
     upload_id: uuid.UUID
     upload_status: bool
 
-# - Response
-class ResponseDataConfigure(BaseModel):
+# - Configure Model for Response.data
+class DataConfigure(BaseModel):
     file_name: str
     upload_id: uuid.UUID
     source_type: SourceType

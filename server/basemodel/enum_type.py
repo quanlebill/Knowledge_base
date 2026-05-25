@@ -62,3 +62,7 @@ class Status(Enum):
 class Language(Enum):
     EN = "English"
     VI = "Vietnamese"
+
+class WarehouseType(Enum):
+    snowflake = "Snowflake"
+    databricks = "Databricks"
