@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
 import {
   Server, Shield, CheckCircle2, Copy, RefreshCw, ArrowRight,
-  Zap, Lock, Globe, AlertCircle, Eye, EyeOff, Activity,
+  Zap, Lock, Globe, AlertCircle, Eye, EyeOff, Activity, Network,
 } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 
-/* Kong OIDC plugin config per the tech stack doc */
+/* Kong OIDC plugin config — updated per review Comment #0 */
 const KONG_PLUGIN_CONFIG = `plugins:
   - name: oidc
     config:
       discovery: https://auth.yourdomain.com/realms/aeroflow/.well-known/openid-configuration
-      # Kong fetches & caches JWKS from Keycloak automatically
+      # JWKS cache TTL: 300s (Comment #0)
+      # Force-refresh via Kong Admin API when Keycloak rotates key
+      jwks_uri_refresh_interval: 300
       # After JWT verify, injects headers for backend:
       header_names:
         - X-User-Id
@@ -39,12 +41,18 @@ const INJECTED_HEADERS = [
 ];
 
 const FLOW_STEPS = [
-  { step: 1, label: 'User → Keycloak',     desc: 'Login / SSO / MFA flow',                     color: 'bg-[#F3E2A7] text-[#111111]' },
-  { step: 2, label: 'Keycloak → Frontend', desc: 'JWT (RS256) returned to browser',             color: 'bg-[#F3E2A7] text-[#111111]' },
-  { step: 3, label: 'Frontend → Kong',     desc: 'Bearer token in Authorization header',        color: 'bg-[#E8F5E9] text-[#1B5E20]' },
-  { step: 4, label: 'Kong verifies JWT',   desc: 'JWKS fetched from Keycloak, cached in Kong',  color: 'bg-[#E3F2FD] text-[#0D47A1]' },
-  { step: 5, label: 'Kong → Backend',      desc: 'Injects X-User-Id / X-User-Roles / X-User-Email', color: 'bg-[#FFF3E0] text-[#E65100]' },
-  { step: 6, label: 'Backend reads header', desc: 'No JWT re-verify — trusts Kong',             color: 'bg-[#F3E5F5] text-[#4A148C]' },
+  { step: 1, label: 'User → Keycloak',     desc: 'Login / SSO / MFA flow',                            color: 'bg-[#F3E2A7] text-[#111111]' },
+  { step: 2, label: 'Keycloak → Frontend', desc: 'JWT (RS256) returned to browser',                    color: 'bg-[#F3E2A7] text-[#111111]' },
+  { step: 3, label: 'Frontend → Kong',     desc: 'Bearer token in Authorization header',               color: 'bg-[#E8F5E9] text-[#1B5E20]' },
+  { step: 4, label: 'Kong verifies JWT',   desc: 'JWKS cached TTL 300s — force-refresh on key rotate', color: 'bg-[#E3F2FD] text-[#0D47A1]' },
+  { step: 5, label: 'Kong → Backend',      desc: 'Injects X-User-Id / X-User-Roles / X-User-Email',   color: 'bg-[#FFF3E0] text-[#E65100]' },
+  { step: 6, label: 'Backend reads header', desc: 'No JWT re-verify — IP allowlist / mTLS enforced',   color: 'bg-[#F3E5F5] text-[#4A148C]' },
+];
+
+const NETWORK_SECURITY = [
+  { method: 'IP Allowlist', desc: 'Backend only accepts traffic from Kong CIDR range', status: 'ACTIVE' },
+  { method: 'mTLS (service-to-service)', desc: 'Kong presents client cert; backend validates CA', status: 'ACTIVE' },
+  { method: 'Kong IP restriction plugin', desc: 'Blocks direct access bypassing Kong gateway', status: 'ACTIVE' },
 ];
 
 export const KongGatewayPanel = () => {
@@ -201,7 +209,40 @@ export const KongGatewayPanel = () => {
           <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
           <p className="text-[11px] text-amber-700">
             System keys at 84% TTL. Automated rotation scheduled for next Sunday.
-            Kong JWKS cache will auto-refresh after Keycloak rotation.
+            Kong JWKS cache (<code className="font-mono">jwks_uri_refresh_interval: 300s</code>) will force-refresh via Kong Admin API event hook after rotation.
+          </p>
+        </div>
+      </section>
+
+      {/* ── Network Segmentation (Comment #1) ── */}
+      <section>
+        <div className="mb-3">
+          <h3 className="text-base font-bold text-[#111111]">Network Segmentation</h3>
+          <p className="text-xs text-[#5A5A5A]">Backend only accepts requests from Kong — prevents header spoofing of X-User-Id / X-User-Roles</p>
+        </div>
+
+        <div className="space-y-2">
+          {NETWORK_SECURITY.map((item, i) => (
+            <div key={i} className="flex items-center justify-between p-4 bg-white border border-[#E8DFC8] rounded-2xl">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-[#E8F5E9] flex items-center justify-center shrink-0">
+                  <Lock className="w-4 h-4 text-emerald-600" />
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-[#111111]">{item.method}</div>
+                  <div className="text-[10px] text-[#777]">{item.desc}</div>
+                </div>
+              </div>
+              <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
+                {item.status}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-3 p-3 bg-[#FDFAF2] border border-[#E8DFC8] rounded-xl">
+          <p className="text-[11px] text-[#777]">
+            Network segmentation ensures malicious clients cannot inject fake <code className="font-mono bg-[#F4E8C3] px-1 rounded">X-User-Id</code> / <code className="font-mono bg-[#F4E8C3] px-1 rounded">X-User-Roles</code> headers by bypassing Kong.
           </p>
         </div>
       </section>

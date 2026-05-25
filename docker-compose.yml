@@ -1,5 +1,6 @@
 # ─── Auth & Gateway Stack ────────────────────────────────────────────
-# Services: PostgreSQL · Keycloak · Kong · Frontend (Vite dev)
+# Services: PostgreSQL · Keycloak (HA) · HAProxy LB · Kong · Frontend (Vite dev)
+# Keycloak HA: 2 nodes Active/Active behind HAProxy, Infinispan session sync
 # Run: docker compose up -d
 
 networks:
@@ -34,12 +35,16 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── Keycloak ────────────────────────────────────────────────────────
-  keycloak:
-    image: quay.io/keycloak/keycloak:24.0
-    container_name: aeroflow-keycloak
+  # ── Keycloak Node 1 (Active) ────────────────────────────────────────
+  # Imports realm on first boot. Shared PostgreSQL backing store.
+  # JGroups TCPPING discovers node2 for Infinispan session sync.
+  keycloak-node1:
+    build:
+      context: .
+      dockerfile: Dockerfile.keycloak
+    container_name: aeroflow-keycloak-1
     restart: unless-stopped
-    command: start-dev --import-realm
+    command: start-dev --import-realm --health-enabled=true
     environment:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/aeroflow
@@ -53,21 +58,101 @@ services:
       KC_HTTP_ENABLED: "true"
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
+      # Infinispan distributed cache (Active/Active session sync)
+      KC_CACHE: ispn
+      KC_CACHE_STACK: tcp
+      JAVA_OPTS_APPEND: >-
+        -Djgroups.tcp.address=keycloak-node1
+        -Djgroups.tcp.port=7600
+        -Djgroups.tcpping.initial_hosts=keycloak-node1[7600],keycloak-node2[7600]
+      # SPI: Kafka event listener
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TOPIC: audit.auth.events
+      KAFKA_SASL_USERNAME: audit-bridge
+      KAFKA_SASL_PASSWORD: AuditBridge@1234
     volumes:
       - ./infra/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
     ports:
-      - "8080:8080"
+      - "8081:8080"   # Direct access for debugging; LB on 8080
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - aeroflow-net
     healthcheck:
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && printf 'GET /realms/master HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && timeout 3 cat <&3 | grep -q '200 OK'"]
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080 && echo -e 'GET /health/ready HTTP/1.0\\r\\nHost: 127.0.0.1\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q UP"]
       interval: 15s
       timeout: 10s
       retries: 10
       start_period: 90s
+
+  # ── Keycloak Node 2 (Active) ────────────────────────────────────────
+  # Joins the cluster after node1 is healthy. No --import-realm (already in DB).
+  keycloak-node2:
+    build:
+      context: .
+      dockerfile: Dockerfile.keycloak
+    container_name: aeroflow-keycloak-2
+    restart: unless-stopped
+    command: start-dev --health-enabled=true
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/aeroflow
+      KC_DB_USERNAME: aeroflow
+      KC_DB_PASSWORD: aeroflow_secret
+      KC_DB_SCHEMA: keycloak
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_PORT: 8080
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_HTTP_ENABLED: "true"
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_CACHE: ispn
+      KC_CACHE_STACK: tcp
+      JAVA_OPTS_APPEND: >-
+        -Djgroups.tcp.address=keycloak-node2
+        -Djgroups.tcp.port=7600
+        -Djgroups.tcpping.initial_hosts=keycloak-node1[7600],keycloak-node2[7600]
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TOPIC: audit.auth.events
+      KAFKA_SASL_USERNAME: audit-bridge
+      KAFKA_SASL_PASSWORD: AuditBridge@1234
+    ports:
+      - "8082:8080"   # Direct access for debugging
+    depends_on:
+      keycloak-node1:
+        condition: service_healthy
+    networks:
+      - aeroflow-net
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080 && echo -e 'GET /health/ready HTTP/1.0\\r\\nHost: 127.0.0.1\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q UP"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # ── Keycloak Load Balancer (HAProxy) ───────────────────────────────
+  # Exposes port 8080 — all clients (frontend, Kong) connect here.
+  # Health-checks both nodes; removes a node from rotation when /health/ready fails.
+  keycloak-lb:
+    image: haproxy:2.8-alpine
+    container_name: aeroflow-keycloak-lb
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./infra/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    depends_on:
+      keycloak-node1:
+        condition: service_healthy
+    networks:
+      - aeroflow-net
+    healthcheck:
+      test: ["CMD-SHELL", "haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
 
   # ── Kong Database Migration ─────────────────────────────────────────
   kong-migration:
@@ -91,7 +176,7 @@ services:
       - aeroflow-net
     restart: on-failure
 
-  # ── Kong Gateway (custom image with oidc plugin) ────────────────────
+  # ── Kong Gateway ────────────────────────────────────────────────────
   kong:
     build:
       context: .
@@ -112,7 +197,7 @@ services:
       KONG_ADMIN_ERROR_LOG: /dev/stderr
       KONG_ADMIN_LISTEN: "0.0.0.0:8001"
       KONG_PROXY_LISTEN: "0.0.0.0:8000"
-      KONG_PLUGINS: bundled
+      KONG_PLUGINS: bundled,aeroflow-jwks
     ports:
       - "8000:8000"   # Proxy
       - "8001:8001"   # Admin API
@@ -145,6 +230,74 @@ services:
     networks:
       - aeroflow-net
 
+  # ── Kafka (KRaft — no ZooKeeper) ───────────────────────────────────
+  # Audit pipeline: Keycloak SPI → audit.auth.events → audit-consumer → audit_logs
+  # apache/kafka:3.7.0 with custom launch script that pre-seeds SCRAM users.
+  kafka:
+    build:
+      context: .
+      dockerfile: Dockerfile.kafka
+    container_name: aeroflow-kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      # SASL/SCRAM-SHA-256 on client listener (§2.1)
+      KAFKA_LISTENERS: SASL_PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: SASL_PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: SASL_PLAINTEXT:SASL_PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: SASL_PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_SASL_ENABLED_MECHANISMS: PLAIN
+      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_CLUSTER_ID: "aeroflow-kafka-cluster-1"
+      # ACL authorizer — enforces per-topic ACLs set by kafka-setup.sh
+      KAFKA_AUTHORIZER_CLASS_NAME: org.apache.kafka.metadata.authorizer.StandardAuthorizer
+      KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: "false"
+      # admin = management; ANONYMOUS = KRaft broker-controller self-registration (port 9093 not exposed)
+      KAFKA_SUPER_USERS: "User:admin;User:ANONYMOUS"
+      # JAAS config with static PLAIN credentials (dev) — for prod use SCRAM-SHA-256 with kafka-configs.sh
+      KAFKA_OPTS: "-Djava.security.auth.login.config=/opt/kafka/config/kafka-broker-jaas.config"
+    ports:
+      - "9092:9092"
+    networks:
+      - aeroflow-net
+    healthcheck:
+      test: ["CMD-SHELL", "printf 'security.protocol=SASL_PLAINTEXT\\nsasl.mechanism=PLAIN\\nsasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username=\\\"admin\\\" password=\\\"KafkaAdmin@1234\\\";\\n' > /tmp/hc.props && /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --command-config /tmp/hc.props --list"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 45s
+
+  # ── Audit Consumer: Kafka → PostgreSQL ─────────────────────────────
+  # Reads audit.auth.events published by Keycloak SPI, writes to audit_logs.
+  # Commits Kafka offset only after successful PostgreSQL COMMIT.
+  audit-consumer:
+    build:
+      context: ./services/audit-consumer
+    container_name: aeroflow-audit-consumer
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TOPIC: audit.auth.events
+      KAFKA_GROUP_ID: audit-consumer-group
+      KAFKA_SASL_USERNAME: audit-consumer
+      KAFKA_SASL_PASSWORD: AuditConsumer@1234
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: aeroflow
+      DB_USER: aeroflow
+      DB_PASSWORD: aeroflow_secret
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - aeroflow-net
+
   # ── Frontend (Vite dev server) ──────────────────────────────────────
   frontend:
     build:
@@ -158,12 +311,12 @@ services:
     ports:
       - "5173:3000"
     environment:
-      VITE_KEYCLOAK_URL: http://localhost:8080
+      VITE_KEYCLOAK_URL: http://localhost:8080     # → keycloak-lb (HAProxy)
       VITE_KEYCLOAK_REALM: aeroflow
       VITE_KEYCLOAK_CLIENT: aeroflow-frontend
       VITE_API_BASE_URL: http://localhost:8000
     depends_on:
-      keycloak:
-        condition: service_started
+      keycloak-lb:
+        condition: service_healthy
     networks:
       - aeroflow-net

@@ -65,7 +65,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       .finally(() => setLoading(false));
 
     keycloak.onTokenExpired = () =>
-      keycloak.updateToken(60).catch(() => keycloak.login());
+      keycloak.updateToken(30).catch(() => keycloak.login());
   }, []);
 
   const logout = () => keycloak.logout({ redirectUri: window.location.origin });

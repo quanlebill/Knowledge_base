@@ -10,6 +10,7 @@
 
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KONG_ADMIN="${KONG_ADMIN_URL:-http://localhost:8001}"
 KC_BASE="${KEYCLOAK_URL:-http://localhost:8080}"
 REALM="${KEYCLOAK_REALM:-aeroflow}"
@@ -44,7 +45,7 @@ if [ -z "$PYTHON" ] || ! "$PYTHON" -c "import sys; assert sys.version_info >= (3
   # Find the compose network (prefixed with project name, e.g. data-agentt_aeroflow-net)
   DOCKER_NET=$(docker network ls --filter name=aeroflow-net --format '{{.Name}}' | head -1)
   PY_RUN="docker run --rm -i --network ${DOCKER_NET} python:3-alpine python3"
-  JWKS_HOST="http://aeroflow-keycloak:8080"
+  JWKS_HOST="http://keycloak-lb:8080"   # HAProxy LB fronting keycloak-node1 + node2
 else
   PY_RUN="$PYTHON"
   JWKS_HOST="$KC_BASE"
@@ -148,31 +149,9 @@ curl -sf -X PUT "$KONG_ADMIN/services/aeroflow-backend/routes/api-route" \
     "methods": ["GET","POST","PUT","PATCH","DELETE","OPTIONS"]
   }' | json_field name | xargs -I{} echo "  → route: {}"
 
-# ── 4. Create Keycloak consumer + JWT credential ───────────────────────
-echo "👤 Registering Keycloak consumer..."
-curl -sf -X PUT "$KONG_ADMIN/consumers/keycloak-users" \
-  -H "Content-Type: application/json" \
-  -d '{"username": "keycloak-users", "custom_id": "keycloak-issuer"}' \
-  | json_field username | xargs -I{} echo "  → consumer: {}"
-
-# Register the RSA public key as JWT credential (idempotent: delete existing first)
-ISSUER="$KC_BASE/realms/$REALM"
-echo "  → Registering JWT credential (RS256, issuer: $ISSUER)"
-# Delete any existing credentials for this consumer to avoid 409 on re-run
-EXISTING_IDS=$(curl -sf "$KONG_ADMIN/consumers/keycloak-users/jwt" | grep -o '"id":"[^"]*"' | cut -d'"' -f4 || true)
-for cid in $EXISTING_IDS; do
-  curl -sf -X DELETE "$KONG_ADMIN/consumers/keycloak-users/jwt/$cid" && echo "  → deleted old credential $cid"
-done
-PEM_JSON=$(printf '%s' "$PEM_KEY" | $PY_RUN -c 'import json,sys; print(json.dumps(sys.stdin.read()))')
-curl -sf -X POST "$KONG_ADMIN/consumers/keycloak-users/jwt" \
-  -H "Content-Type: application/json" \
-  -d "{\"algorithm\":\"RS256\",\"key\":\"$ISSUER\",\"rsa_public_key\":$PEM_JSON}" \
-  | json_field id | xargs -I{} echo "  → credential id: {}"
-
 # Helper: upsert a plugin (delete existing by name, then create)
 upsert_plugin() {
   local scope_url="$1" body="$2" plugin_name="$3"
-  # Delete existing plugin instances by name (idempotent)
   local existing_id
   existing_id=$(curl -sf "$KONG_ADMIN/plugins?name=$plugin_name" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4 || true)
   [ -n "$existing_id" ] && curl -sf -X DELETE "$KONG_ADMIN/plugins/$existing_id" || true
@@ -180,30 +159,18 @@ upsert_plugin() {
     | json_field name | xargs -I{} echo "  → plugin: {}"
 }
 
-# ── 5. Enable JWT plugin on the backend service ────────────────────────
-echo "🔐 Enabling JWT plugin..."
+ISSUER="$KC_BASE/realms/$REALM"
+JWKS_URI="$KC_BASE/realms/$REALM/protocol/openid-connect/certs"
+
+# ── 4. aeroflow-jwks plugin — JWKS-based RS256 verify + header inject ──
+# Replaces jwt built-in plugin + pre-function + jwks-refresher service.
+# Uses kong.cache with 300s TTL; invalidates and refetches on kid change.
+echo "🔐 Enabling aeroflow-jwks plugin (JWKS RS256 + 300s cache)..."
 upsert_plugin "$KONG_ADMIN/services/aeroflow-backend/plugins" \
-  '{"name":"jwt","config":{"claims_to_verify":["exp"],"key_claim_name":"iss","header_names":["authorization"]}}' \
-  "jwt"
+  "{\"name\":\"aeroflow-jwks\",\"config\":{\"jwks_uri\":\"$JWKS_URI\",\"issuer\":\"$ISSUER\",\"jwks_refresh_interval\":300}}" \
+  "aeroflow-jwks"
 
-# ── 6. Pre-function — decode JWT payload and inject user headers ────────
-# Uses pure Lua string patterns (no require/cjson — works in Kong sandbox).
-# Runs after JWT plugin verifies signature; injects X-User-Id/Roles/Email.
-echo "🔧 Enabling pre-function (inject X-User-* headers from JWT)..."
-# Delegate to a Python script to avoid bash quoting issues with Lua patterns
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-if [ -n "$PYTHON" ] && "$PYTHON" -c "import sys" 2>/dev/null; then
-  # Local Python available — run script directly
-  "$PYTHON" "$SCRIPT_DIR/register-prefn.py"
-else
-  # Docker Python — pipe script via stdin, Kong reachable via host.docker.internal
-  KONG_ADMIN_URL="http://host.docker.internal:8001" \
-  docker run --rm -i --network "$DOCKER_NET" \
-    -e KONG_ADMIN_URL=http://host.docker.internal:8001 \
-    python:3-alpine python3 < "$SCRIPT_DIR/register-prefn.py"
-fi
-
-# ── 7. IP restriction (allow private networks) ─────────────────────────
+# ── 5. IP restriction (allow private networks) ─────────────────────────
 echo "🛡️  Enabling IP restriction..."
 upsert_plugin "$KONG_ADMIN/plugins" \
   '{"name":"ip-restriction","config":{"allow":["127.0.0.1/32","10.0.0.0/8","172.16.0.0/12","192.168.0.0/16"]}}' \
@@ -221,6 +188,49 @@ upsert_plugin "$KONG_ADMIN/services/aeroflow-backend/plugins" \
   '{"name":"rate-limiting","config":{"minute":300,"policy":"local"}}' \
   "rate-limiting"
 
+# ── 10. mTLS client cert (Kong → Backend) ─────────────────────────────
+# If certs exist (generated by infra/certs/gen-certs.sh), register Kong
+# client cert so Kong presents it on every upstream request.
+CERT_FILE="$SCRIPT_DIR/../certs/kong-client.crt"
+KEY_FILE="$SCRIPT_DIR/../certs/kong-client.key"
+CA_FILE="$SCRIPT_DIR/../certs/ca.crt"
+
+if [ -f "$CERT_FILE" ] && [ -f "$KEY_FILE" ] && [ -f "$CA_FILE" ]; then
+  echo "🔒 Registering mTLS client cert (Kong → Backend)..."
+
+  # Register CA cert for upstream validation
+  CA_CONTENT=$(cat "$CA_FILE")
+  CA_ID=$(curl -sf "$KONG_ADMIN/ca_certificates" \
+    | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4 || true)
+  if [ -z "$CA_ID" ]; then
+    CA_ID=$(curl -sf -X POST "$KONG_ADMIN/ca_certificates" \
+      -H "Content-Type: application/json" \
+      -d "{\"cert\":$(echo "$CA_CONTENT" | "$PY_RUN" -c 'import json,sys;print(json.dumps(sys.stdin.read()))')}" \
+      | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    echo "  → CA registered: $CA_ID"
+  else
+    echo "  → CA already registered: $CA_ID"
+  fi
+
+  # Register Kong client cert + key
+  CERT_CONTENT=$(cat "$CERT_FILE")
+  KEY_CONTENT=$(cat "$KEY_FILE")
+  CLIENT_CERT_ID=$(curl -sf -X POST "$KONG_ADMIN/certificates" \
+    -H "Content-Type: application/json" \
+    -d "{\"cert\":$(echo "$CERT_CONTENT" | "$PY_RUN" -c 'import json,sys;print(json.dumps(sys.stdin.read()))'),\"key\":$(echo "$KEY_CONTENT" | "$PY_RUN" -c 'import json,sys;print(json.dumps(sys.stdin.read()))')}" \
+    | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+  # Attach client cert to the backend service
+  curl -sf -X PATCH "$KONG_ADMIN/services/aeroflow-backend" \
+    -H "Content-Type: application/json" \
+    -d "{\"client_certificate\":{\"id\":\"$CLIENT_CERT_ID\"}}" > /dev/null
+  echo "  → Kong client cert attached to service aeroflow-backend: $CLIENT_CERT_ID"
+  echo "  → Backend must verify client cert against infra/certs/ca.crt"
+else
+  echo "ℹ️  mTLS certs not found — skipping client cert setup."
+  echo "   Run: bash infra/certs/gen-certs.sh   to generate, then re-run this script."
+fi
+
 # ── Summary ────────────────────────────────────────────────────────────
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -232,4 +242,7 @@ echo "  Konga :  http://localhost:1337"
 echo ""
 echo "  JWT:    RS256, issuer=$ISSUER"
 echo "  Route:  /api → aeroflow-backend"
+MTLS_STATUS="NOT configured (run infra/certs/gen-certs.sh first)"
+[ -f "$CERT_FILE" ] && MTLS_STATUS="Configured (Kong presents client cert)"
+echo "  mTLS:   $MTLS_STATUS"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

@@ -153,6 +153,8 @@ CREATE TABLE IF NOT EXISTS webhooks (
 );
 
 -- ─── Audit & Compliance ───────────────────────────────────────────────
+-- Audit log writer: Keycloak Event Listener SPI → Kafka topic audit.auth.events
+-- → Consumer (at-least-once delivery) → INSERT here. Never written directly from services.
 
 CREATE TABLE IF NOT EXISTS audit_logs (
   id            uuid DEFAULT gen_random_uuid(),
@@ -168,11 +170,13 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   created_at    timestamptz DEFAULT now()
 ) PARTITION BY RANGE (created_at);
 
--- Create initial monthly partitions
+-- Monthly partitions — add new partition each month. Records > 12 months → archive to MinIO/S3.
 CREATE TABLE IF NOT EXISTS audit_logs_2026_05 PARTITION OF audit_logs
   FOR VALUES FROM ('2026-05-01') TO ('2026-06-01');
 CREATE TABLE IF NOT EXISTS audit_logs_2026_06 PARTITION OF audit_logs
   FOR VALUES FROM ('2026-06-01') TO ('2026-07-01');
+CREATE TABLE IF NOT EXISTS audit_logs_2026_07 PARTITION OF audit_logs
+  FOR VALUES FROM ('2026-07-01') TO ('2026-08-01');
 
 CREATE TABLE IF NOT EXISTS pii_access_logs (
   id            uuid DEFAULT gen_random_uuid(),

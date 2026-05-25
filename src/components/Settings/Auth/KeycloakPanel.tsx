@@ -2,10 +2,22 @@ import React, { useState } from 'react';
 import {
   Shield, ShieldCheck, ShieldAlert, Globe, Cloud, Fingerprint,
   Plus, ArrowRight, CheckCircle2, XCircle, RefreshCw, ExternalLink,
-  Server, Key, AlertCircle, ChevronDown, ChevronRight,
+  Server, Key, AlertCircle, ChevronDown, ChevronRight, Network,
 } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 import { DetailDrawer } from '../../shared/DetailDrawer';
+
+const HA_NODES = [
+  { node: 'Keycloak Node 1', role: 'Active', status: 'HEALTHY', region: 'AZ-1' },
+  { node: 'Keycloak Node 2', role: 'Active', status: 'HEALTHY', region: 'AZ-2' },
+];
+
+const HA_COMPONENTS = [
+  { component: 'Load Balancer', detail: 'HAProxy / Nginx — health check /health/ready', ok: true },
+  { component: 'Session Sync', detail: 'Infinispan distributed cache (built-in Keycloak)', ok: true },
+  { component: 'Backing Store', detail: 'PostgreSQL self-hosted (shared by both nodes)', ok: true },
+  { component: 'JWKS Grace Period', detail: 'Kong cache 60s grace when Keycloak unreachable', ok: true },
+];
 
 /* ─── Mock data matching keycloak_realm_configs + keycloak_role_mappings ─ */
 const REALMS = [
@@ -293,6 +305,45 @@ export const KeycloakPanel = () => {
                 )}>
                   {policy.enabled ? 'ON' : 'OFF'}
                 </span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ── Keycloak High Availability (Comment #12) ── */}
+        <section>
+          <div className="mb-4">
+            <h3 className="text-base font-bold text-[#111111]">Keycloak High Availability</h3>
+            <p className="text-xs text-[#5A5A5A] mt-0.5">Active/Active cluster — eliminates single point of failure for auth service</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+            {HA_NODES.map((node, i) => (
+              <div key={i} className="flex items-center gap-3 p-4 bg-white border border-[#E8DFC8] rounded-2xl">
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0">
+                  <Server className="w-4 h-4 text-emerald-600" />
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm font-bold text-[#111111]">{node.node}</div>
+                  <div className="text-[10px] text-[#777]">{node.role} · {node.region}</div>
+                </div>
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">{node.status}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-2">
+            {HA_COMPONENTS.map((c, i) => (
+              <div key={i} className="flex items-center justify-between p-3.5 bg-white border border-[#E8DFC8] rounded-xl">
+                <div className="flex items-center gap-3">
+                  {c.ok
+                    ? <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                    : <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />}
+                  <div>
+                    <div className="text-sm font-bold text-[#111111]">{c.component}</div>
+                    <div className="text-[10px] text-[#777]">{c.detail}</div>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
