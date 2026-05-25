@@ -1,0 +1,984 @@
+[
+  {
+    "id": "d1",
+    "name": "Standard_Refund_Policy_v2.pdf",
+    "layer": "BRONZE",
+    "status": "PUBLISHED",
+    "version": "v3.1",
+    "lastUpdated": "2026-05-22",
+    "author": "System",
+    "metadata": {
+      "tenant": "GlobalCorp",
+      "type": "Doc/pdf",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d2",
+    "name": "Operational_Manual_Draft.docx",
+    "layer": "BRONZE",
+    "status": "FAILED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-22",
+    "author": "JSmith",
+    "metadata": {
+      "tenant": "Logistics_Sub",
+      "type": "Doc/docx",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d3",
+    "name": "Compliance_Guide.md",
+    "layer": "BRONZE",
+    "status": "PUBLISHED",
+    "version": "v1.2",
+    "lastUpdated": "2026-05-21",
+    "author": "Compliance_Bot",
+    "metadata": {
+      "tenant": "GlobalCorp",
+      "type": "Doc/md",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d4",
+    "name": "Internal_Training_Module_4.mp4",
+    "layer": "BRONZE",
+    "status": "PUBLISHED",
+    "version": "v2.1",
+    "lastUpdated": "2026-05-21",
+    "author": "LHR_Media",
+    "metadata": {
+      "tenant": "HR_Portal",
+      "type": "Video/mp4",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d5",
+    "name": "Company_Logo_HighRes.png",
+    "layer": "BRONZE",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-20",
+    "author": "DesignTeam",
+    "metadata": {
+      "tenant": "Marketing",
+      "type": "Image/png",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d6",
+    "name": "Help_Center_Web_Specs",
+    "layer": "BRONZE",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-20",
+    "author": "Crawler_Bot",
+    "metadata": {
+      "tenant": "GlobalCorp",
+      "type": "Web",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d7",
+    "name": "Onboarding_Flowcard.png",
+    "layer": "BRONZE",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-20",
+    "author": "HR_Portal",
+    "metadata": {
+      "tenant": "HR_Portal",
+      "type": "Image/png",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d8",
+    "name": "Workspace_Sanitation_SOP.docx",
+    "layer": "BRONZE",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-19",
+    "author": "Facilities",
+    "metadata": {
+      "tenant": "Logistics_Sub",
+      "type": "Doc/docx",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d9",
+    "name": "Support_FAQ_Billing",
+    "layer": "BRONZE",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-19",
+    "author": "Crawler_Bot",
+    "metadata": {
+      "tenant": "Finance_Hub",
+      "type": "Web",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d10",
+    "name": "Azure_Migration_Architecture.pdf",
+    "layer": "BRONZE",
+    "status": "PUBLISHED",
+    "version": "v1.1",
+    "lastUpdated": "2026-05-18",
+    "author": "ARivera",
+    "metadata": {
+      "tenant": "Engineering",
+      "type": "Doc/pdf",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d11",
+    "name": "Security_Policy_Addendum.md",
+    "layer": "BRONZE",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-18",
+    "author": "Compliance_Bot",
+    "metadata": {
+      "tenant": "GlobalCorp",
+      "type": "Doc/md",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d12",
+    "name": "Q1_TownHall_QA.mp4",
+    "layer": "BRONZE",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-17",
+    "author": "CommTeam",
+    "metadata": {
+      "tenant": "Marketing",
+      "type": "Video/mp4",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d13",
+    "name": "Engineering_Org_Chart.pdf",
+    "layer": "BRONZE",
+    "status": "PUBLISHED",
+    "version": "v2.0",
+    "lastUpdated": "2026-05-17",
+    "author": "System",
+    "metadata": {
+      "tenant": "Engineering",
+      "type": "Doc/pdf",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d14",
+    "name": "Tax_Exemption_Certificate.png",
+    "layer": "BRONZE",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-16",
+    "author": "Finance_Hub",
+    "metadata": {
+      "tenant": "Finance_Hub",
+      "type": "Image/png",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d15",
+    "name": "Database_Deployment_Playbook.docx",
+    "layer": "BRONZE",
+    "status": "PUBLISHED",
+    "version": "v1.4",
+    "lastUpdated": "2026-05-16",
+    "author": "ARivera",
+    "metadata": {
+      "tenant": "Engineering",
+      "type": "Doc/docx",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d16",
+    "name": "Developer_Handbook_Draft.md",
+    "layer": "BRONZE",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-15",
+    "author": "ARivera",
+    "metadata": {
+      "tenant": "Engineering",
+      "type": "Doc/md",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d17",
+    "name": "Sales_Leads_Active",
+    "layer": "BRONZE",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-15",
+    "author": "Crawler_Bot",
+    "metadata": {
+      "tenant": "Sales",
+      "type": "Web",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d18",
+    "name": "Office_Key_Distribution.xlsx",
+    "layer": "BRONZE",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-14",
+    "author": "Facilities",
+    "metadata": {
+      "tenant": "Logistics_Sub",
+      "type": "Doc/xlsx",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d19",
+    "name": "GDPR_Compliance_Audit_Log.csv",
+    "layer": "BRONZE",
+    "status": "PUBLISHED",
+    "version": "v1.1",
+    "lastUpdated": "2026-05-14",
+    "author": "Compliance_Bot",
+    "metadata": {
+      "tenant": "GlobalCorp",
+      "type": "Doc/csv",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d20",
+    "name": "Press_Release_May.pdf",
+    "layer": "BRONZE",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-13",
+    "author": "CommTeam",
+    "metadata": {
+      "tenant": "Marketing",
+      "type": "Doc/pdf",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d21",
+    "name": "Product_Catalog_2026.pdf",
+    "layer": "BRONZE",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-13",
+    "author": "DesignTeam",
+    "metadata": {
+      "tenant": "Sales",
+      "type": "Doc/pdf",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d22",
+    "name": "Server_Rack_Layout.png",
+    "layer": "BRONZE",
+    "status": "PUBLISHED",
+    "version": "v1.2",
+    "lastUpdated": "2026-05-12",
+    "author": "Facilities",
+    "metadata": {
+      "tenant": "Engineering",
+      "type": "Image/png",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d23",
+    "name": "Customer_Support_SLA.docx",
+    "layer": "BRONZE",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-12",
+    "author": "Logistics_Sub",
+    "metadata": {
+      "tenant": "Logistics_Sub",
+      "type": "Doc/docx",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d24",
+    "name": "Status_Dashboard_Specs",
+    "layer": "BRONZE",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-11",
+    "author": "Crawler_Bot",
+    "metadata": {
+      "tenant": "GlobalCorp",
+      "type": "Web",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d25",
+    "name": "Employee_Rights_Notice.pdf",
+    "layer": "BRONZE",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-11",
+    "author": "HR_Portal",
+    "metadata": {
+      "tenant": "HR_Portal",
+      "type": "Doc/pdf",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d26",
+    "name": "H1_Cloud_Architecture_Specs.md",
+    "layer": "SILVER",
+    "status": "EMBEDDING",
+    "version": "v1.4",
+    "lastUpdated": "2026-05-24",
+    "author": "ARivera",
+    "metadata": {
+      "tenant": "GlobalCorp",
+      "type": "Doc/md",
+      "language": "Spanish"
+    }
+  },
+  {
+    "id": "d27",
+    "name": "Silver_Normalized_Employee_SOP.docx",
+    "layer": "SILVER",
+    "status": "PUBLISHED",
+    "version": "v2.1",
+    "lastUpdated": "2026-05-23",
+    "author": "HR_Portal",
+    "metadata": {
+      "tenant": "HR_Portal",
+      "type": "Doc/docx",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d28",
+    "name": "Silver_Vendor_Contracts_Aggregated.pdf",
+    "layer": "SILVER",
+    "status": "PUBLISHED",
+    "version": "v1.2",
+    "lastUpdated": "2026-05-23",
+    "author": "Finance_Hub",
+    "metadata": {
+      "tenant": "Finance_Hub",
+      "type": "Doc/pdf",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d29",
+    "name": "Silver_Product_Launch_Video.mp4",
+    "layer": "SILVER",
+    "status": "PUBLISHED",
+    "version": "v4.0",
+    "lastUpdated": "2026-05-22",
+    "author": "Marketing",
+    "metadata": {
+      "tenant": "Marketing",
+      "type": "Video/mp4",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d30",
+    "name": "Silver_Network_Topology_Schema.png",
+    "layer": "SILVER",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-22",
+    "author": "Engineering",
+    "metadata": {
+      "tenant": "Engineering",
+      "type": "Image/png",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d31",
+    "name": "Silver_Legal_Disclaimers_Mapped.md",
+    "layer": "SILVER",
+    "status": "PUBLISHED",
+    "version": "v1.5",
+    "lastUpdated": "2026-05-21",
+    "author": "Compliance_Bot",
+    "metadata": {
+      "tenant": "GlobalCorp",
+      "type": "Doc/md",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d32",
+    "name": "Silver_Corporate_Overview_Webpage",
+    "layer": "SILVER",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-21",
+    "author": "System",
+    "metadata": {
+      "tenant": "GlobalCorp",
+      "type": "Web",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d33",
+    "name": "Silver_Travel_Reimbursement_Policy.pdf",
+    "layer": "SILVER",
+    "status": "PUBLISHED",
+    "version": "v1.1",
+    "lastUpdated": "2026-05-20",
+    "author": "Finance_Hub",
+    "metadata": {
+      "tenant": "Finance_Hub",
+      "type": "Doc/pdf",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d34",
+    "name": "Silver_Customer_Feedback_Synthesized.docx",
+    "layer": "SILVER",
+    "status": "PUBLISHED",
+    "version": "v2.0",
+    "lastUpdated": "2026-05-20",
+    "author": "Sales",
+    "metadata": {
+      "tenant": "Sales",
+      "type": "Doc/docx",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d35",
+    "name": "Silver_Safety_Training_Guides.mp4",
+    "layer": "SILVER",
+    "status": "PUBLISHED",
+    "version": "v2.2",
+    "lastUpdated": "2026-05-19",
+    "author": "LHR_Media",
+    "metadata": {
+      "tenant": "HR_Portal",
+      "type": "Video/mp4",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d36",
+    "name": "Silver_Disaster_Recovery_Blueprint.pdf",
+    "layer": "SILVER",
+    "status": "PUBLISHED",
+    "version": "v1.3",
+    "lastUpdated": "2026-05-19",
+    "author": "ARivera",
+    "metadata": {
+      "tenant": "Engineering",
+      "type": "Doc/pdf",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d37",
+    "name": "Silver_Brand_Guidelines_Imagery.png",
+    "layer": "SILVER",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-18",
+    "author": "DesignTeam",
+    "metadata": {
+      "tenant": "Marketing",
+      "type": "Image/png",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d38",
+    "name": "Silver_Compliance_Audit_Handbook.docx",
+    "layer": "SILVER",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-18",
+    "author": "Compliance_Bot",
+    "metadata": {
+      "tenant": "GlobalCorp",
+      "type": "Doc/docx",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d39",
+    "name": "Silver_API_Authentication_Specs.md",
+    "layer": "SILVER",
+    "status": "PUBLISHED",
+    "version": "v3.1",
+    "lastUpdated": "2026-05-17",
+    "author": "ARivera",
+    "metadata": {
+      "tenant": "Engineering",
+      "type": "Doc/md",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d40",
+    "name": "Silver_Logistics_SOP.docx",
+    "layer": "SILVER",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-17",
+    "author": "JSmith",
+    "metadata": {
+      "tenant": "Logistics_Sub",
+      "type": "Doc/docx",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d41",
+    "name": "Silver_Employee_Onboarding_Handbook.pdf",
+    "layer": "SILVER",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-16",
+    "author": "HR_Portal",
+    "metadata": {
+      "tenant": "HR_Portal",
+      "type": "Doc/pdf",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d42",
+    "name": "Silver_Data_Privacy_Checklist.md",
+    "layer": "SILVER",
+    "status": "PUBLISHED",
+    "version": "v1.2",
+    "lastUpdated": "2026-05-16",
+    "author": "Compliance_Bot",
+    "metadata": {
+      "tenant": "GlobalCorp",
+      "type": "Doc/md",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d43",
+    "name": "Silver_Security_Patches_Log.csv",
+    "layer": "SILVER",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-15",
+    "author": "ARivera",
+    "metadata": {
+      "tenant": "Engineering",
+      "type": "Doc/csv",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d44",
+    "name": "Silver_Marketing_Materials_Visuals.png",
+    "layer": "SILVER",
+    "status": "PUBLISHED",
+    "version": "v2.0",
+    "lastUpdated": "2026-05-15",
+    "author": "DesignTeam",
+    "metadata": {
+      "tenant": "Marketing",
+      "type": "Image/png",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d45",
+    "name": "Silver_Sales_Playbook_v2.docx",
+    "layer": "SILVER",
+    "status": "PUBLISHED",
+    "version": "v2.0",
+    "lastUpdated": "2026-05-14",
+    "author": "Sales",
+    "metadata": {
+      "tenant": "Sales",
+      "type": "Doc/docx",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d46",
+    "name": "Silver_Remote_Work_Guidelines.pdf",
+    "layer": "SILVER",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-14",
+    "author": "HR_Portal",
+    "metadata": {
+      "tenant": "HR_Portal",
+      "type": "Doc/pdf",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d47",
+    "name": "Silver_Annual_Budget_Review.xlsx",
+    "layer": "SILVER",
+    "status": "PUBLISHED",
+    "version": "v1.1",
+    "lastUpdated": "2026-05-13",
+    "author": "Finance_Hub",
+    "metadata": {
+      "tenant": "Finance_Hub",
+      "type": "Doc/xlsx",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d49",
+    "name": "Entity_Map_v2_Graph",
+    "layer": "GOLD",
+    "status": "PUBLISHED",
+    "version": "v2.1",
+    "lastUpdated": "2026-05-20",
+    "author": "Graph_Sync",
+    "metadata": {
+      "tenant": "GlobalCorp",
+      "type": "Doc/md",
+      "language": "Vietnamese"
+    }
+  },
+  {
+    "id": "d50",
+    "name": "Gold_Corporate_Bylaws_Vectorized.pdf",
+    "layer": "GOLD",
+    "status": "PUBLISHED",
+    "version": "v3.0",
+    "lastUpdated": "2026-05-23",
+    "author": "System",
+    "metadata": {
+      "tenant": "GlobalCorp",
+      "type": "Doc/pdf",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d51",
+    "name": "Gold_Interactive_Customer_Map_Web",
+    "layer": "GOLD",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-22",
+    "author": "Sales",
+    "metadata": {
+      "tenant": "Sales",
+      "type": "Web",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d52",
+    "name": "Gold_HighAvailability_Architecture.pdf",
+    "layer": "GOLD",
+    "status": "PUBLISHED",
+    "version": "v2.1",
+    "lastUpdated": "2026-05-22",
+    "author": "ARivera",
+    "metadata": {
+      "tenant": "Engineering",
+      "type": "Doc/pdf",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d53",
+    "name": "Gold_Legal_Disclaimers_Refined.md",
+    "layer": "GOLD",
+    "status": "PUBLISHED",
+    "version": "v4.2",
+    "lastUpdated": "2026-05-21",
+    "author": "Compliance_Bot",
+    "metadata": {
+      "tenant": "GlobalCorp",
+      "type": "Doc/md",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d54",
+    "name": "Gold_Tax_Exemptions_Audited.png",
+    "layer": "GOLD",
+    "status": "PUBLISHED",
+    "version": "v1.1",
+    "lastUpdated": "2026-05-21",
+    "author": "Finance_Hub",
+    "metadata": {
+      "tenant": "Finance_Hub",
+      "type": "Image/png",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d55",
+    "name": "Gold_Executive_Keynote_Speech.mp4",
+    "layer": "GOLD",
+    "status": "PUBLISHED",
+    "version": "v4.1",
+    "lastUpdated": "2026-05-20",
+    "author": "CommTeam",
+    "metadata": {
+      "tenant": "Marketing",
+      "type": "Video/mp4",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d56",
+    "name": "Gold_API_Specs_Production.md",
+    "layer": "GOLD",
+    "status": "PUBLISHED",
+    "version": "v3.0",
+    "lastUpdated": "2026-05-20",
+    "author": "ARivera",
+    "metadata": {
+      "tenant": "Engineering",
+      "type": "Doc/md",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d57",
+    "name": "Gold_Operations_SOP_Vectorized.docx",
+    "layer": "GOLD",
+    "status": "PUBLISHED",
+    "version": "v2.0",
+    "lastUpdated": "2026-05-19",
+    "author": "JSmith",
+    "metadata": {
+      "tenant": "Logistics_Sub",
+      "type": "Doc/docx",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d58",
+    "name": "Gold_Employee_Onboarding_Final_Web",
+    "layer": "GOLD",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-19",
+    "author": "HR_Portal",
+    "metadata": {
+      "tenant": "HR_Portal",
+      "type": "Web",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d59",
+    "name": "Gold_Disaster_Recovery_Procedures.pdf",
+    "layer": "GOLD",
+    "status": "PUBLISHED",
+    "version": "v2.3",
+    "lastUpdated": "2026-05-18",
+    "author": "ARivera",
+    "metadata": {
+      "tenant": "Engineering",
+      "type": "Doc/pdf",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d60",
+    "name": "Gold_Brand_Guidelines_Vectorized.png",
+    "layer": "GOLD",
+    "status": "PUBLISHED",
+    "version": "v1.2",
+    "lastUpdated": "2026-05-18",
+    "author": "DesignTeam",
+    "metadata": {
+      "tenant": "Marketing",
+      "type": "Image/png",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d61",
+    "name": "Gold_National_Logistics_Schema.docx",
+    "layer": "GOLD",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-17",
+    "author": "JSmith",
+    "metadata": {
+      "tenant": "Logistics_Sub",
+      "type": "Doc/docx",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d62",
+    "name": "Gold_Data_Privacy_Framework.md",
+    "layer": "GOLD",
+    "status": "PUBLISHED",
+    "version": "v2.2",
+    "lastUpdated": "2026-05-17",
+    "author": "Compliance_Bot",
+    "metadata": {
+      "tenant": "GlobalCorp",
+      "type": "Doc/md",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d63",
+    "name": "Gold_Travel_Policy_Index.pdf",
+    "layer": "GOLD",
+    "status": "PUBLISHED",
+    "version": "v1.4",
+    "lastUpdated": "2026-05-16",
+    "author": "Finance_Hub",
+    "metadata": {
+      "tenant": "Finance_Hub",
+      "type": "Doc/pdf",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d64",
+    "name": "Gold_Compliance_Checklist.docx",
+    "layer": "GOLD",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-16",
+    "author": "Compliance_Bot",
+    "metadata": {
+      "tenant": "GlobalCorp",
+      "type": "Doc/docx",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d65",
+    "name": "Gold_Network_Map_HighRes.png",
+    "layer": "GOLD",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-15",
+    "author": "Engineering",
+    "metadata": {
+      "tenant": "Engineering",
+      "type": "Image/png",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d66",
+    "name": "Gold_Product_Launch_SOP.mp4",
+    "layer": "GOLD",
+    "status": "PUBLISHED",
+    "version": "v3.0",
+    "lastUpdated": "2026-05-15",
+    "author": "Marketing",
+    "metadata": {
+      "tenant": "Marketing",
+      "type": "Video/mp4",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d67",
+    "name": "Gold_Remote_Onboarding_Handbook.pdf",
+    "layer": "GOLD",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-14",
+    "author": "HR_Portal",
+    "metadata": {
+      "tenant": "HR_Portal",
+      "type": "Doc/pdf",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d68",
+    "name": "Gold_Annual_Fiscal_Report.pdf",
+    "layer": "GOLD",
+    "status": "PUBLISHED",
+    "version": "v2.5",
+    "lastUpdated": "2026-05-14",
+    "author": "Finance_Hub",
+    "metadata": {
+      "tenant": "Finance_Hub",
+      "type": "Doc/pdf",
+      "language": "English"
+    }
+  },
+  {
+    "id": "d69",
+    "name": "Gold_API_Authentication_Specs_Refined.md",
+    "layer": "GOLD",
+    "status": "PUBLISHED",
+    "version": "v3.4",
+    "lastUpdated": "2026-05-13",
+    "author": "ARivera",
+    "metadata": {
+      "tenant": "Engineering",
+      "type": "Doc/md",
+      "language": "English"
+    }
+  },
+  {
+    "id": "wh-001",
+    "name": "Snowflake Production Analytics DW",
+    "layer": "GOLD",
+    "status": "PUBLISHED",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-24",
+    "author": "ARivera",
+    "metadata": {
+      "tenant": "GlobalCorp",
+      "type": "Warehouse/snowflake",
+      "language": "N/A",
+      "warehouseType": "snowflake"
+    }
+  },
+  {
+    "id": "wh-002",
+    "name": "Databricks ML Feature Store",
+    "layer": "GOLD",
+    "status": "EMBEDDING",
+    "version": "v1.0",
+    "lastUpdated": "2026-05-24",
+    "author": "MLTeam",
+    "metadata": {
+      "tenant": "Engineering",
+      "type": "Warehouse/databricks",
+      "language": "N/A",
+      "warehouseType": "databricks"
+    }
+  }
+]
