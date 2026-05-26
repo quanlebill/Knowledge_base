@@ -15,4 +15,6 @@ class Error(BaseModel):
 class ResponseModel(BaseModel):
     code: int = 200
     data: Any = None
+    #data = A_specified_response_model
+
     error: Error | None = None

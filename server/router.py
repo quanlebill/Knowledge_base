@@ -1,8 +1,7 @@
 import uuid
-from typing import Any, Optional
+from typing import Any
 
-from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field
+from fastapi import APIRouter, Depends, Header, HTTPException
 
 from basemodel.API_response import ResponseModel, Error
 from basemodel.conflict import (
@@ -11,14 +10,19 @@ from basemodel.conflict import (
     ConflictResolveConfigure,
     RequestResolveConflict,
 )
-from basemodel.data import RequestConfirmDataUpload, RequestDataUpload
+from basemodel.data import RequestConfirmDataUpload, RequestDataUpload, RequestUpdateDocument
 from basemodel.fleet import FleetConfigure
 from basemodel.knowledge import (
     RequestActivateChunkVersion,
     RequestCreateChunkVersion,
+    RequestDocConfig,
+    RequestNeo4jQuery,
     RequestSearchQdrant,
+    RequestTableRowUpdate,
     RequestToggleQdrantCollection,
+    RequestWarehouseConfigCreate,
 )
+from basemodel.policy import RequestCreateFilterPolicy, RequestExtractionCustom, RequestUpdateFilterPolicy
 from basemodel.warehouse import RequestConnectWarehouse, RequestSelectTable
 
 
@@ -142,54 +146,6 @@ def ErrorFlag(code: int, message: str, error_type: str = 'Error') -> ResponseMod
 def _to_dict(raw: Any) -> dict:
     return raw.model_dump() if hasattr(raw, 'model_dump') else raw
 
-
-
-class RequestUpdateDocument(BaseModel):
-    layer: Optional[str] = None
-    status: Optional[str] = None
-    metadata: Optional[dict] = None
-
-
-class RequestTableRowUpdate(BaseModel):
-    column: str
-    value: Any = None
-
-
-class RequestDocConfig(BaseModel):
-    version_number: str
-    connection: Optional[dict] = None
-    tables: list
-
-
-class RequestWarehouseConfigCreate(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-    name: str
-    version: str
-    status: Optional[str] = 'Draft'
-    tables: list
-    sync_schedule: Optional[str] = Field(default='Manual', alias='syncSchedule')
-
-
-class RequestNeo4jQuery(BaseModel):
-    cypher: str
-
-
-class RequestCreateFilterPolicy(BaseModel):
-    name: str
-    type: str
-    content: str
-    added_by: Optional[str] = 'user'
-
-
-class RequestUpdateFilterPolicy(BaseModel):
-    name: Optional[str] = None
-    type: Optional[str] = None
-    content: Optional[str] = None
-    active: Optional[bool] = None
-
-
-class RequestExtractionCustom(BaseModel):
-    custom: str
 
 
 

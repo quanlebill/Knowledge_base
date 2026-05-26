@@ -1,5 +1,5 @@
-from typing import List, Optional
-from pydantic import BaseModel
+from typing import Any, List, Optional
+from pydantic import BaseModel, ConfigDict, Field
 from enum_type import *
 
 # DATABASE tab
@@ -28,7 +28,7 @@ class QdrantSearchResult(BaseModel):
     entities: List[str]
     intent: List[str]
 
-# - Request
+# - Request Models
 # PATCH /api/knowledge/documents/:id/chunks/:chunkId/activate
 class RequestActivateChunkVersion(BaseModel):
     version_number: str
@@ -39,12 +39,28 @@ class RequestCreateChunkVersion(BaseModel):
     text: str
 
 # POST /api/knowledge/warehouses/:id/configs
-class RequestCreateWarehouseConfig(BaseModel):
+class RequestWarehouseConfigCreate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
     name: str
     version: str
-    status: str
-    tables: List[KnowledgeConfigTable]
-    sync_schedule: Optional[str] = None
+    status: Optional[str] = 'Draft'
+    tables: list
+    sync_schedule: Optional[str] = Field(default='Manual', alias='syncSchedule')
+
+# PATCH /api/knowledge/documents/:doc_id/tables/:table_id/rows/:row_index
+class RequestTableRowUpdate(BaseModel):
+    column: str
+    value: Any = None
+
+# POST /api/knowledge/documents/:doc_id/configs
+class RequestDocConfig(BaseModel):
+    version_number: str
+    connection: Optional[dict] = None
+    tables: list
+
+# POST /api/knowledge/neo4j/query
+class RequestNeo4jQuery(BaseModel):
+    cypher: str
 
 # PATCH /api/knowledge/qdrant/collections/:id
 class RequestToggleQdrantCollection(BaseModel):
@@ -56,7 +72,7 @@ class RequestSearchQdrant(BaseModel):
 
 
 
-# - Response models
+# - Response Models
 # GET /api/knowledge/documents/:id/chunks
 class ChunkConfigure(BaseModel):
     id: str

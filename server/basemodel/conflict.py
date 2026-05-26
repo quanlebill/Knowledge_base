@@ -26,7 +26,7 @@ class RequestResolveConflict(BaseModel):
 
 
 
-# - Response
+# - Response Model
 # GET /api/knowledge/conflicts
 class ConflictsConfigure(BaseModel):
     pending: List[ConflictBatch]

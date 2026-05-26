@@ -22,7 +22,6 @@ class TimelineEvent(BaseModel):
 class MetadataDoc(BaseModel):
     source_type: Literal[SourceType.Document]
     language: Language
-    access_role: str
     author: Optional[str] = None
     published_date: Optional[str] = None
 

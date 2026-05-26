@@ -56,7 +56,13 @@ class RequestConfirmDataUpload(BaseModel):
     upload_id: uuid.UUID
     upload_status: bool
 
-# - Configure Model for Response.data
+# PATCH /api/data/documents/:doc_id
+class RequestUpdateDocument(BaseModel):
+    layer: Optional[str] = None
+    status: Optional[str] = None
+    metadata: Optional[dict] = None
+
+# - Response Model
 # GET /api/knowledge/data
 class DataConfigure(BaseModel):
     file_name: str

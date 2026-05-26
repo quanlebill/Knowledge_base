@@ -7,3 +7,5 @@ coverage/
 *.log
 .env*
 !.env.example
+.idea
+.data_agent.egg-info/

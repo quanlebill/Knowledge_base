@@ -7,7 +7,7 @@ class ContentCount(BaseModel):
     media: int
     warehouses: int
 
-# Response
+# Response Model
 # GET /api/fleet/stats
 class FleetConfigure(BaseModel):
     content: ContentCount

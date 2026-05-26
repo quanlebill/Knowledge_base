@@ -47,7 +47,7 @@ warehouseMetadata = Annotated[
 
 
 # API Model
-# - Request
+# - Request Models
 # POST /api/knowledge/connect
 class RequestConnectWarehouse(BaseModel):
     connection_name: str
@@ -63,7 +63,7 @@ class ResponseReview(RequestConnectWarehouse):
     connection_id: uuid.UUID
     tables: List[Table]
 
-# Model for Response.data
+# Response Model
 class ResponseWarehouseTable(BaseModel):
     connection_id: uuid.UUID
     tables: List[Table]
