@@ -8,21 +8,7 @@ A multi-tenant Enterprise AI Operating System for RAG orchestration, agentic wor
 
 Built with **React 19 + TypeScript + Vite**, with a FastAPI mock server for local development.
 
----
-
-## Features
-
-- **Knowledge Operations** — Bronze → Silver → Gold data pipeline, document ingestion, semantic chunking, table extraction, warehouse connections (Snowflake, Databricks)
-- **AI Runtime** — Agent registry, orchestration, and execution tracing
-- **Graph & Knowledge** — GraphRAG visualization, Gold-layer knowledge management with version control
-- **Release Management** — Deployment pipelines, environment drift detection, rollback
-- **Governance** — Compliance auditing, policy enforcement, PII access logs
-- **Settings** — Auth (Keycloak / Kong), API keys, secrets vault, IP allowlist, billing
-
----
-
 ## Running Locally
-
 **Prerequisites:** Node.js 20+, Python 3.13+
 
 ### 1. Install dependencies
@@ -47,15 +33,7 @@ In a separate terminal:
 ```bash
 npm run dev
 ```
-
 Open **http://localhost:3000** — the app starts in demo mode automatically (no login required).
-
-> `GEMINI_API_KEY` is optional. The app runs fully in mock mode without it. If you want Gemini AI features, add your key to `.env.local`:
-> ```
-> GEMINI_API_KEY=your_key_here
-> ```
-
----
 
 ## Running with Docker
 
@@ -108,67 +86,6 @@ curl http://localhost:8000/api/fleet/stats
 ```
 
 ---
-
-## Project Structure
-
-```
-├── src/
-│   ├── main.tsx                    # Entry point — AuthProvider wraps App
-│   ├── App.tsx                     # Module router
-│   ├── AppStateContext.tsx          # Global state (role, tenant, navigation)
-│   ├── lib/
-│   │   ├── AuthProvider.tsx        # Auth context — demo bypass enabled by default
-│   │   ├── mockApi.ts              # HTTP client — unwraps FastAPI ResponseModel envelope
-│   │   └── keycloak.ts             # Keycloak singleton (preserved for production)
-│   ├── components/
-│   │   ├── knowledge/              # Knowledge ops (ingestion, inventory, graph, warehouse)
-│   │   ├── Settings/               # Auth, API keys, secrets, billing
-│   │   ├── AgentRegistry/          # Agent CRUD and provisioning
-│   │   ├── DeploymentCenter/       # Environment management, drift detection
-│   │   ├── WorkflowEngine/         # Workflow builder and execution
-│   │   └── shared/                 # Reusable UI components
-│   ├── constants/                  # Static mock data for development
-│   └── types/                      # TypeScript interfaces
-├── server/
-│   ├── router.py                   # FastAPI route definitions + KBService interface
-│   ├── basemodel/                  # Pydantic request/response models
-│   └── requirements.txt            # Python dependencies (fastapi, uvicorn, pydantic)
-├── testing/
-│   ├── server.py                   # JsonKBService — loads data/, serves all routes on :8000
-│   └── data/                       # JSON fixtures (documents, conflicts, policies, agents, …)
-├── infra/
-│   ├── keycloak/                   # Realm config export
-│   ├── kong/                       # Kong gateway setup scripts
-│   └── sql/                        # PostgreSQL schema (auth, audit, compliance)
-├── docs/                           # Architecture and API contract documentation
-├── Dockerfile                      # python:3.13-slim + Node 20; runs uvicorn + Vite
-└── .env.example                    # Environment variable reference
-```
-
----
-
-## Available Scripts
-
-| Command | Description |
-|---|---|
-| `npm run dev` | Start Vite dev server on port 3000 |
-| `npm run mock:server` | Start FastAPI mock server on port 8000 (requires Python + deps) |
-| `npm run build` | Production build to `dist/` |
-| `npm run lint` | TypeScript type check |
-| `npm run preview` | Preview production build locally |
-
----
-
-## Authentication
-
-The app ships with **demo mode enabled by default** — no Keycloak or SSO setup needed for local development.
-
-For production deployment with real authentication, the stack supports:
-- **Keycloak 24** (OIDC/SAML identity provider)
-- **Kong 3.6** (JWT verification, rate limiting, IP restriction)
-- **PostgreSQL 16** (multi-tenant schema, audit logs)
-
-See [`docs/auth-setup-guide.md`](docs/auth-setup-guide.md) for the full setup guide.
 
 ---
 
