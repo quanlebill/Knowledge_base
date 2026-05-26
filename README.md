@@ -53,39 +53,6 @@ docker run -p 3000:3000 -p 8000:8000 aeroflow
 
 Open **http://localhost:3000**. The mock API is available at `http://localhost:8000/docs`.
 
-### Persist data between runs
-
-Mount the data directory so mutations (layer promotions, conflict resolutions, policy edits) survive container restarts:
-
-```bash
-docker run -p 3000:3000 -p 8000:8000 \
-  -v "$(pwd)/testing/data:/app/testing/data" \
-  aeroflow
-```
-
-### Run detached
-
-```bash
-docker run -d -p 3000:3000 -p 8000:8000 --name aeroflow aeroflow
-
-docker logs -f aeroflow   # stream logs
-docker stop aeroflow      # stop
-docker rm aeroflow        # remove
-```
-
-### With a real Gemini API key (optional)
-
-```bash
-docker run -p 3000:3000 -p 8000:8000 -e GEMINI_API_KEY=your_key aeroflow
-```
-
-### Verify the API is up
-
-```bash
-curl http://localhost:8000/api/fleet/stats
-```
-
----
 
 ---
 
