@@ -7,15 +7,13 @@ from pydantic import BaseModel, Field, ConfigDict
 import uuid
 from enum_type import *
 
-
-# Data - Documents
+# Model
 class Document(BaseModel):
     source_type: Literal[SourceType.Document]
     doc_type: str
     author: str | None
     published_date: datetime.datetime | None
 
-# Data - Image
 class Image(BaseModel):
     source_type: Literal[SourceType.Image]
     video_type: str
@@ -31,7 +29,6 @@ class Video(BaseModel):
     codec: str | None
     total_frame: int
 
-# Data - Web
 class Web(BaseModel):
     source_type: Literal[SourceType.Web]
     url: str

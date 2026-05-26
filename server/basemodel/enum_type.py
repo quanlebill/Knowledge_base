@@ -1,8 +1,8 @@
 from enum import Enum
 
-"""
-Define Categorical Data
-"""
+
+# Define Categorical Data
+
 class APIType(Enum):
     graph = "graph"
     qdrant = "qdrant"
@@ -43,7 +43,6 @@ class ConflictSeverity(Enum):
     high = "High"
     medium = "Medium"
     low = "Low"
-
 
 # Policy
 class PolicyFilteringType(Enum):

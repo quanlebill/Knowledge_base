@@ -6,7 +6,7 @@
 
 A multi-tenant Enterprise AI Operating System for RAG orchestration, agentic workflows, and industry intelligence.
 
-Built with **React 19 + TypeScript + Vite**, with a unified Express mock API server for local development.
+Built with **React 19 + TypeScript + Vite**, with a FastAPI mock server for local development.
 
 ---
 
@@ -23,17 +23,18 @@ Built with **React 19 + TypeScript + Vite**, with a unified Express mock API ser
 
 ## Running Locally
 
-**Prerequisites:** Node.js 20+
+**Prerequisites:** Node.js 20+, Python 3.13+
 
 ### 1. Install dependencies
 
 ```bash
 npm install
+pip install -r server/requirements.txt
 ```
 
 ### 2. Start the mock API server
 
-The mock server serves all backend data (documents, agents, deployments, knowledge graph, etc.) on port **4000**.
+The FastAPI mock server loads all data from `testing/data/*.json` and serves it on port **8000**.
 
 ```bash
 npm run mock:server
@@ -58,7 +59,7 @@ Open **http://localhost:3000** — the app starts in demo mode automatically (no
 
 ## Running with Docker
 
-The Docker image runs both the frontend and the mock API server in a single container. No environment variables required — demo mode and API bypass are enabled by default.
+The Docker image runs both the FastAPI mock server (port 8000) and the Vite frontend (port 3000) in a single container. No environment variables required — demo mode and API bypass are enabled by default.
 
 ### Build
 
@@ -69,15 +70,41 @@ docker build -t aeroflow .
 ### Run
 
 ```bash
-docker run -p 3000:3000 -p 4000:4000 aeroflow
+docker run -p 3000:3000 -p 8000:8000 aeroflow
 ```
 
-Open **http://localhost:3000**.
+Open **http://localhost:3000**. The mock API is available at `http://localhost:8000/docs`.
+
+### Persist data between runs
+
+Mount the data directory so mutations (layer promotions, conflict resolutions, policy edits) survive container restarts:
+
+```bash
+docker run -p 3000:3000 -p 8000:8000 \
+  -v "$(pwd)/testing/data:/app/testing/data" \
+  aeroflow
+```
+
+### Run detached
+
+```bash
+docker run -d -p 3000:3000 -p 8000:8000 --name aeroflow aeroflow
+
+docker logs -f aeroflow   # stream logs
+docker stop aeroflow      # stop
+docker rm aeroflow        # remove
+```
 
 ### With a real Gemini API key (optional)
 
 ```bash
-docker run -p 3000:3000 -p 4000:4000 -e GEMINI_API_KEY=your_key aeroflow
+docker run -p 3000:3000 -p 8000:8000 -e GEMINI_API_KEY=your_key aeroflow
+```
+
+### Verify the API is up
+
+```bash
+curl http://localhost:8000/api/fleet/stats
 ```
 
 ---
@@ -91,7 +118,7 @@ docker run -p 3000:3000 -p 4000:4000 -e GEMINI_API_KEY=your_key aeroflow
 │   ├── AppStateContext.tsx          # Global state (role, tenant, navigation)
 │   ├── lib/
 │   │   ├── AuthProvider.tsx        # Auth context — demo bypass enabled by default
-│   │   ├── mockApi.ts              # HTTP client pointing to mock server (port 4000)
+│   │   ├── mockApi.ts              # HTTP client — unwraps FastAPI ResponseModel envelope
 │   │   └── keycloak.ts             # Keycloak singleton (preserved for production)
 │   ├── components/
 │   │   ├── knowledge/              # Knowledge ops (ingestion, inventory, graph, warehouse)
@@ -102,15 +129,19 @@ docker run -p 3000:3000 -p 4000:4000 -e GEMINI_API_KEY=your_key aeroflow
 │   │   └── shared/                 # Reusable UI components
 │   ├── constants/                  # Static mock data for development
 │   └── types/                      # TypeScript interfaces
+├── server/
+│   ├── router.py                   # FastAPI route definitions + KBService interface
+│   ├── basemodel/                  # Pydantic request/response models
+│   └── requirements.txt            # Python dependencies (fastapi, uvicorn, pydantic)
 ├── testing/
-│   ├── server.js                   # Unified Express mock server (port 4000)
-│   └── data/                       # JSON data files loaded by mock server
+│   ├── server.py                   # JsonKBService — loads data/, serves all routes on :8000
+│   └── data/                       # JSON fixtures (documents, conflicts, policies, agents, …)
 ├── infra/
 │   ├── keycloak/                   # Realm config export
 │   ├── kong/                       # Kong gateway setup scripts
 │   └── sql/                        # PostgreSQL schema (auth, audit, compliance)
 ├── docs/                           # Architecture and API contract documentation
-├── Dockerfile                      # Runs frontend + mock server in one container
+├── Dockerfile                      # python:3.13-slim + Node 20; runs uvicorn + Vite
 └── .env.example                    # Environment variable reference
 ```
 
@@ -121,7 +152,7 @@ docker run -p 3000:3000 -p 4000:4000 -e GEMINI_API_KEY=your_key aeroflow
 | Command | Description |
 |---|---|
 | `npm run dev` | Start Vite dev server on port 3000 |
-| `npm run mock:server` | Start Express mock API server on port 4000 |
+| `npm run mock:server` | Start FastAPI mock server on port 8000 (requires Python + deps) |
 | `npm run build` | Production build to `dist/` |
 | `npm run lint` | TypeScript type check |
 | `npm run preview` | Preview production build locally |

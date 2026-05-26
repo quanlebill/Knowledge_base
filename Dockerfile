@@ -1,17 +1,25 @@
-FROM node:20-alpine
+FROM python:3.13-slim
 
 WORKDIR /app
 
-ENV GEMINI_API_KEY=bypass
-ENV VITE_MOCK_AUTH=true
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+COPY server/requirements.txt ./server/requirements.txt
+RUN pip install --no-cache-dir -r server/requirements.txt
 
 COPY package.json package-lock.json* ./
 RUN npm install
 
 COPY . .
 
-EXPOSE 3000
-EXPOSE 4000
+ENV VITE_MOCK_AUTH=true
 
-# Start both servers: mock API on 4000, Vite on 3000
-CMD ["sh", "-c", "node testing/server.js & npm run dev"]
+EXPOSE 3000
+EXPOSE 8000
+
+# FastAPI mock API on 8000, Vite dev server on 3000
+CMD ["sh", "-c", "uvicorn testing.server:app --host 0.0.0.0 --port 8000 & npm run dev"]

@@ -14,5 +14,5 @@ class Error(BaseModel):
 
 class ResponseModel(BaseModel):
     code: int = 200
-    data: dict | None = None
+    data: Any = None
     error: Error | None = None
