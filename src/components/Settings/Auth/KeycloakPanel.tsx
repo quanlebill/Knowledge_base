@@ -19,19 +19,24 @@ const HA_COMPONENTS = [
   { component: 'JWKS Grace Period', detail: 'Kong cache 60s grace when Keycloak unreachable', ok: true },
 ];
 
-/* ─── Mock data matching keycloak_realm_configs + keycloak_role_mappings ─ */
+/* ─── Realm data: r1 is the live connected realm from env vars ─────────── */
+const KC_URL    = import.meta.env.VITE_KEYCLOAK_URL    ?? 'http://localhost:8080';
+const KC_REALM  = import.meta.env.VITE_KEYCLOAK_REALM  ?? 'aeroflow';
+const KC_CLIENT = import.meta.env.VITE_KEYCLOAK_CLIENT ?? 'aeroflow-frontend';
+
 const REALMS = [
   {
     id: 'r1',
-    tenant: 'GlobalCorp',
-    realm_name: 'globalcorp-prod',
-    keycloak_base_url: 'https://auth.globalcorp.com',
-    client_id: 'aeroflow-frontend',
-    jwks_url: 'https://auth.globalcorp.com/realms/globalcorp-prod/protocol/openid-connect/certs',
-    token_endpoint: 'https://auth.globalcorp.com/realms/globalcorp-prod/protocol/openid-connect/token',
+    tenant: 'AeroFlow Platform',
+    realm_name: KC_REALM,
+    keycloak_base_url: KC_URL,
+    client_id: KC_CLIENT,
+    jwks_url: `${KC_URL}/realms/${KC_REALM}/protocol/openid-connect/certs`,
+    token_endpoint: `${KC_URL}/realms/${KC_REALM}/protocol/openid-connect/token`,
     token_ttl_seconds: 900,
     is_active: true,
-    data_residency: 'Asia-SE1',
+    data_residency: 'Local / Self-hosted',
+    isLive: true,
   },
   {
     id: 'r2',
@@ -44,6 +49,7 @@ const REALMS = [
     token_ttl_seconds: 1800,
     is_active: true,
     data_residency: 'US-East-1',
+    isLive: false,
   },
   {
     id: 'r3',
@@ -56,6 +62,7 @@ const REALMS = [
     token_ttl_seconds: 3600,
     is_active: false,
     data_residency: 'EU-West-3',
+    isLive: false,
   },
 ];
 
@@ -77,10 +84,9 @@ const MFA_POLICIES = [
 ];
 
 const ROLE_MAPPINGS = [
-  { platform_role: 'PLATFORM_ADMIN',    kc_role: 'platform-admin',     kc_client: 'aeroflow-backend' },
-  { platform_role: 'AI_ENGINEER',       kc_role: 'ai-engineer',        kc_client: 'aeroflow-backend' },
-  { platform_role: 'BUSINESS_OPERATOR', kc_role: 'business-operator',  kc_client: 'aeroflow-backend' },
-  { platform_role: 'EXECUTIVE',         kc_role: 'executive-viewer',   kc_client: 'aeroflow-backend' },
+  { platform_role: 'PLATFORM_ADMIN', kc_role: 'platform-admin',   kc_client: 'aeroflow-backend' },
+  { platform_role: 'AI_ENGINEER',    kc_role: 'ai-engineer',      kc_client: 'aeroflow-backend' },
+  { platform_role: 'EXECUTIVE',      kc_role: 'executive-viewer', kc_client: 'aeroflow-backend' },
 ];
 
 /* ─── Realm Detail Drawer ─────────────────────────────────────────── */
@@ -187,12 +193,12 @@ export const KeycloakPanel = () => {
         <section>
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-base font-bold text-[#111111]">Keycloak Realm Configs</h3>
-              <p className="text-xs text-[#5A5A5A] mt-0.5">Per-tenant SSO realm — 1:1 with tenant, stored in <code className="font-mono bg-[#F4E8C3] px-1 rounded">keycloak_realm_configs</code></p>
+              <h3 className="text-base font-bold text-white">Keycloak Realm Configs</h3>
+              <p className="text-xs text-slate-400 mt-0.5">Per-tenant SSO realm — 1:1 with tenant, stored in <code className="font-mono bg-white/10 px-1 rounded text-[#D9B86C]">keycloak_realm_configs</code></p>
             </div>
             <button
               onClick={() => setShowAddRealm(true)}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-[#111111] text-white rounded-xl text-xs font-bold hover:bg-[#2a2a2a] transition-colors"
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-white/10 border border-white/20 text-white rounded-xl text-xs font-bold hover:bg-white/15 transition-colors"
             >
               <Plus className="w-3.5 h-3.5" /> Add Realm
             </button>
@@ -223,6 +229,11 @@ export const KeycloakPanel = () => {
                       )}>
                         {realm.is_active ? 'ACTIVE' : 'INACTIVE'}
                       </span>
+                      {(realm as any).isLive && (
+                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-[#F4E8C3] text-[#B88719] border border-[#BFA66A]">
+                          CONNECTED
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-3 mt-0.5">
                       <span className="text-[10px] text-[#777]">{realm.tenant}</span>
@@ -246,8 +257,8 @@ export const KeycloakPanel = () => {
         {/* ── SSO Federation Bridges ── */}
         <section>
           <div className="mb-4">
-            <h3 className="text-base font-bold text-[#111111]">Federated Identity Bridges</h3>
-            <p className="text-xs text-[#5A5A5A] mt-0.5">Keycloak Identity Broker — SAML / OIDC federation from external providers</p>
+            <h3 className="text-base font-bold text-white">Federated Identity Bridges</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Keycloak Identity Broker — SAML / OIDC federation from external providers</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -279,8 +290,8 @@ export const KeycloakPanel = () => {
         {/* ── MFA & Session Policies ── */}
         <section>
           <div className="mb-4">
-            <h3 className="text-base font-bold text-[#111111]">MFA & Session Security Policies</h3>
-            <p className="text-xs text-[#5A5A5A] mt-0.5">Configured in Keycloak Authentication → Required Actions & Session settings</p>
+            <h3 className="text-base font-bold text-white">MFA & Session Security Policies</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Configured in Keycloak Authentication → Required Actions & Session settings</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -313,8 +324,8 @@ export const KeycloakPanel = () => {
         {/* ── Keycloak High Availability (Comment #12) ── */}
         <section>
           <div className="mb-4">
-            <h3 className="text-base font-bold text-[#111111]">Keycloak High Availability</h3>
-            <p className="text-xs text-[#5A5A5A] mt-0.5">Active/Active cluster — eliminates single point of failure for auth service</p>
+            <h3 className="text-base font-bold text-white">Keycloak High Availability</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Active/Active cluster — eliminates single point of failure for auth service</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">

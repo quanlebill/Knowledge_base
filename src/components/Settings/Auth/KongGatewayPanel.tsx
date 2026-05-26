@@ -5,11 +5,14 @@ import {
 } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 
-/* Kong OIDC plugin config — updated per review Comment #0 */
+const KC_URL   = import.meta.env.VITE_KEYCLOAK_URL   ?? 'http://localhost:8080';
+const KC_REALM = import.meta.env.VITE_KEYCLOAK_REALM ?? 'aeroflow';
+
+/* Kong OIDC plugin config — discovery URL uses real env vars */
 const KONG_PLUGIN_CONFIG = `plugins:
   - name: oidc
     config:
-      discovery: https://auth.yourdomain.com/realms/aeroflow/.well-known/openid-configuration
+      discovery: ${KC_URL}/realms/${KC_REALM}/.well-known/openid-configuration
       # JWKS cache TTL: 300s (Comment #0)
       # Force-refresh via Kong Admin API when Keycloak rotates key
       jwks_uri_refresh_interval: 300
@@ -29,9 +32,9 @@ def get_current_user(
     return {"user_id": user_id, "roles": user_roles.split(",")}`;
 
 const TENANTS_STATUS = [
-  { tenant: 'GlobalCorp',  realm: 'globalcorp-prod',    jwks_cached: true,  last_verified: '12s ago',  requests_1h: '48,204' },
-  { tenant: 'FinanceHub',  realm: 'financehub-uat',     jwks_cached: true,  last_verified: '4m ago',   requests_1h: '12,840' },
-  { tenant: 'EuroTrust',   realm: 'eurotrust-staging',  jwks_cached: false, last_verified: 'N/A',      requests_1h: '0' },
+  { tenant: 'AeroFlow Platform', realm: KC_REALM, jwks_cached: true, last_verified: 'Live', requests_1h: '—', isLive: true },
+  { tenant: 'FinanceHub',  realm: 'financehub-uat',     jwks_cached: true,  last_verified: '4m ago',   requests_1h: '12,840', isLive: false },
+  { tenant: 'EuroTrust',   realm: 'eurotrust-staging',  jwks_cached: false, last_verified: 'N/A',      requests_1h: '0', isLive: false },
 ];
 
 const INJECTED_HEADERS = [
@@ -72,8 +75,8 @@ export const KongGatewayPanel = () => {
       {/* ── Auth Flow Architecture ── */}
       <section>
         <div className="mb-4">
-          <h3 className="text-base font-bold text-[#111111]">Auth Flow Architecture</h3>
-          <p className="text-xs text-[#5A5A5A] mt-0.5">Kong is the single JWT verification point — backends trust injected headers</p>
+          <h3 className="text-base font-bold text-white">Auth Flow Architecture</h3>
+          <p className="text-xs text-slate-400 mt-0.5">Kong is the single JWT verification point — backends trust injected headers</p>
         </div>
 
         <div className="flex flex-col gap-2">
@@ -100,8 +103,8 @@ export const KongGatewayPanel = () => {
       <section>
         <div className="flex items-center justify-between mb-3">
           <div>
-            <h3 className="text-base font-bold text-[#111111]">Kong OIDC Plugin</h3>
-            <p className="text-xs text-[#5A5A5A]">Deployed per-route or globally via Kong Admin API</p>
+            <h3 className="text-base font-bold text-white">Kong OIDC Plugin</h3>
+            <p className="text-xs text-slate-400">Deployed per-route or globally via Kong Admin API</p>
           </div>
           <button
             onClick={() => copy(KONG_PLUGIN_CONFIG, setCopiedPlugin)}
@@ -119,8 +122,8 @@ export const KongGatewayPanel = () => {
       {/* ── Injected Headers ── */}
       <section>
         <div className="mb-3">
-          <h3 className="text-base font-bold text-[#111111]">Injected Headers (Backend contract)</h3>
-          <p className="text-xs text-[#5A5A5A]">Kong sets these after JWT verification — backends read directly, no re-verify</p>
+          <h3 className="text-base font-bold text-white">Injected Headers (Backend contract)</h3>
+          <p className="text-xs text-slate-400">Kong sets these after JWT verification — backends read directly, no re-verify</p>
         </div>
 
         <div className="border border-[#E8DFC8] rounded-2xl overflow-hidden bg-white">
@@ -149,8 +152,8 @@ export const KongGatewayPanel = () => {
       <section>
         <div className="flex items-center justify-between mb-3">
           <div>
-            <h3 className="text-base font-bold text-[#111111]">Backend — FastAPI Trust Pattern</h3>
-            <p className="text-xs text-[#5A5A5A]">Backend does NOT verify JWT — reads Kong headers only</p>
+            <h3 className="text-base font-bold text-white">Backend — FastAPI Trust Pattern</h3>
+            <p className="text-xs text-slate-400">Backend does NOT verify JWT — reads Kong headers only</p>
           </div>
           <button
             onClick={() => copy(BACKEND_TRUST_CONFIG, setCopiedBackend)}
@@ -168,8 +171,8 @@ export const KongGatewayPanel = () => {
       {/* ── Per-tenant JWKS Status ── */}
       <section>
         <div className="mb-4">
-          <h3 className="text-base font-bold text-[#111111]">JWKS Cache Status</h3>
-          <p className="text-xs text-[#5A5A5A]">Kong fetches Keycloak JWKS at first request per realm and caches automatically</p>
+          <h3 className="text-base font-bold text-white">JWKS Cache Status</h3>
+          <p className="text-xs text-slate-400">Kong fetches Keycloak JWKS at first request per realm and caches automatically</p>
         </div>
 
         <div className="space-y-2">
@@ -181,8 +184,13 @@ export const KongGatewayPanel = () => {
                   t.jwks_cached ? 'bg-emerald-500' : 'bg-[#DDD]',
                 )} />
                 <div>
-                  <span className="text-sm font-bold text-[#111111]">{t.tenant}</span>
-                  <span className="ml-2 text-[10px] font-mono text-[#777]">{t.realm}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-[#111111]">{t.tenant}</span>
+                    {(t as any).isLive && (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[#F4E8C3] text-[#B88719] border border-[#BFA66A]">CONNECTED</span>
+                    )}
+                  </div>
+                  <span className="text-[10px] font-mono text-[#777]">{t.realm}</span>
                 </div>
               </div>
               <div className="flex items-center gap-6 text-xs">
@@ -217,8 +225,8 @@ export const KongGatewayPanel = () => {
       {/* ── Network Segmentation (Comment #1) ── */}
       <section>
         <div className="mb-3">
-          <h3 className="text-base font-bold text-[#111111]">Network Segmentation</h3>
-          <p className="text-xs text-[#5A5A5A]">Backend only accepts requests from Kong — prevents header spoofing of X-User-Id / X-User-Roles</p>
+          <h3 className="text-base font-bold text-white">Network Segmentation</h3>
+          <p className="text-xs text-slate-400">Backend only accepts requests from Kong — prevents header spoofing of X-User-Id / X-User-Roles</p>
         </div>
 
         <div className="space-y-2">

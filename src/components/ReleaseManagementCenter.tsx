@@ -1,139 +1,106 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Zap, GitBranch, ShieldCheck, History, Search, Filter, Plus, Ship, Rocket, RefreshCcw, AlertTriangle, Package, Settings2, CheckCircle2, XCircle, Database, Lock, Bell } from 'lucide-react';
+import {
+  Rocket, History, RotateCcw, CheckCircle2, XCircle,
+  Clock, Search, AlertTriangle, Activity
+} from 'lucide-react';
 import { cn } from '../lib/utils';
-import { OperationalHeader } from './shared/OperationalHeader';
-import { StatusBadge } from './shared/StatusBadge';
-import { StandardMetricsGrid } from './shared/ObservabilityPanel';
-import { DeploymentOverview as DeploymentCenter } from './DeploymentCenter/Overview';
-import { DetailDrawer } from './shared/DetailDrawer';
-
 import { useAppState } from '../AppStateContext';
-import { Placeholder } from './shared/Placeholder';
+import { MOCK_DEPLOYMENTS } from '../constants/deploymentMock';
 
-type ReleaseSubTab = 'OVERVIEW' | 'PIPELINE' | 'PACKAGE' | 'ENV' | 'VALIDATION' | 'ROLLBACK' | 'HISTORY' | 'DRIFT';
+type Tab = 'DEPLOYMENTS' | 'HISTORY' | 'ROLLBACK';
+
+const RELEASE_HISTORY = [
+  { id: 'REL-2841', name: 'GlobalCorp_Agent v2.5',      env: 'PROD',    status: 'SUCCESS',     by: 'longth',  at: '2026-05-25 14:22', duration: '4m 12s', version: 'v2.5.0' },
+  { id: 'REL-2840', name: 'refund_policy_index v3.1',   env: 'PROD',    status: 'SUCCESS',     by: 'nguyenk', at: '2026-05-24 09:45', duration: '1m 58s', version: 'v3.1.0' },
+  { id: 'REL-2839', name: 'onboarding_workflow v1.8',   env: 'UAT',     status: 'FAILED',      by: 'thaon',   at: '2026-05-23 16:30', duration: '2m 11s', version: 'v1.8.0' },
+  { id: 'REL-2838', name: 'GlobalCorp_Agent v2.4',      env: 'PROD',    status: 'ROLLED_BACK', by: 'longth',  at: '2026-05-22 11:15', duration: '6m 40s', version: 'v2.4.0' },
+  { id: 'REL-2837', name: 'pricing_engine v1.2',        env: 'STAGING', status: 'SUCCESS',     by: 'minhp',   at: '2026-05-21 13:00', duration: '3m 22s', version: 'v1.2.0' },
+  { id: 'REL-2836', name: 'auth_policy v4.0',           env: 'PROD',    status: 'SUCCESS',     by: 'longth',  at: '2026-05-20 08:55', duration: '2m 05s', version: 'v4.0.0' },
+];
+
+const ROLLBACK_TARGETS = [
+  { id: 'REL-2841', name: 'GlobalCorp_Agent',     current: 'v2.5.0', previous: 'v2.4.0', env: 'PROD'    },
+  { id: 'REL-2840', name: 'refund_policy_index',  current: 'v3.1.0', previous: 'v3.0.2', env: 'PROD'    },
+  { id: 'REL-2837', name: 'pricing_engine',       current: 'v1.2.0', previous: 'v1.1.5', env: 'STAGING' },
+];
+
+const HISTORY_STATUS: Record<string, { color: string; bg: string; icon: React.ElementType }> = {
+  SUCCESS:     { color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200', icon: CheckCircle2 },
+  FAILED:      { color: 'text-red-700',     bg: 'bg-red-50 border-red-200',         icon: XCircle      },
+  ROLLED_BACK: { color: 'text-blue-700',    bg: 'bg-blue-50 border-blue-200',       icon: RotateCcw    },
+};
+
+const DEPLOY_STATUS: Record<string, { label: string; color: string; bg: string }> = {
+  SUCCESS:          { label: 'Success',     color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200'  },
+  FAILED:           { label: 'Failed',      color: 'text-red-700',     bg: 'bg-red-50 border-red-200'          },
+  VALIDATING:       { label: 'Validating',  color: 'text-amber-700',   bg: 'bg-amber-50 border-amber-200'      },
+  PROMOTING:        { label: 'Promoting',   color: 'text-amber-700',   bg: 'bg-amber-50 border-amber-200'      },
+  BUILDING:         { label: 'Building',    color: 'text-blue-700',    bg: 'bg-blue-50 border-blue-200'        },
+  WAITING_APPROVAL: { label: 'Approval',    color: 'text-purple-700',  bg: 'bg-purple-50 border-purple-200'    },
+  ROLLED_BACK:      { label: 'Rolled Back', color: 'text-slate-600',   bg: 'bg-slate-50 border-slate-200'      },
+  QUEUED:           { label: 'Queued',      color: 'text-slate-600',   bg: 'bg-slate-50 border-slate-200'      },
+};
 
 const ReleaseManagementCenter = () => {
-  const { subTab, setSubTab } = useAppState();
-  const activeSubTab = (subTab['release-management'] as ReleaseSubTab) ?? 'PIPELINE';
-  const setActiveSubTab = (id: ReleaseSubTab) => setSubTab('release-management', id);
+  const { subTab, setSubTab }       = useAppState();
+  const [search, setSearch]         = useState('');
+  const [confirmId, setConfirmId]   = useState<string | null>(null);
 
-  /* PACKAGE & DRIFT secondary-nav items drive the drawers */
-  const showPackageBuilder = activeSubTab === 'PACKAGE';
-  const showDriftManager   = activeSubTab === 'DRIFT';
-  const setShowPackageBuilder = (v: boolean) => setActiveSubTab(v ? 'PACKAGE' : 'PIPELINE');
-  const setShowDriftManager   = (v: boolean) => setActiveSubTab(v ? 'DRIFT' : 'PIPELINE');
+  const activeTab    = (subTab['release-management'] as Tab) ?? 'DEPLOYMENTS';
+  const setActiveTab = (id: Tab) => setSubTab('release-management', id);
 
-  const mainMetrics = [
-    { label: 'Active Pipelines', value: '18', trend: 'OPTIMAL', trendType: 'NEUTRAL' as const, icon: Rocket, color: 'brand' as const },
-    { label: 'Last Release', value: '14m ago', icon: History, color: 'blue' as const },
-    { label: 'Validation Score', value: '98%', trend: '+2%', trendType: 'UP' as const, icon: ShieldCheck, color: 'emerald' as const },
-    { label: 'Open Drift Alerts', value: '0', trend: 'SECURE', trendType: 'NEUTRAL' as const, icon: AlertTriangle, color: 'amber' as const },
+  const tabs = [
+    { id: 'DEPLOYMENTS', label: 'Deployments',    icon: Rocket   },
+    { id: 'HISTORY',     label: 'Release History', icon: History  },
+    { id: 'ROLLBACK',    label: 'Rollback Center', icon: RotateCcw },
   ];
 
-  const subTabs = [
-    { id: 'OVERVIEW',   label: 'Overview',     icon: GitBranch },
-    { id: 'PIPELINE',   label: 'Pipeline',     icon: Rocket },
-    { id: 'PACKAGE',    label: 'Package',      icon: Package },
-    { id: 'ENV',        label: 'Environments', icon: Settings2 },
-    { id: 'VALIDATION', label: 'Validation',   icon: ShieldCheck },
-    { id: 'ROLLBACK',   label: 'Rollback',     icon: RefreshCcw },
-    { id: 'HISTORY',    label: 'History',      icon: History },
-    { id: 'DRIFT',      label: 'Drift',        icon: AlertTriangle },
-  ];
+  const activeCount      = MOCK_DEPLOYMENTS.filter(d =>
+    ['BUILDING', 'VALIDATING', 'PROMOTING', 'WAITING_APPROVAL'].includes(d.status)
+  ).length;
+
+  const filteredHistory  = RELEASE_HISTORY.filter(r =>
+    r.name.toLowerCase().includes(search.toLowerCase()) ||
+    r.id.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
-    <div className="space-y-8">
-      <DetailDrawer
-        isOpen={showPackageBuilder}
-        onClose={() => setShowPackageBuilder(false)}
-        title="Deployment Package Builder"
-        subtitle="Bundle Agent Configs, KB Snapshots & Workflow Logic"
-        icon={Package}
-        size="wide"
-        persistKey="release-package-builder"
-      >
-        <div className="p-6 space-y-6">
-           <div className="drawer-section-card">
-              <h4 className="text-xs font-bold uppercase tracking-widest text-[#5A5A5A] mb-4">Select Baseline Artifacts</h4>
-              <div className="space-y-2">
-                 {['GlobalCorp_Agent_v2.4', 'refund_policy_gold_index', 'onboarding_workflow_final'].map(a => (
-                   <button key={a} className="w-full flex justify-between items-center px-4 py-3 bg-white rounded-xl border-2 border-[#BFA66A] hover:border-[#8A5A00] hover:bg-[#FFF9E8] cursor-pointer transition-all text-left">
-                      <span className="text-sm text-[#111111] font-medium">{a}</span>
-                      <Plus className="w-4 h-4 text-[#8A5A00]" />
-                   </button>
-                 ))}
-              </div>
-           </div>
-           <div className="ai-insight-block">
-              <h4 className="insight-label text-xs font-bold uppercase tracking-widest mb-2">Validation Pipeline</h4>
-              <p className="insight-body text-sm">Automatic red-teaming will begin upon package assembly.</p>
-           </div>
-        </div>
-      </DetailDrawer>
+    <div className="space-y-6">
 
-      <DetailDrawer
-        isOpen={showDriftManager}
-        onClose={() => setShowDriftManager(false)}
-        title="Environment Alignment"
-        subtitle="Reconcile Configuration Discrepancies across Infrastructure"
-        icon={Settings2}
-        size="standard"
-        persistKey="release-drift"
-      >
-        <div className="p-6">
-           <div className="space-y-3">
-              {[
-                { key: 'MODEL_TEMP', prod: '0.7', uat: '0.8', status: 'MISMATCH' },
-                { key: 'EMBED_DIM',  prod: '1536', uat: '1536', status: 'MATCH' },
-                { key: 'MAX_TOKENS', prod: '4096', uat: '1024', status: 'CRITICAL_DRIFT' },
-              ].map(drift => (
-                <div key={drift.key} className="drawer-section-card flex items-center justify-between">
-                   <div>
-                      <div className="text-[11px] font-bold text-[#5A5A5A] uppercase tracking-wide">{drift.key}</div>
-                      <div className="flex gap-4 mt-1.5 text-[13px]">
-                         <span className="text-[#5A5A5A]">PROD: <span className="text-[#111111] font-bold">{drift.prod}</span></span>
-                         <span className="text-[#5A5A5A]">UAT: <span className="text-[#111111] font-bold">{drift.uat}</span></span>
-                      </div>
-                   </div>
-                   <div className={cn(
-                     'px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border',
-                     drift.status === 'MATCH'    ? 'badge-healthy' :
-                     drift.status === 'MISMATCH' ? 'badge-warning' : 'badge-failed'
-                   )}>{drift.status}</div>
-                </div>
-              ))}
-           </div>
+      {/* Header */}
+      <div>
+        <div className="flex items-center gap-2 text-[#B88719] text-[10px] font-bold font-mono tracking-widest uppercase mb-2">
+          <Rocket className="w-3.5 h-3.5" />
+          Control Plane · Release
         </div>
-      </DetailDrawer>
+        <h1 className="text-3xl font-display font-medium tracking-tight text-[#111111]">Release Management</h1>
+        <p className="text-[#5A5A5A] mt-1 text-sm">Deployment pipeline, release history, and rollback operations.</p>
+      </div>
 
-      <OperationalHeader 
-        title="Release Management"
-        subtitle="Continuous Deployment, Model Versioning & Automated Model Promotion"
-        breadcrumbs={[{ label: 'Release' }, { label: 'Management' }]}
-        status={<StatusBadge status="STABLE" size="lg" />}
-        actions={
-          <div className="flex gap-3">
-              <button
-                onClick={() => setShowPackageBuilder(true)}
-                className="btn-primary"
-              >
-                <Plus className="w-4 h-4" />
-                CREATE RELEASE
-              </button>
+      {/* Summary Metrics */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { label: 'Active Deployments', value: String(activeCount), icon: Rocket,       color: 'text-[#B88719]' },
+          { label: 'Last Release',       value: '14m ago',           icon: Clock,        color: 'text-blue-600'  },
+          { label: 'Success Rate (7d)',  value: '94%',               icon: CheckCircle2, color: 'text-emerald-600' },
+          { label: 'Rollbacks (30d)',    value: '1',                 icon: RotateCcw,    color: 'text-amber-600' },
+        ].map(s => (
+          <div key={s.label} className="glass-panel p-5 rounded-2xl">
+            <s.icon className={cn('w-4 h-4 mb-3', s.color)} />
+            <div className="text-2xl font-display font-medium text-[#111111]">{s.value}</div>
+            <div className="text-[10px] text-[#5A5A5A] font-bold uppercase tracking-widest mt-1">{s.label}</div>
           </div>
-        }
-      />
+        ))}
+      </div>
 
-      <StandardMetricsGrid metrics={mainMetrics} />
-
-      {/* Sub-Navigation */}
-      <div className="sub-tab-bar max-w-full">
-        {subTabs.map((tab) => (
+      {/* Tab Bar */}
+      <div className="sub-tab-bar">
+        {tabs.map(tab => (
           <button
             key={tab.id}
-            onClick={() => setActiveSubTab(tab.id as any)}
-            className={cn('sub-tab', activeSubTab === tab.id && 'active')}
+            onClick={() => setActiveTab(tab.id as Tab)}
+            className={cn('sub-tab', activeTab === tab.id && 'active')}
           >
             <tab.icon className="tab-icon w-3.5 h-3.5" />
             {tab.label}
@@ -142,212 +109,246 @@ const ReleaseManagementCenter = () => {
       </div>
 
       <motion.div
-        key={activeSubTab}
-        initial={{ opacity: 0, y: 10 }}
+        key={activeTab}
+        initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
+        transition={{ duration: 0.22 }}
       >
-        {(activeSubTab === 'OVERVIEW' || activeSubTab === 'PIPELINE') && (
-          <DeploymentCenter
-            onNewDeployment={() => setShowPackageBuilder(true)}
-            onOpenApprovals={() => {}}
-            onOpenDrift={() => setShowDriftManager(true)}
-          />
-        )}
-        {activeSubTab === 'ENV' && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {[
-                { env: 'Dev', store: 'PostgreSQL self-hosted', gate: 'Auto-promote when tests pass', secret: '—', color: 'bg-[#E3F2FD]', text: 'text-[#0D47A1]', border: 'border-[#BBDEFB]' },
-                { env: 'Staging / UAT', store: 'PostgreSQL self-hosted', gate: 'Manual approval via UI dashboard', secret: '—', color: 'bg-[#FFF3E0]', text: 'text-[#E65100]', border: 'border-[#FFE0B2]' },
-                { env: 'Production', store: 'PostgreSQL self-hosted + OpenBao', gate: 'Dual approval + validation score ≥ 95%', secret: 'OpenBao', color: 'bg-[#E8F5E9]', text: 'text-[#1B5E20]', border: 'border-[#C8E6C9]' },
-              ].map((e, i) => (
-                <div key={i} className={cn('p-5 rounded-2xl border', e.color, e.border)}>
-                  <div className={cn('text-lg font-black mb-3', e.text)}>{e.env}</div>
-                  <div className="space-y-2 text-[11px]">
-                    <div className="flex gap-2"><span className="font-bold text-[#5A5A5A] w-20 shrink-0">Config Store</span><span className="text-[#111111] font-mono">{e.store}</span></div>
-                    <div className="flex gap-2"><span className="font-bold text-[#5A5A5A] w-20 shrink-0">Promotion</span><span className="text-[#111111]">{e.gate}</span></div>
-                    {e.secret !== '—' && <div className="flex gap-2"><span className="font-bold text-[#5A5A5A] w-20 shrink-0">Secrets</span><span className="text-[#111111]">{e.secret}</span></div>}
-                  </div>
-                </div>
-              ))}
+
+        {/* ── DEPLOYMENTS ─────────────────────────────────── */}
+        {activeTab === 'DEPLOYMENTS' && (
+          <div className="glass-panel rounded-2xl overflow-hidden">
+            <div className="px-5 py-4 bg-[#FDFAF2] border-b border-[#E8DFC8] flex items-center justify-between">
+              <h3 className="text-sm font-bold text-[#111111] flex items-center gap-2">
+                <Activity className="w-4 h-4 text-[#B88719]" />
+                Active & Recent Deployments
+              </h3>
+              <span className="text-[10px] font-mono text-[#777]">{activeCount} active</span>
             </div>
 
-            <div className="p-4 bg-white border border-[#E8DFC8] rounded-2xl">
-              <div className="flex items-center gap-2 mb-3">
-                <Database className="w-4 h-4 text-[#B88719]" />
-                <h4 className="text-sm font-bold text-[#111111]">Config Store — PostgreSQL self-hosted (all envs)</h4>
-              </div>
-              <p className="text-[11px] text-[#777]">
-                AWS Redis replaced in Dev — Redis loses all data on restart, unsuitable for environment config.
-                All environments now use PostgreSQL self-hosted for durable, queryable configuration storage.
-              </p>
-            </div>
+            {/* Desktop */}
+            <table className="hidden lg:table w-full text-left">
+              <thead className="bg-[#FDFAF2] border-b border-[#E8DFC8] text-[10px] font-bold text-[#777] uppercase tracking-[0.1em]">
+                <tr>
+                  <th className="px-5 py-3">Package</th>
+                  <th className="px-4 py-3">Env</th>
+                  <th className="px-4 py-3">Owner</th>
+                  <th className="px-4 py-3">Started</th>
+                  <th className="px-4 py-3 text-center">Risk</th>
+                  <th className="px-4 py-3">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#F0E8D4]">
+                {MOCK_DEPLOYMENTS.map(dep => {
+                  const sc = DEPLOY_STATUS[dep.status] ?? DEPLOY_STATUS['QUEUED'];
+                  return (
+                    <tr key={dep.id} className="hover:bg-[#FFF9E8] transition-colors">
+                      <td className="px-5 py-3.5">
+                        <div className="text-xs font-bold text-[#111111] uppercase">{dep.name}</div>
+                        <div className="text-[9px] font-mono text-[#777] mt-0.5">{dep.id} · {dep.version}</div>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <span className="px-2 py-0.5 bg-[#F4E8C3] border border-[#BFA66A] rounded text-[9px] font-bold text-[#5A5A5A]">
+                          {dep.env}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 text-[11px] font-mono text-[#5A5A5A]">{dep.owner}</td>
+                      <td className="px-4 py-3.5 text-[10px] font-mono text-[#777]">{dep.startedAt}</td>
+                      <td className="px-4 py-3.5 text-center">
+                        <span className={cn('text-xs font-bold', dep.riskScore > 30 ? 'text-red-600' : 'text-emerald-600')}>
+                          {dep.riskScore}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <div className={cn('inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border', sc.bg, sc.color)}>
+                          {sc.label}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
 
-            <div className="p-4 bg-white border border-[#E8DFC8] rounded-2xl">
-              <div className="flex items-center gap-2 mb-3">
-                <Bell className="w-4 h-4 text-[#B88719]" />
-                <h4 className="text-sm font-bold text-[#111111]">Manual Approval — UI Dashboard</h4>
-              </div>
-              <p className="text-[11px] text-[#777]">
-                Reviewer receives Slack/email notification → opens UI dashboard → reviews config diff → clicks Approve / Reject.
-                Kong Admin API is only the backend of the approval flow; approval actions are driven from the dashboard UI.
-              </p>
-            </div>
-          </div>
-        )}
-        {activeSubTab === 'VALIDATION' && (
-          <div className="space-y-6">
-            <div className="p-4 bg-[#FDFAF2] border border-[#E8DFC8] rounded-2xl">
-              <h4 className="text-sm font-bold text-[#111111] mb-1">Security Gate — runs before every promote</h4>
-              <p className="text-[11px] text-[#777]">All three scans must pass before artifact is promoted to Staging or Production. Results stored in MongoDB package manifest.</p>
-            </div>
-
-            <div className="space-y-3">
-              {[
-                { tool: 'Trivy', type: 'Container image CVE scan', fail: 'Any critical/high CVE', status: 'PASS', color: 'emerald' },
-                { tool: 'Bandit', type: 'SAST — Python source code', fail: 'High severity issue', status: 'PASS', color: 'emerald' },
-                { tool: 'pip-audit', type: 'Dependency vulnerability', fail: 'Known CVE in dependencies', status: 'PASS', color: 'emerald' },
-              ].map((scan, i) => (
-                <div key={i} className="flex items-center justify-between p-4 bg-white border border-[#E8DFC8] rounded-2xl">
-                  <div className="flex items-center gap-3">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                    <div>
-                      <div className="text-sm font-bold text-[#111111]">{scan.tool} <span className="text-[10px] font-normal text-[#777]">— {scan.type}</span></div>
-                      <div className="text-[10px] text-[#999]">Fail condition: {scan.fail}</div>
+            {/* Mobile */}
+            <div className="lg:hidden divide-y divide-[#F0E8D4]">
+              {MOCK_DEPLOYMENTS.map(dep => {
+                const sc = DEPLOY_STATUS[dep.status] ?? DEPLOY_STATUS['QUEUED'];
+                return (
+                  <div key={dep.id} className="p-4 space-y-2 hover:bg-[#FFF9E8]">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <div className="text-xs font-bold text-[#111111] uppercase">{dep.name}</div>
+                        <div className="text-[9px] font-mono text-[#777]">{dep.id}</div>
+                      </div>
+                      <div className={cn('text-[9px] font-bold px-1.5 py-0.5 rounded-full border', sc.bg, sc.color)}>
+                        {sc.label}
+                      </div>
+                    </div>
+                    <div className="flex gap-3 text-[10px] font-mono text-[#777]">
+                      <span>{dep.env}</span>
+                      <span>{dep.owner}</span>
+                      <span>{dep.startedAt}</span>
                     </div>
                   </div>
-                  <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">{scan.status}</span>
-                </div>
-              ))}
-            </div>
-
-            <div className="p-4 bg-white border border-[#E8DFC8] rounded-2xl">
-              <h4 className="text-sm font-bold text-[#111111] mb-3">Pipeline Flow</h4>
-              <div className="flex flex-col gap-1 text-[11px] font-mono text-[#555]">
-                {['Build artifact', 'Security Scan (Trivy + Bandit + pip-audit)', 'FAIL → Pipeline blocked, alert team', 'PASS → Scan result written to Package manifest (MongoDB)', 'Promote to Staging / Production'].map((step, i) => (
-                  <div key={i} className={cn('px-3 py-1.5 rounded-lg', i === 2 ? 'bg-red-50 text-red-700' : i === 3 ? 'bg-emerald-50 text-emerald-700' : 'bg-[#F8F5EC]')}>{step}</div>
-                ))}
-              </div>
+                );
+              })}
             </div>
           </div>
         )}
-        {activeSubTab === 'ROLLBACK' && (
-          <div className="space-y-6">
-            <div className="p-4 bg-[#FDFAF2] border border-[#E8DFC8] rounded-2xl">
-              <h4 className="text-sm font-bold text-[#111111] mb-1">Compensating Transaction Pattern</h4>
-              <p className="text-[11px] text-[#777]">Each rollback step has an undo action. If any step fails, rollback stops immediately and records <code className="font-mono bg-[#F4E8C3] px-1 rounded">PARTIAL_ROLLBACK</code> state — never leaves system in inconsistent state.</p>
+
+        {/* ── HISTORY ─────────────────────────────────────── */}
+        {activeTab === 'HISTORY' && (
+          <div className="space-y-4">
+            <div className="flex justify-end">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#777]" />
+                <input
+                  type="text"
+                  placeholder="Search releases..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="bg-white border border-[#BFA66A] pl-8 pr-4 py-1.5 rounded-lg text-[11px] w-52 focus:outline-none focus:border-[#8A5A00] font-mono transition-colors"
+                />
+              </div>
             </div>
 
-            <div className="border border-[#E8DFC8] rounded-2xl overflow-hidden bg-white">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-[#FDFAF2] border-b border-[#E8DFC8]">
-                    <th className="px-4 py-2.5 text-left text-[10px] font-bold text-[#777] uppercase tracking-wide">Step</th>
-                    <th className="px-4 py-2.5 text-left text-[10px] font-bold text-[#777] uppercase tracking-wide">Action</th>
-                    <th className="px-4 py-2.5 text-left text-[10px] font-bold text-[#777] uppercase tracking-wide">Compensating Action</th>
+            <div className="glass-panel rounded-2xl overflow-hidden">
+              {/* Desktop */}
+              <table className="hidden lg:table w-full text-left">
+                <thead className="bg-[#FDFAF2] border-b border-[#E8DFC8] text-[10px] font-bold text-[#777] uppercase tracking-[0.1em]">
+                  <tr>
+                    <th className="px-5 py-3">Release</th>
+                    <th className="px-4 py-3">Env</th>
+                    <th className="px-4 py-3">By</th>
+                    <th className="px-4 py-3">Timestamp</th>
+                    <th className="px-4 py-3">Duration</th>
+                    <th className="px-4 py-3">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#F0E8D4]">
-                  {[
-                    { step: 1, action: 'Update release pointer — PostgreSQL', undo: 'Revert pointer to previous version' },
-                    { step: 2, action: 'Reroute Kong upstream', undo: 'Restore Kong route to previous upstream' },
-                    { step: 3, action: 'Redeploy snapshot from MinIO', undo: '—' },
-                  ].map((row, i) => (
-                    <tr key={i} className="hover:bg-[#FDFAF2]">
-                      <td className="px-4 py-3 text-xs font-black text-[#B88719]">{row.step}</td>
-                      <td className="px-4 py-3 text-xs text-[#111111]">{row.action}</td>
-                      <td className="px-4 py-3 text-xs text-[#777] font-mono">{row.undo}</td>
-                    </tr>
-                  ))}
+                  {filteredHistory.map(r => {
+                    const sc = HISTORY_STATUS[r.status] ?? HISTORY_STATUS['SUCCESS'];
+                    const Icon = sc.icon;
+                    return (
+                      <tr key={r.id} className="hover:bg-[#FFF9E8] transition-colors">
+                        <td className="px-5 py-3.5">
+                          <div className="text-xs font-bold text-[#111111] uppercase">{r.name}</div>
+                          <div className="text-[9px] font-mono text-[#777] mt-0.5">{r.id} · {r.version}</div>
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <span className="px-2 py-0.5 bg-[#F4E8C3] border border-[#BFA66A] rounded text-[9px] font-bold text-[#5A5A5A]">
+                            {r.env}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3.5 text-[11px] font-mono text-[#5A5A5A]">{r.by}</td>
+                        <td className="px-4 py-3.5 text-[10px] font-mono text-[#777]">{r.at}</td>
+                        <td className="px-4 py-3.5 text-[10px] font-mono text-[#777]">{r.duration}</td>
+                        <td className="px-4 py-3.5">
+                          <div className={cn('inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full border', sc.bg, sc.color)}>
+                            <Icon className="w-3 h-3" />
+                            {r.status.replace('_', ' ')}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-4 bg-white border border-[#E8DFC8] rounded-2xl">
-                <div className="text-sm font-bold text-[#111111] mb-1">Storage</div>
-                <div className="text-[11px] text-[#777]">Immutable snapshots in MinIO (version-tagged). Release pointer tracked in PostgreSQL.</div>
-              </div>
-              <div className="p-4 bg-white border border-[#E8DFC8] rounded-2xl">
-                <div className="text-sm font-bold text-[#111111] mb-1">On Partial Failure</div>
-                <div className="text-[11px] text-[#777]">Halt immediately → write <code className="font-mono bg-[#F4E8C3] px-1 rounded">PARTIAL_ROLLBACK</code> to PostgreSQL → send alert to Release Manager.</div>
+              {/* Mobile */}
+              <div className="lg:hidden divide-y divide-[#F0E8D4]">
+                {filteredHistory.map(r => {
+                  const sc = HISTORY_STATUS[r.status] ?? HISTORY_STATUS['SUCCESS'];
+                  return (
+                    <div key={r.id} className="p-4 space-y-2">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="text-xs font-bold text-[#111111]">{r.name}</div>
+                          <div className="text-[9px] font-mono text-[#777]">{r.id} · {r.version}</div>
+                        </div>
+                        <div className={cn('text-[9px] font-bold px-1.5 py-0.5 rounded-full border', sc.bg, sc.color)}>
+                          {r.status}
+                        </div>
+                      </div>
+                      <div className="flex gap-3 text-[10px] font-mono text-[#777]">
+                        <span>{r.env}</span>
+                        <span>{r.by}</span>
+                        <span>{r.at}</span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
         )}
-        {activeSubTab === 'HISTORY' && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {[
-                { label: 'Primary Store', value: 'PostgreSQL (self-hosted)', sub: 'Structured, queryable, immutable rows' },
-                { label: 'Full-text Search', value: 'Elasticsearch', sub: 'Filter by env, status, agent, date' },
-                { label: 'Archival', value: 'Records > 12 months → MinIO/S3', sub: 'Cold storage, query performance preserved' },
-              ].map((c, i) => (
-                <div key={i} className="p-4 bg-white border border-[#E8DFC8] rounded-2xl">
-                  <div className="text-[10px] font-bold text-[#777] uppercase tracking-wide mb-1">{c.label}</div>
-                  <div className="text-sm font-bold text-[#111111]">{c.value}</div>
-                  <div className="text-[10px] text-[#777] mt-0.5">{c.sub}</div>
-                </div>
-              ))}
+
+        {/* ── ROLLBACK ─────────────────────────────────────── */}
+        {activeTab === 'ROLLBACK' && (
+          <div className="space-y-4">
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-[11px] text-[#5A5A5A] leading-relaxed">
+                Rollback uses a{' '}
+                <span className="font-bold text-[#111111]">compensating transaction pattern</span>.
+                If any step fails, the operation halts and records{' '}
+                <code className="bg-amber-100 border border-amber-200 px-1 rounded font-mono text-amber-700 text-[10px]">
+                  PARTIAL_ROLLBACK
+                </code>{' '}
+                — the release manager is notified immediately.
+              </p>
             </div>
 
-            <div className="p-4 bg-white border border-[#E8DFC8] rounded-2xl">
-              <h4 className="text-sm font-bold text-[#111111] mb-3">PostgreSQL Table Partitioning</h4>
-              <pre className="p-3 bg-[#111111] text-[#D9B86C] rounded-xl text-[10px] font-mono leading-relaxed overflow-x-auto">{`CREATE TABLE audit_log (
-  id          BIGSERIAL,
-  event_time  TIMESTAMPTZ NOT NULL,
-  event_type  TEXT,
-  user_id     TEXT,
-  payload     JSONB
-) PARTITION BY RANGE (event_time);
-
--- New partition each month
-CREATE TABLE audit_log_2026_05
-  PARTITION OF audit_log
-  FOR VALUES FROM ('2026-05-01') TO ('2026-06-01');`}</pre>
-              <p className="text-[10px] text-[#777] mt-2">Partition by month (RANGE). Records older than 12 months archived to MinIO/S3 cold storage. Keeps query performance at scale.</p>
-            </div>
-          </div>
-        )}
-        {activeSubTab === 'DRIFT' && (
-          <div className="space-y-6">
+            {/* Rollback targets */}
             <div className="space-y-3">
-              {[
-                { key: 'MODEL_TEMP', prod: '0.7', uat: '0.8', status: 'MISMATCH' },
-                { key: 'EMBED_DIM',  prod: '1536', uat: '1536', status: 'MATCH' },
-                { key: 'MAX_TOKENS', prod: '4096', uat: '1024', status: 'CRITICAL_DRIFT' },
-              ].map(drift => (
-                <div key={drift.key} className="flex items-center justify-between p-4 bg-white border border-[#E8DFC8] rounded-2xl">
-                  <div>
-                    <div className="text-[11px] font-bold text-[#5A5A5A] uppercase tracking-wide">{drift.key}</div>
-                    <div className="flex gap-4 mt-1.5 text-[13px]">
-                      <span className="text-[#5A5A5A]">PROD: <span className="text-[#111111] font-bold">{drift.prod}</span></span>
-                      <span className="text-[#5A5A5A]">UAT: <span className="text-[#111111] font-bold">{drift.uat}</span></span>
+              {ROLLBACK_TARGETS.map(target => (
+                <div key={target.id} className="glass-panel p-5 rounded-2xl flex items-center gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-bold text-[#111111] uppercase">{target.name}</div>
+                    <div className="flex items-center gap-2 mt-1.5 text-[10px] font-mono">
+                      <span className="text-[#B88719] font-bold">{target.current}</span>
+                      <span className="text-[#777]">→ revert to</span>
+                      <span className="text-[#5A5A5A]">{target.previous}</span>
                     </div>
                   </div>
-                  <div className={cn(
-                    'px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border',
-                    drift.status === 'MATCH'    ? 'badge-healthy' :
-                    drift.status === 'MISMATCH' ? 'badge-warning' : 'badge-failed',
-                  )}>{drift.status}</div>
+                  <span className="px-2 py-0.5 bg-[#F4E8C3] border border-[#BFA66A] rounded text-[9px] font-bold text-[#5A5A5A] shrink-0">
+                    {target.env}
+                  </span>
+                  <button
+                    onClick={() => setConfirmId(confirmId === target.id ? null : target.id)}
+                    className={cn(
+                      'px-4 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wide transition-all shrink-0',
+                      confirmId === target.id
+                        ? 'bg-amber-500 text-white border border-amber-600 shadow-md'
+                        : 'bg-white border border-[#BFA66A] text-[#5A5A5A] hover:border-amber-400 hover:text-amber-700 hover:bg-amber-50'
+                    )}
+                  >
+                    {confirmId === target.id ? 'Confirm?' : 'Rollback'}
+                  </button>
                 </div>
               ))}
             </div>
 
-            <div className="p-4 bg-white border border-[#E8DFC8] rounded-2xl">
-              <h4 className="text-sm font-bold text-[#111111] mb-3">Drift Action Plan</h4>
+            {/* Rollback procedure */}
+            <div className="glass-panel p-5 rounded-2xl">
+              <h4 className="text-[10px] font-black text-[#777] uppercase tracking-widest mb-4">
+                Rollback Procedure
+              </h4>
               <div className="space-y-2">
                 {[
-                  { step: '1', label: 'Alert', desc: 'release.drift.detected → Notification Service → Slack/email to Lead Dev + Release Manager' },
-                  { step: '2', label: 'Block', desc: 'Auto-promotion to Production blocked until drift is resolved' },
-                  { step: '3', label: 'Resolve', desc: 'Reviewer confirms diff is intentional → approve, or triggers sync from UAT snapshot' },
-                ].map((s, i) => (
-                  <div key={i} className="flex gap-3 p-3 bg-[#FDFAF2] rounded-xl border border-[#E8DFC8]">
-                    <div className="w-6 h-6 rounded-full bg-[#F4E8C3] border border-[#BFA66A] flex items-center justify-center text-xs font-black text-[#8A5A00] shrink-0">{s.step}</div>
+                  { step: '01', label: 'Revert PostgreSQL release pointer', sub: 'Update version reference to previous release' },
+                  { step: '02', label: 'Restore Kong upstream route',       sub: 'Re-route traffic to previous deployment'      },
+                  { step: '03', label: 'Redeploy artifact from MinIO',      sub: 'Restore immutable version snapshot'           },
+                ].map(s => (
+                  <div
+                    key={s.step}
+                    className="flex items-center gap-4 px-4 py-3 bg-[#FDFAF2] border border-[#E8DFC8] rounded-xl"
+                  >
+                    <span className="text-[10px] font-black text-[#B88719] font-mono w-6 shrink-0">{s.step}</span>
                     <div>
-                      <span className="text-xs font-bold text-[#111111]">{s.label} — </span>
-                      <span className="text-[11px] text-[#777]">{s.desc}</span>
+                      <div className="text-[11px] font-bold text-[#111111]">{s.label}</div>
+                      <div className="text-[9px] text-[#777] mt-0.5">{s.sub}</div>
                     </div>
                   </div>
                 ))}
@@ -355,6 +356,7 @@ CREATE TABLE audit_log_2026_05
             </div>
           </div>
         )}
+
       </motion.div>
     </div>
   );

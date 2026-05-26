@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Shield, Server, Key, Globe, LayoutGrid } from 'lucide-react';
+import { Shield, Server, Key, Globe, LayoutGrid, ScrollText } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../lib/utils';
 import { OperationalHeader } from '../shared/OperationalHeader';
@@ -9,19 +9,21 @@ import { KeycloakPanel } from './Auth/KeycloakPanel';
 import { KongGatewayPanel } from './Auth/KongGatewayPanel';
 import { IPAllowlistPanel } from './Auth/IPAllowlistPanel';
 import { APIKeysPanel } from './Auth/APIKeysPanel';
+import { AuthAuditPanel } from './Auth/AuthAuditPanel';
 
-type AuthTab = 'OVERVIEW' | 'KEYCLOAK' | 'KONG' | 'IP' | 'APIKEYS';
+type AuthTab = 'OVERVIEW' | 'KEYCLOAK' | 'KONG' | 'IP' | 'APIKEYS' | 'AUDIT';
 
 const TABS: { id: AuthTab; label: string; icon: React.ElementType; desc: string }[] = [
-  { id: 'OVERVIEW', label: 'Overview',      icon: LayoutGrid, desc: 'Health, stack & audit stream' },
-  { id: 'KEYCLOAK', label: 'Keycloak',      icon: Shield,     desc: 'Realms, SSO bridges, MFA, role mappings' },
-  { id: 'KONG',     label: 'Kong Gateway',  icon: Server,     desc: 'JWT verify, JWKS, injected headers' },
-  { id: 'IP',       label: 'IP Allowlist',  icon: Globe,      desc: 'CIDR whitelist via Kong IP plugin' },
-  { id: 'APIKEYS',  label: 'API Keys',      icon: Key,        desc: 'Programmatic access, rotate & revoke' },
+  { id: 'OVERVIEW', label: 'Overview',      icon: LayoutGrid,  desc: 'Health, stack & audit stream' },
+  { id: 'KEYCLOAK', label: 'Keycloak',      icon: Shield,      desc: 'Realms, SSO bridges, MFA, role mappings' },
+  { id: 'KONG',     label: 'Kong Gateway',  icon: Server,      desc: 'JWT verify, JWKS, injected headers' },
+  { id: 'IP',       label: 'IP Allowlist',  icon: Globe,       desc: 'CIDR whitelist via Kong IP plugin' },
+  { id: 'APIKEYS',  label: 'API Keys',      icon: Key,         desc: 'Programmatic access, rotate & revoke' },
+  { id: 'AUDIT',    label: 'Audit Log',     icon: ScrollText,  desc: 'Full Keycloak auth event stream — admin only' },
 ];
 
-export const AuthSection = () => {
-  const [tab, setTab] = useState<AuthTab>('OVERVIEW');
+export const AuthSection = ({ initialTab }: { initialTab?: AuthTab } = {}) => {
+  const [tab, setTab] = useState<AuthTab>(initialTab ?? 'OVERVIEW');
 
   return (
     <div className="space-y-6 lg:space-y-8 pb-20">
@@ -70,11 +72,12 @@ export const AuthSection = () => {
           exit={{ opacity: 0, y: -6 }}
           transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
         >
-          {tab === 'OVERVIEW' && <AuthOverviewPanel />}
+          {tab === 'OVERVIEW' && <AuthOverviewPanel onViewAudit={() => setTab('AUDIT')} />}
           {tab === 'KEYCLOAK' && <KeycloakPanel />}
           {tab === 'KONG'     && <KongGatewayPanel />}
           {tab === 'IP'       && <IPAllowlistPanel />}
           {tab === 'APIKEYS'  && <APIKeysPanel />}
+          {tab === 'AUDIT'    && <AuthAuditPanel />}
         </motion.div>
       </AnimatePresence>
     </div>

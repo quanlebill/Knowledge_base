@@ -53,14 +53,14 @@ export const APIKeysPanel = () => {
         <section>
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-base font-bold text-[#111111]">API Keys</h3>
-              <p className="text-xs text-[#5A5A5A] mt-0.5">
-                Programmatic access keys — bcrypt-hashed, table <code className="font-mono bg-[#F4E8C3] px-1 rounded">api_keys</code>. Raw key shown once on creation.
+              <h3 className="text-base font-bold text-white">API Keys</h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Programmatic access keys — bcrypt-hashed, table <code className="font-mono bg-white/10 px-1 rounded text-[#D9B86C]">api_keys</code>. Raw key shown once on creation.
               </p>
             </div>
             <button
               onClick={() => setShowCreate(true)}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-[#111111] text-white rounded-xl text-xs font-bold hover:bg-[#2a2a2a] transition-colors"
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-white/10 border border-white/20 text-white rounded-xl text-xs font-bold hover:bg-white/15 transition-colors"
             >
               <Plus className="w-3.5 h-3.5" /> Create Key
             </button>

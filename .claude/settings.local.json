@@ -129,7 +129,14 @@
       "Bash(bash infra/certs/gen-certs.sh)",
       "Bash(openssl req *)",
       "Bash(echo \"Exit: $?\")",
-      "Bash(ls -la ca.crt)"
+      "Bash(ls -la ca.crt)",
+      "Bash(Get-ChildItem -Path 'c:\\\\Users\\\\admin\\\\Documents\\\\GitHub\\\\Data-Agentt' -Force)",
+      "Bash(Select-Object Name, PSIsContainer)",
+      "Bash(Format-Table -AutoSize)",
+      "Bash(npx vite *)",
+      "Bash(exist node_modules\\\\.vite rmdir /s /q node_modules\\\\.vite)",
+      "PowerShell(curl -s -o $null -w \"%{http_code}\" \"http://localhost:8080/admin/realms/aeroflow/events?max=1\" -H \"Authorization: Bearer test\" 2>&1)",
+      "PowerShell(Invoke-WebRequest -Uri \"http://localhost:8080/health/ready\" -UseBasicParsing)"
     ]
   }
 }

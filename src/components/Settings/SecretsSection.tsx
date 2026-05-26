@@ -115,8 +115,8 @@ export const SecretsSection = () => {
                          <p className="text-[10px] text-slate-500 italic leading-relaxed">{ctl.desc}</p>
                       </div>
                       <div className="mt-6 flex items-center gap-3">
-                         <div className={cn("w-2 h-2 rounded-full", ctl.enabled ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" : "bg-slate-800")} />
-                         <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">{ctl.enabled ? 'ACTIVE' : 'STANDBY'}</span>
+                         <div className={cn("w-2 h-2 rounded-full", ctl.enabled ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" : "bg-slate-500")} />
+                         <span className={cn("text-[9px] font-black uppercase tracking-widest", ctl.enabled ? "text-emerald-400" : "text-slate-400")}>{ctl.enabled ? 'ACTIVE' : 'STANDBY'}</span>
                       </div>
                    </div>
                 ))}

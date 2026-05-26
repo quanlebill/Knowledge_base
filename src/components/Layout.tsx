@@ -35,9 +35,9 @@ const PALETTE_GROUPS = [
     { label: 'Workflow Engine',     module: 'ai-runtime', sub: 'WORKFLOWS' },
   ]},
   { category: 'Deployment', items: [
-    { label: 'Release Pipeline',    module: 'release-management', sub: 'PIPELINE' },
-    { label: 'Validation Center',   module: 'release-management', sub: 'VALIDATION' },
-    { label: 'Rollback Center',     module: 'release-management', sub: 'ROLLBACK' },
+    { label: 'Deployments',    module: 'release-management', sub: 'DEPLOYMENTS' },
+    { label: 'Release History', module: 'release-management', sub: 'HISTORY'     },
+    { label: 'Rollback Center', module: 'release-management', sub: 'ROLLBACK'    },
   ]},
 ];
 

@@ -82,14 +82,14 @@ aeroflow-frontend           Up
 
 ### Realm `aeroflow` — Test Users
 
-| Username | Password | Role | Email |
-|---|---|---|---|
-| `platform-admin` | `Admin@1234` | `platform-admin` | admin@aeroflow.local |
-| `ai-engineer` | `Engineer@1234` | `ai-engineer` | engineer@aeroflow.local |
-| `business-operator` | `Operator@1234` | `business-operator` | operator@aeroflow.local |
-| `executive-viewer` | `Viewer@1234` | `executive-viewer` | viewer@aeroflow.local |
+| Username | Password | Role | Email | Ghi chú |
+|---|---|---|---|---|
+| `platform-admin` | `Admin@1234` | `platform-admin` | admin@aeroflow.local | Có quyền `realm-management:view-users` — xem được toàn bộ users qua IAM |
+| `ai-engineer` | `Engineer@1234` | `ai-engineer` | engineer@aeroflow.local | |
+| `executive-viewer` | `Viewer@1234` | `executive-viewer` | viewer@aeroflow.local | |
 
-> Các tài khoản này được import sẵn từ `realm-export.json` khi stack khởi động lần đầu.
+> Các tài khoản này được import sẵn từ `realm-export.json` khi stack khởi động lần đầu.  
+> **Quan trọng:** Realm import chỉ chạy khi realm chưa tồn tại trong DB. Nếu stack đã từng chạy, cần `docker compose down -v && docker compose up -d` để re-import.
 
 ---
 

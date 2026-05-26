@@ -1,6 +1,7 @@
 import React from 'react';
 import { Shield, Server, Key, Globe, Fingerprint, Activity, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { cn } from '../../../lib/utils';
+import { useAuth } from '../../../lib/AuthProvider';
 
 const HEALTH_METRICS = [
   { label: 'Keycloak Realms',  value: '3',      sub: '2 active',          color: 'emerald' },
@@ -26,19 +27,26 @@ const TECH_STACK = [
   { layer: 'Secrets',          tech: 'OpenBao',                                             role: 'No raw secrets in DB — path refs only' },
 ];
 
-const RECENT_EVENTS = [
-  { event: 'LOGIN_SUCCESS',    actor: 'linh.nguyen', tenant: 'GlobalCorp',  time: '12s ago',  type: 'USER' },
-  { event: 'SECRET_ROTATION',  actor: 'System',      tenant: 'GlobalCorp',  time: '8m ago',   type: 'SYSTEM' },
+const STATIC_EVENTS = [
+  { event: 'SECRET_ROTATION',  actor: 'System',      tenant: 'Platform',    time: '8m ago',   type: 'SYSTEM' },
   { event: 'LOGOUT',           actor: 'sarah.chen',  tenant: 'FinanceHub',  time: '22m ago',  type: 'USER' },
-  { event: 'RBAC_ELEVATION',   actor: 'admin',       tenant: 'GlobalCorp',  time: '1h ago',   type: 'SYSTEM' },
+  { event: 'RBAC_ELEVATION',   actor: 'admin',       tenant: 'Platform',    time: '1h ago',   type: 'SYSTEM' },
   { event: 'IP_BLOCKED',       actor: '185.4.2.1',   tenant: 'EuroTrust',   time: '2h ago',   type: 'AGENT' },
 ];
 
-export const AuthOverviewPanel = () => (
+export const AuthOverviewPanel = ({ onViewAudit }: { onViewAudit?: () => void } = {}) => {
+  const { user } = useAuth();
+
+  const recentEvents = [
+    { event: 'LOGIN_SUCCESS', actor: user?.email ?? user?.name ?? 'unknown', tenant: 'AeroFlow', time: 'Now', type: 'USER' },
+    ...STATIC_EVENTS,
+  ];
+
+  return (
   <div className="space-y-6">
     {/* ── Health Grid ── */}
     <section>
-      <h3 className="text-base font-bold text-[#111111] mb-4">Auth Health Overview</h3>
+      <h3 className="text-base font-bold text-white mb-4">Auth Health Overview</h3>
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         {HEALTH_METRICS.map((m, i) => (
           <div key={i} className="p-4 bg-white border border-[#E8DFC8] rounded-2xl text-center">
@@ -57,7 +65,7 @@ export const AuthOverviewPanel = () => (
 
     {/* ── Architecture summary ── */}
     <section>
-      <h3 className="text-base font-bold text-[#111111] mb-4">Technology Stack</h3>
+      <h3 className="text-base font-bold text-white mb-4">Technology Stack</h3>
       <div className="border border-[#E8DFC8] rounded-2xl overflow-hidden bg-white">
         <table className="w-full text-sm">
           <thead>
@@ -83,14 +91,17 @@ export const AuthOverviewPanel = () => (
     {/* ── Auth Audit Stream ── */}
     <section>
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-base font-bold text-[#111111]">Recent Auth Events</h3>
-        <button className="text-xs font-bold text-[#B88719] hover:underline flex items-center gap-1">
+        <h3 className="text-base font-bold text-white">Recent Auth Events</h3>
+        <button
+          onClick={onViewAudit}
+          className="text-xs font-bold text-[#B88719] hover:underline flex items-center gap-1"
+        >
           View full audit stream <ArrowRight className="w-3.5 h-3.5" />
         </button>
       </div>
 
       <div className="space-y-2">
-        {RECENT_EVENTS.map((ev, i) => (
+        {recentEvents.map((ev, i) => (
           <div key={i} className="flex items-center justify-between p-3.5 bg-white border border-[#E8DFC8] rounded-xl">
             <div className="flex items-center gap-3">
               <div className={cn(
@@ -124,4 +135,5 @@ export const AuthOverviewPanel = () => (
       </div>
     </section>
   </div>
-);
+  );
+};

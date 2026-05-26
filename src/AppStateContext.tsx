@@ -59,9 +59,13 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
     id:    authUser?.id    ?? 'u_anon',
     name:  authUser?.name  ?? authUser?.email ?? 'User',
     email: authUser?.email ?? '',
-    role:  (authUser?.roles?.find(r =>
-      ['PLATFORM_ADMIN','AI_ENGINEER','BUSINESS_OPERATOR','EXECUTIVE_VIEWER'].includes(r.toUpperCase())
-    )?.toUpperCase() as Role) ?? 'AI_ENGINEER',
+    role:  (() => {
+      const normalized = authUser?.roles?.map(r => r.toUpperCase().replace(/-/g, '_')) ?? [];
+      if (normalized.includes('PLATFORM_ADMIN')) return 'PLATFORM_ADMIN';
+      if (normalized.includes('AI_ENGINEER')) return 'AI_ENGINEER';
+      if (normalized.includes('EXECUTIVE_VIEWER')) return 'EXECUTIVE';
+      return 'AI_ENGINEER';
+    })() as Role,
   };
 
   /* Routing state — initialized from URL hash */
