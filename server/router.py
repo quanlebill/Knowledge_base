@@ -314,10 +314,6 @@ async def get_environments(service: KBService = Depends(get_service)):
         return ErrorFlag(500, str(e), type(e).__name__)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# KNOWLEDGE — DOCUMENTS (Gold-layer GOL-xxx)
-# ═══════════════════════════════════════════════════════════════════════════════
-
 @router.get('/api/knowledge/documents', response_model=ResponseModel, tags=['Knowledge'])
 async def get_kg_documents(service: KBService = Depends(get_service)):
     try:
