@@ -27,6 +27,7 @@ import {
   type OnConnect,
   type NodeProps,
   type EdgeProps,
+  type ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -305,6 +306,33 @@ const mkNode = (
   data: { nodeType, label, ...extra },
 });
 
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+const PLANNER_MODEL  = 'Qwen3-9B (hardcoded)' as const;
+const REASONER_MODEL = 'Qwen3-35B (local)' as const;
+const RRF_K_DEFAULT  = 60 as const;
+
+// ─── Workflow → React Flow transform ─────────────────────────────────────────
+
+function transformWorkflowToFlow(workflow: Workflow): { nodes: Node<FlowNodeData>[]; edges: Edge[] } {
+  const nodes: Node<FlowNodeData>[] = workflow.nodes.map(wn => ({
+    id:       wn.id,
+    type:     'flowNode',
+    position: wn.position,
+    data:     { nodeType: wn.type as FlowNodeType, label: wn.label, ...wn.config },
+  }));
+
+  const edges: Edge[] = workflow.edges.map(we => ({
+    id: we.id, source: we.source, target: we.target,
+    type: 'wfEdge', animated: true,
+    style: { stroke: '#ffffff22', strokeWidth: 2 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: '#ffffff22' },
+    ...(we.label ? { label: we.label, labelStyle: { fill: '#94a3b8', fontSize: 9, fontWeight: 700, fontFamily: 'monospace' } } : {}),
+  }));
+
+  return { nodes, edges };
+}
+
 // ─── Template Flows ───────────────────────────────────────────────────────────
 
 const TEMPLATE_FLOWS: Record<TemplateId, { nodes: Node<FlowNodeData>[]; edges: Edge[] }> = {
@@ -506,7 +534,7 @@ const ConfigPanel = ({ node, onClose, onUpdate }: ConfigPanelProps) => {
 
         {d.nodeType === 'planner' && (
           <>
-            <Field label="Model"><Readonly value="Qwen3-9B (hardcoded)" /></Field>
+            <Field label="Model"><Readonly value={PLANNER_MODEL} /></Field>
             <InfoNote text="Tự động đọc allowed_tools từ MCP Tool node" />
           </>
         )}
@@ -552,7 +580,7 @@ const ConfigPanel = ({ node, onClose, onUpdate }: ConfigPanelProps) => {
         )}
 
         {d.nodeType === 'rrf_ranking' && (
-          <InfoNote text="k=60 (hardcoded)" />
+          <InfoNote text={`k=${RRF_K_DEFAULT} (hardcoded)`} />
         )}
 
         {d.nodeType === 'reranker' && (
@@ -566,7 +594,7 @@ const ConfigPanel = ({ node, onClose, onUpdate }: ConfigPanelProps) => {
 
         {d.nodeType === 'reasoner' && (
           <>
-            <Field label="Model"><Readonly value="Qwen3-35B (local)" /></Field>
+            <Field label="Model"><Readonly value={REASONER_MODEL} /></Field>
             <Field label="System Prompt">
               <Sel value={(d.systemPromptName as string) || 'prompt_default'} options={['prompt_default', 'prompt_phat_nguoi_v2', 'prompt_dashboard']} onChange={v => upd('systemPromptName', v)} />
             </Field>
@@ -604,32 +632,28 @@ const ConfigPanel = ({ node, onClose, onUpdate }: ConfigPanelProps) => {
 // ─── All Library Nodes (all non-trigger types — 12 items) ─────────────────────
 
 const ALL_LIBRARY_NODES: Array<{
-  nodeType: FlowNodeType; label: string; color: string; Icon: any;
+  nodeType: FlowNodeType; label: string; color: string; Icon: any; allowMultiple: boolean;
 }> = [
-  { nodeType: 'planner',           label: 'Planner',           color: '#3B82F6', Icon: Bot        },
-  { nodeType: 'kb_search',         label: 'KB Search',         color: '#10B981', Icon: Database   },
-  { nodeType: 'mcp_tool',          label: 'MCP Tool',          color: '#F59E0B', Icon: Wrench     },
-  { nodeType: 'rrf_ranking',       label: 'RRF Ranking',       color: '#8B5CF6', Icon: Layers     },
-  { nodeType: 'reranker',          label: 'Reranker',          color: '#8B5CF6', Icon: Filter     },
-  { nodeType: 'reasoner',          label: 'Reasoner',          color: '#3B82F6', Icon: Cpu        },
-  { nodeType: 'output',            label: 'Output',            color: '#6B7280', Icon: Activity   },
-  { nodeType: 'human_approval',    label: 'Human Approval',    color: '#D9B86C', Icon: ShieldCheck },
-  { nodeType: 'condition',         label: 'Condition',         color: '#6B7280', Icon: GitBranch  },
-  { nodeType: 'send_notification', label: 'Send Notification', color: '#EF4444', Icon: Bell       },
-  { nodeType: 'loop',              label: 'Loop',              color: '#3B82F6', Icon: RefreshCw  },
+  { nodeType: 'planner',           label: 'Planner',           color: '#3B82F6', Icon: Bot,         allowMultiple: false },
+  { nodeType: 'kb_search',         label: 'KB Search',         color: '#10B981', Icon: Database,    allowMultiple: true  },
+  { nodeType: 'mcp_tool',          label: 'MCP Tool',          color: '#F59E0B', Icon: Wrench,      allowMultiple: true  },
+  { nodeType: 'rrf_ranking',       label: 'RRF Ranking',       color: '#8B5CF6', Icon: Layers,      allowMultiple: false },
+  { nodeType: 'reranker',          label: 'Reranker',          color: '#8B5CF6', Icon: Filter,      allowMultiple: false },
+  { nodeType: 'reasoner',          label: 'Reasoner',          color: '#3B82F6', Icon: Cpu,         allowMultiple: false },
+  { nodeType: 'output',            label: 'Output',            color: '#6B7280', Icon: Activity,    allowMultiple: false },
+  { nodeType: 'human_approval',    label: 'Human Approval',    color: '#D9B86C', Icon: ShieldCheck, allowMultiple: false },
+  { nodeType: 'condition',         label: 'Condition',         color: '#6B7280', Icon: GitBranch,   allowMultiple: true  },
+  { nodeType: 'send_notification', label: 'Send Notification', color: '#EF4444', Icon: Bell,        allowMultiple: true  },
+  { nodeType: 'loop',              label: 'Loop',              color: '#3B82F6', Icon: RefreshCw,   allowMultiple: false },
 ];
 
 // ─── Node Library ─────────────────────────────────────────────────────────────
 
-interface NodeLibraryProps {
-  usedTypes: Set<FlowNodeType>;
-}
-
-const NodeLibrary = ({ usedTypes }: NodeLibraryProps) => {
+const NodeLibrary = ({ usedTypes }: { usedTypes: Set<FlowNodeType> }) => {
   const [query, setQuery] = useState('');
 
   const available = ALL_LIBRARY_NODES.filter(n =>
-    !usedTypes.has(n.nodeType) &&
+    (n.allowMultiple || !usedTypes.has(n.nodeType)) &&
     n.label.toLowerCase().includes(query.toLowerCase()),
   );
 
@@ -778,7 +802,7 @@ const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent' }: Builde
   const [selectedNode, setSelectedNode] = useState<Node<FlowNodeData> | null>(null);
   const [ctxMenu, setCtxMenu]           = useState<CtxMenuState | null>(null);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
-  const rfInstance                       = useRef<any>(null);
+  const rfInstance                       = useRef<ReactFlowInstance<Node<FlowNodeData>, Edge> | null>(null);
 
   const requestExit = useCallback(() => setShowExitConfirm(true), []);
 
@@ -799,15 +823,14 @@ const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent' }: Builde
   }, []);
 
   // ── Flow state ────────────────────────────────────────────────────────────────
-  const initFlow = useMemo(
-    () => TEMPLATE_FLOWS[template] ?? TEMPLATE_FLOWS['multi-agent'],
-    [], // eslint-disable-line react-hooks/exhaustive-deps
-  );
+  const initFlow = useMemo(() => {
+    if (workflow && workflow.nodes.length > 0) return transformWorkflowToFlow(workflow);
+    return TEMPLATE_FLOWS[template] ?? TEMPLATE_FLOWS['multi-agent'];
+  }, [workflow, template]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initFlow.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initFlow.edges);
 
-  // Types currently on canvas → drives library visibility
   const usedTypes = useMemo(
     () => new Set(nodes.map(n => (n.data as FlowNodeData).nodeType)),
     [nodes],
