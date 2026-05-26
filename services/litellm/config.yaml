@@ -1,0 +1,24 @@
+model_list:
+  - model_name: planner
+    litellm_params:
+      model: claude-haiku-4-5-20251001
+      api_key: os.environ/LLM_API_KEY
+
+  - model_name: reasoner
+    litellm_params:
+      model: claude-sonnet-4-6
+      api_key: os.environ/LLM_API_KEY
+
+  - model_name: embedder
+    litellm_params:
+      model: text-embedding-3-small
+      api_key: os.environ/OPENAI_API_KEY
+
+general_settings:
+  master_key: sk-dev
+
+litellm_settings:
+  cache: true
+  cache_params:
+    type: redis
+    redis_url: os.environ/REDIS_URL

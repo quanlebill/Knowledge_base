@@ -1,10 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(Get-ChildItem -Recurse -Force)",
-      "Bash(Select-Object FullName)",
-      "PowerShell(head -100)",
-      "Bash(git checkout *)"
+      "PowerShell(Get-ChildItem -Recurse -Force)",
+      "PowerShell(Select-Object FullName)",
+      "Bash(head -100)"
     ]
   }
 }

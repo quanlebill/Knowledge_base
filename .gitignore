@@ -1,4 +1,8 @@
 node_modules/
+__pycache__/
+*.pyc
+*.pyo
+.venv/
 build/
 dist/
 coverage/
@@ -6,3 +10,5 @@ coverage/
 *.log
 .env*
 !.env.example
+docs/
+CLAUDE.md

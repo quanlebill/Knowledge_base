@@ -1,0 +1,79 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: dataagent
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: dev123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./services/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+  mongodb:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-stable
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./services/litellm/config.yaml:/app/config.yaml:ro
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://admin:dev123@postgres:5432/dataagent
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    depends_on:
+      - postgres
+      - redis
+
+  langfuse:
+    image: langfuse/langfuse:2
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://admin:dev123@postgres:5432/langfuse
+      NEXTAUTH_SECRET: dev-langfuse-nextauth-secret-changeme
+      SALT: dev-langfuse-salt-changeme
+      NEXTAUTH_URL: http://localhost:3000
+      TELEMETRY_ENABLED: "false"
+    depends_on:
+      - postgres
+
+  workflow-runtime:
+    build: ./services/workflow-runtime
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://admin:dev123@postgres:5432/dataagent
+      MONGODB_URL: mongodb://mongodb:27017/dataagent
+      REDIS_URL: redis://redis:6379
+      LITELLM_BASE_URL: http://litellm:4000
+      LANGFUSE_HOST: http://langfuse:3000
+    depends_on:
+      - postgres
+      - mongodb
+      - redis
+      - litellm
+
+volumes:
+  postgres_data:
+  mongo_data:
