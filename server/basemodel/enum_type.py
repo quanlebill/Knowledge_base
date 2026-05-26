@@ -29,9 +29,20 @@ class ConflictType(Enum):
     content_update = "Content Update"
 
 class ConflictStatus(Enum):
-    pending = "Pending"
-    approved = "Approved"
-    rejected = "Rejected"
+    pending = "pending"
+    awaiting = "awaiting"
+    resolved = "resolved"
+
+class ConflictResolution(Enum):
+    keep_existing = "Keep Existing"
+    keep_incoming = "Keep Incoming"
+    merge = "Merge"
+    no_action = "No Action"
+
+class ConflictSeverity(Enum):
+    high = "High"
+    medium = "Medium"
+    low = "Low"
 
 
 # Policy

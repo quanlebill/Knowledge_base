@@ -8,9 +8,6 @@ import uuid
 from enum_type import *
 
 
-"""
-Model for SQL data
-"""
 # Data - Documents
 class Document(BaseModel):
     source_type: Literal[SourceType.Document]
@@ -52,15 +49,18 @@ MetadataType = Annotated[
 
 # Data API Model
 # - Request
+# POST /api/knowledge/data_upload
 class RequestDataUpload(BaseModel):
     file_name: str
     source_type: SourceType
 
+# POST /api/knowledge/confirm/:upload_id
 class RequestConfirmDataUpload(BaseModel):
     upload_id: uuid.UUID
     upload_status: bool
 
 # - Configure Model for Response.data
+# GET /api/knowledge/data
 class DataConfigure(BaseModel):
     file_name: str
     upload_id: uuid.UUID

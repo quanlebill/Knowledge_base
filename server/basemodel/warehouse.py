@@ -48,6 +48,7 @@ warehouseMetadata = Annotated[
 
 # API Model
 # - Request
+# POST /api/knowledge/connect
 class RequestConnectWarehouse(BaseModel):
     connection_name: str
     source_type: WarehouseType
@@ -58,19 +59,16 @@ class RequestConnectWarehouse(BaseModel):
         use_enum_values=True,
     )
 
-class RequestSelectTable(BaseModel):
+class ResponseReview(RequestConnectWarehouse):
     connection_id: uuid.UUID
-    table_ids: List[uuid.UUID]
-
-class RequestCreateConfig(BaseModel):
-    connection_id: uuid.UUID
+    tables: List[Table]
 
 # Model for Response.data
 class ResponseWarehouseTable(BaseModel):
     connection_id: uuid.UUID
     tables: List[Table]
 
-class ResponseReview(RequestConnectWarehouse):
+# POST /api/knowledge/select_table/:connectionId
+class RequestSelectTable(BaseModel):
     connection_id: uuid.UUID
-    tables: List[Table]
-
+    table_ids: List[uuid.UUID]
