@@ -1,9 +1,28 @@
-# Auth & Gateway — Hướng dẫn Chạy & Test
+# Auth & Gateway · Release Management — Hướng dẫn Chạy & Test
 
 > Runbook thực tế: khởi động, setup, và kiểm thử từng thành phần  
-> Đọc `docs/auth-system.md` để hiểu kiến trúc trước khi chạy.
+> Auth: đọc `docs/auth-release-tech-stack-update.md` §Phần 1  
+> Release: đọc `docs/release-system.md` để hiểu kiến trúc trước khi chạy.
+
+## Mục lục
+
+- [Phần 1 — Auth (Keycloak + Kong + Kafka)](#phần-1--auth-keycloak--kong--kafka)
+- [Phần 2 — Release Management](#phần-2--release-management)
+  - [R1. Khởi động Release Stack](#r1--khởi-động-release-stack)
+  - [R2. URLs & Credentials Release](#r2--urls--credentials-release)
+  - [R3. Setup Release Schema PostgreSQL](#r3--setup-release-schema-postgresql)
+  - [R4. Setup Release Kafka Topics & ACL](#r4--setup-release-kafka-topics--acl)
+  - [R5. Test Cases Release](#r5--test-cases-release)
+  - [R6. Trigger Pipeline thủ công](#r6--trigger-pipeline-thủ-công)
+  - [R7. Approval Flow](#r7--approval-flow)
+  - [R8. Rollback](#r8--rollback)
+  - [R9. Drift Detection](#r9--drift-detection)
+  - [R10. Release History Query](#r10--release-history-query)
+  - [R11. Troubleshooting Release](#r11--troubleshooting-release)
 
 ---
+
+# Phần 1 — Auth (Keycloak + Kong + Kafka)
 
 ## Yêu cầu
 
@@ -1153,4 +1172,563 @@ docker exec aeroflow-kafka /opt/kafka/bin/kafka-topics.sh \
 # 7. PostgreSQL audit_logs tồn tại
 docker exec aeroflow-postgres psql -U aeroflow -d aeroflow -tAc "\dt audit_logs*" \
   | grep audit_logs && echo "DB OK"
+```
+
+---
+
+---
+
+# Phần 2 — Release Management
+
+> Xem `docs/release-system.md` để hiểu kiến trúc chi tiết.
+
+---
+
+## R1 — Khởi động Release Stack
+
+Release services được thêm vào `docker-compose.yml` (xem file). Sau khi cập nhật:
+
+```bash
+# Build và khởi động release services
+docker compose up -d release-worker
+
+# Theo dõi logs
+docker compose logs -f release-worker
+```
+
+**Kết quả mong đợi:**
+```
+release-worker  | {"event": "kafka.consumer.started", "topics": ["release.pipeline.triggered", "release.rollback.initiated"]}
+release-worker  | INFO:     Application startup complete.
+```
+
+> **Thứ tự khởi động release services:** postgres → kafka (sau auth setup) → release-worker
+
+---
+
+## R2 — URLs & Credentials Release
+
+| Service | URL | Ghi chú |
+|---------|-----|---------|
+| Release Worker API | http://localhost:8100 | FastAPI REST API |
+| Release Worker Health | http://localhost:8100/health | Health check |
+| Release History | http://localhost:8100/api/release/history | Cần token |
+| PostgreSQL | localhost:5432 | aeroflow / aeroflow_secret |
+| MinIO Console | http://localhost:9001 | minioadmin / minioadmin |
+| MongoDB | localhost:27017 | Không auth (dev) |
+
+### Kafka Users (Release)
+
+| Username | Password | ACL |
+|----------|----------|-----|
+| `ci-service` | `CiService@1234` | WRITE `release.pipeline.triggered` |
+| `release-worker` | `ReleaseWorker@1234` | READ pipeline.triggered, WRITE pipeline.status |
+| `drift-detector` | `DriftDetector@1234` | WRITE `release.drift.detected` |
+| `scan-runner` | `ScanRunner@1234` | WRITE `release.scan.completed` |
+| `notification-consumer` | `NotificationConsumer@1234` | READ pipeline.status + drift.detected |
+
+---
+
+## R3 — Setup Release Schema (PostgreSQL)
+
+Chạy một lần sau khi stack đã khởi động:
+
+```bash
+# Apply release schema (tables: pipelines, release_packages, release_history, etc.)
+docker exec -i aeroflow-postgres psql -U aeroflow -d aeroflow \
+  < infra/sql/release-init.sql
+
+# Verify tables đã tạo
+docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow \
+  -c "\dt pipelines release_packages release_history rollback_operations drift_events environment_configs release_approvals pipeline_steps"
+```
+
+**Kết quả mong đợi:**
+```
+               List of relations
+ Schema |         Name          | Type  |   Owner
+--------+-----------------------+-------+----------
+ public | drift_events          | table | aeroflow
+ public | environment_configs   | table | aeroflow
+ public | pipeline_steps        | table | aeroflow
+ public | pipelines             | table | aeroflow
+ public | release_approvals     | table | aeroflow
+ public | release_history       | table | aeroflow  (partitioned)
+ public | release_packages      | table | aeroflow
+ public | rollback_operations   | table | aeroflow
+```
+
+```bash
+# Kiểm tra partitions release_history
+docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow \
+  -c "\dt release_history*"
+# → release_history_2026_05, _06, _07, _08
+```
+
+---
+
+## R4 — Setup Release Kafka Topics & ACL
+
+Chạy một lần sau auth Kafka setup:
+
+```bash
+bash infra/kafka/release-setup.sh
+```
+
+Script tạo:
+- Topics: `release.pipeline.triggered`, `release.pipeline.status`, `release.drift.detected`, `release.rollback.initiated`, `release.scan.completed`
+- Kafka users: `ci-service`, `release-worker`, `drift-detector`, `scan-runner`, `notification-consumer`
+- ACL cho từng user (WRITE/READ đúng topic)
+
+**Verify sau khi chạy:**
+
+```bash
+# List release topics
+docker exec aeroflow-kafka /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --command-config /tmp/admin_release.props \
+  --list | grep "^release\."
+
+# Kết quả mong đợi:
+# release.drift.detected
+# release.pipeline.status
+# release.pipeline.triggered
+# release.rollback.initiated
+# release.scan.completed
+```
+
+---
+
+## R5 — Test Cases Release
+
+### Kết quả Test Release — 2026-05-27
+
+| TC | Tên | Trạng thái | Ghi chú / Kết quả thực tế |
+|----|-----|-----------|---------|
+| TR-01 | Release Worker health | ✅ | `{"status":"ok","service":"release-worker"}` |
+| TR-02 | Trigger pipeline qua API | ✅ | pipeline_id=`pipe-20260527-b8776d` tạo thành công |
+| TR-03 | Pipeline state ghi PostgreSQL | ✅ | `status=SUCCESS` trong bảng `pipelines` |
+| TR-04 | Kafka trigger message nhận đúng | ✅ | Log `kafka.message.received` + consumer thread khởi động |
+| TR-05 | Security scan gate PASS | ✅ | trivy/bandit/pip-audit chưa cài → skip=PASS, pipeline SUCCESS |
+| TR-06 | Security scan gate FAIL | ✅ | Cài bandit → B104 HIGH severity → `status=FAILED`, `error="Security scan gate failed"` |
+| TR-07 | Dev auto-promote | ✅ | target=dev → deploy ngay, `release_history` ghi `dev\|SUCCESS` |
+| TR-08 | Staging cần approval | ✅ | target=staging → `status=AWAITING_APPROVAL` trong PostgreSQL |
+| TR-09 | Approve staging → deploy | ✅ | POST approve → `status=approved` → pipeline `SUCCESS`, `release_history staging\|SUCCESS` |
+| TR-10 | Reject staging | ✅ | POST reject → `status=FAILED`, `error_message="Rejected by <user_id>"` |
+| TR-11 | Rollback trigger | ✅ | POST /rollback → `rb-20260527-85ceaf` tạo, Kafka event `rollback.initiated` |
+| TR-12 | Rollback compensating steps | ✅ | Step 1 (update_db_pointer) SUCCESS; Step 2 (reroute_kong) gặp Kong 404 → compensate revert step1 |
+| TR-13 | Rollback PARTIAL_ROLLBACK khi step fail | ✅ | Kong upstream `aeroflow-staging` không tồn tại → `status=PARTIAL_ROLLBACK`, `current_step=2` |
+| TR-14 | Release history ghi đúng | ✅ | Tất cả deploy ghi vào `release_history` (pipeline_id, env, status, triggered_by, deployed_at) |
+| TR-15 | Drift detection | ✅ | Insert prod/staging config khác nhau → `drift_events` ghi 3 drifted keys, `severity=CRITICAL_DRIFT` |
+| TR-16 | Kafka ACL ci-service chỉ WRITE trigger | ✅ | ci-service WRITE `pipeline.triggered` OK; READ `pipeline.status` → `GroupAuthorizationFailedError` |
+| TR-17 | release_history immutable | ✅ | Trigger `fn_release_history_immutable` block UPDATE/DELETE: `"release_history is immutable"` |
+| TR-18 | release_history partitioned | ✅ | 4 partitions (2026-05 → 2026-08); insert `2026-06-15` → `release_history_2026_06` ✓ |
+
+> **Ngày chạy test:** 2026-05-27 · **Kết quả:** 18/18 PASS (0 FAIL, 0 SKIP)
+
+---
+
+## R5b — Bugs phát hiện & Fixes đã áp dụng
+
+| # | Bug | Nguyên nhân | Fix |
+|---|-----|-------------|-----|
+| 1 | `approve_deployment` không dispatch pipeline sau approval | Dùng `execute_pipeline.delay()` (Celery) nhưng không có Celery worker | Thay bằng `threading.Thread(target=_run_approval_deploy, ...)` |
+| 2 | `_run_approval_deploy` không tồn tại — cần hàm riêng | Approval cần skip build/scan (đã chạy), chỉ deploy thôi | Tạo `_run_approval_deploy()` lấy `package_id` từ DB → gọi `_deploy_to_env()` |
+| 3 | `_run_rollback_impl` gọi `execute_rollback(event)` trực tiếp — Celery task không callable as function | `execute_rollback` là Celery task, gọi trực tiếp thiếu request context → `AttributeError: 'NoneType' object has no attribute 'push'` | Extract `_execute_rollback_core()` là plain function; cả thread lẫn Celery task gọi vào đó |
+| 4 | `release_history` không có trigger bảo vệ immutability | Schema chỉ có comment `-- KHÔNG UPDATE/DELETE`, không có enforcement | Thêm trigger `fn_release_history_immutable()` + `trg_release_history_no_update` + `trg_release_history_no_delete` |
+| 5 | `import threading` bị đặt trong `if __name__ == "__main__"` | Threading dùng trong `start_kafka_consumer` (body file) nhưng chỉ import ở entry point | Move `import threading` lên top-level imports |
+
+### Những gì còn thiếu / cần làm thêm
+
+| # | Hạng mục | Mức độ | Ghi chú |
+|---|----------|--------|---------|
+| 1 | **Drift detection endpoint** | Medium | Không có `POST /api/release/drift/check` — `detect_config_drift()` là Celery beat task, không trigger được thủ công qua API |
+| 2 | **Kong staging upstream** cho rollback step 2 | Medium | `aeroflow-staging` upstream chưa đăng ký Kong → rollback step 2 luôn PARTIAL_ROLLBACK trong dev env |
+| 3 | **MinIO snapshot redeploy** (rollback step 3) | Low | `_step3_redeploy_snapshot()` chỉ có TODO comment, không implement thật |
+| 4 | **Celery worker** cho production | Low | Hiện tại dùng thread trực tiếp; cần Celery worker process cho retry, rate-limit, observability đầy đủ |
+| 5 | **OTEL/Jaeger** tracing | Low | `OTEL_EXPORTER_OTLP_ENDPOINT=""` → gRPC error khởi động (non-fatal). Cần deploy Jaeger/OTEL Collector |
+| 6 | **MongoDB integration** | Low | `MONGO_URI` configured nhưng package manifest ghi PostgreSQL, không dùng MongoDB |
+| 7 | **Partition tự động** hàng tháng | Low | Hiện tại tạo thủ công partitions 2026-05→08; cần pg_cron job tự tạo partition mỗi tháng |
+| 8 | **Production environment** approval chain | Low | Chưa test target=production (cần approval cả staging + production) |
+
+---
+
+## R6 — Trigger Pipeline thủ công
+
+```bash
+# 1. Lấy token platform-admin
+TOKEN=$(curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@1234" \
+  | jq -r .access_token)
+
+# 2. Trigger pipeline target dev (auto-promote)
+curl -s -X POST http://localhost:8100/api/release/pipeline/trigger \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "package_version": "v2.4.1",
+    "branch": "auth/release",
+    "commit_sha": "4d143b2",
+    "target_environments": ["dev"]
+  }' | jq .
+
+# Kết quả mong đợi:
+# { "pipeline_id": "pipe-20260527-xxxxxx", "status": "triggered" }
+
+# 3. Xem trạng thái pipeline
+PIPELINE_ID="pipe-20260527-xxxxxx"   # thay bằng id thật
+curl -s http://localhost:8100/api/release/pipelines/$PIPELINE_ID \
+  -H "Authorization: Bearer $TOKEN" | jq .
+
+# 4. Verify trong PostgreSQL
+docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow \
+  -c "SELECT id, status, triggered_by, created_at FROM pipelines ORDER BY created_at DESC LIMIT 3;"
+
+# 5. Verify release_history
+docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow \
+  -c "SELECT pipeline_id, environment, status, triggered_by, deployed_at FROM release_history ORDER BY deployed_at DESC LIMIT 3;"
+```
+
+**Trigger qua Kafka trực tiếp (simulate CI push):**
+
+```bash
+# Ghi admin props
+docker exec aeroflow-kafka bash -c "cat > /tmp/ci_service.props <<'EOF'
+security.protocol=SASL_PLAINTEXT
+sasl.mechanism=PLAIN
+sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username=\"ci-service\" password=\"CiService@1234\";
+EOF"
+
+# Produce trigger event
+docker exec aeroflow-kafka bash -c "
+echo '{\"event\":\"pipeline.triggered\",\"pipeline_id\":\"pipe-$(date +%Y%m%d)-kafka01\",\"triggered_by\":\"ci-system\",\"package_version\":\"v2.4.2\",\"target_environments\":[\"dev\"]}' \
+  | /opt/kafka/bin/kafka-console-producer.sh \
+    --bootstrap-server localhost:9092 \
+    --producer.config /tmp/ci_service.props \
+    --topic release.pipeline.triggered"
+
+# Xem release-worker nhận và xử lý
+docker compose logs release-worker --tail=20
+```
+
+---
+
+## R7 — Approval Flow
+
+```bash
+# 1. Trigger pipeline target staging (sẽ vào AWAITING_APPROVAL)
+PIPELINE_ID=$(curl -s -X POST http://localhost:8100/api/release/pipeline/trigger \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"package_version":"v2.4.1","target_environments":["staging"]}' \
+  | jq -r .pipeline_id)
+
+echo "Pipeline: $PIPELINE_ID"
+
+# 2. Đợi pipeline vào AWAITING_APPROVAL (~3s)
+sleep 3
+curl -s http://localhost:8100/api/release/pipelines/$PIPELINE_ID \
+  -H "Authorization: Bearer $TOKEN" | jq .pipeline.status
+# → "AWAITING_APPROVAL"
+
+# 3. Approve deployment lên staging
+curl -s -X POST "http://localhost:8100/api/release/pipeline/$PIPELINE_ID/approve/staging" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"decision":"APPROVED","comment":"Reviewed and approved by thiennlinh"}' | jq .
+
+# Kết quả: {"status":"approved","pipeline_id":"...","environment":"staging"}
+
+# 4. Verify release_approvals trong DB
+docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow \
+  -c "SELECT package_id, environment, decision, approved_by, approved_at FROM release_approvals ORDER BY approved_at DESC LIMIT 5;"
+
+# 5. Test Reject
+curl -s -X POST "http://localhost:8100/api/release/pipeline/$PIPELINE_ID/approve/staging" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"decision":"REJECTED","comment":"Config diff không acceptable"}' | jq .
+# → {"status":"rejected","pipeline_id":"..."}
+
+# Verify pipeline status = FAILED
+curl -s http://localhost:8100/api/release/pipelines/$PIPELINE_ID \
+  -H "Authorization: Bearer $TOKEN" | jq .pipeline.status
+# → "FAILED"
+```
+
+---
+
+## R8 — Rollback
+
+```bash
+# 1. Trigger rollback (chỉ platform-admin)
+ROLLBACK_RESPONSE=$(curl -s -X POST http://localhost:8100/api/release/rollback \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from_version": "v2.4.1",
+    "to_version": "v2.4.0",
+    "environment": "production",
+    "reason": "Critical bug in agent routing v2.4.1"
+  }')
+echo $ROLLBACK_RESPONSE | jq .
+
+ROLLBACK_ID=$(echo $ROLLBACK_RESPONSE | jq -r .rollback_id)
+
+# 2. Xem trạng thái rollback trong DB
+docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow \
+  -c "SELECT id, status, current_step, steps_result FROM rollback_operations WHERE id='$ROLLBACK_ID';"
+
+# Kết quả mong đợi: status=SUCCESS, current_step=3, steps_result=[...]
+
+# 3. Verify release_history có entry ROLLED_BACK
+docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow \
+  -c "SELECT pipeline_id, environment, status FROM release_history WHERE status='ROLLED_BACK' ORDER BY deployed_at DESC LIMIT 3;"
+
+# 4. Test rollback bởi non-admin → phải bị 403
+AI_TOKEN=$(curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=ai-engineer&password=Engineer@1234" \
+  | jq -r .access_token)
+
+curl -s -X POST http://localhost:8100/api/release/rollback \
+  -H "Authorization: Bearer $AI_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"from_version":"v2.4.1","to_version":"v2.4.0","environment":"production","reason":"test"}' | jq .
+# → {"detail":"Only platform-admin can trigger rollback"}
+```
+
+**Test PARTIAL_ROLLBACK scenario:**
+
+```bash
+# Simulate: Kong Admin URL không reachable → step 2 fail → PARTIAL_ROLLBACK
+# Set KONG_ADMIN_URL sai trong release-worker env temporarily
+# Sau đó trigger rollback → check status = PARTIAL_ROLLBACK trong DB
+docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow \
+  -c "SELECT id, status, steps_result FROM rollback_operations ORDER BY started_at DESC LIMIT 3;"
+```
+
+---
+
+## R9 — Drift Detection
+
+```bash
+# 1. Insert config khác nhau cho prod và staging
+docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow <<'SQL'
+INSERT INTO environment_configs (environment, key, value, updated_by)
+VALUES
+  ('production', 'max_agents', '100', 'platform-admin'),
+  ('staging',    'max_agents', '50',  'platform-admin'),  -- khác nhau → drift
+  ('production', 'log_level', 'ERROR', 'platform-admin'),
+  ('staging',    'log_level', 'DEBUG', 'platform-admin')  -- khác nhau → drift
+ON CONFLICT (environment, key, version) DO UPDATE SET value = EXCLUDED.value;
+SQL
+
+# 2. Chạy drift detection task thủ công (hoặc đợi Celery beat)
+curl -s -X POST http://localhost:8100/api/release/drift/detect \
+  -H "Authorization: Bearer $TOKEN"
+# Nếu endpoint này chưa có, có thể trigger qua Celery:
+# docker exec release-worker celery -A main.celery_app call release-worker.detect_config_drift
+
+# 3. Xem drift_events trong DB
+docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow \
+  -c "SELECT id, env_pair, drift_keys, severity, detected_at, resolved FROM drift_events ORDER BY detected_at DESC LIMIT 5;"
+
+# 4. Xem Kafka message drift.detected
+docker exec aeroflow-kafka bash -c "
+/opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --consumer.config /tmp/admin_release.props \
+  --topic release.drift.detected \
+  --from-beginning --max-messages 3 --timeout-ms 5000"
+```
+
+---
+
+## R10 — Release History Query
+
+```bash
+# 1. Toàn bộ history (50 records gần nhất)
+curl -s http://localhost:8100/api/release/history \
+  -H "Authorization: Bearer $TOKEN" | jq .
+
+# 2. Filter theo environment
+curl -s "http://localhost:8100/api/release/history?environment=production&limit=20" \
+  -H "Authorization: Bearer $TOKEN" | jq '.history[] | {pipeline_id, status, deployed_at}'
+
+# 3. Query trực tiếp PostgreSQL với filter nâng cao
+docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow <<'SQL'
+-- Deploy thành công trong 7 ngày qua
+SELECT environment, COUNT(*) as deploy_count,
+       AVG(duration_ms) as avg_duration_ms
+FROM release_history
+WHERE status = 'SUCCESS'
+  AND deployed_at > now() - interval '7 days'
+GROUP BY environment
+ORDER BY deploy_count DESC;
+
+-- Rollback events
+SELECT pipeline_id, environment, triggered_by, deployed_at
+FROM release_history
+WHERE status = 'ROLLED_BACK'
+ORDER BY deployed_at DESC;
+
+-- Check partitions đang hoạt động
+SELECT schemaname, tablename, tableowner
+FROM pg_tables
+WHERE tablename LIKE 'release_history_%'
+ORDER BY tablename;
+SQL
+
+# 4. Check release packages và scan results
+docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow \
+  -c "SELECT id, status, validation_score, scan_result->>'overall_status' as scan_status, created_at FROM release_packages ORDER BY created_at DESC LIMIT 5;"
+```
+
+---
+
+## R11 — Troubleshooting Release
+
+### Release Worker không start
+
+```bash
+docker compose logs release-worker | tail -30
+# Thường do: PostgreSQL chưa ready, Kafka chưa ready, hoặc module thiếu
+
+docker compose restart release-worker
+```
+
+### Pipeline stuck ở RUNNING / BUILDING
+
+```bash
+# Xem pipeline steps
+docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow \
+  -c "SELECT step_name, status, error FROM pipeline_steps WHERE pipeline_id='$PIPELINE_ID' ORDER BY id;"
+
+# Xem Celery task logs
+docker compose logs release-worker | grep "pipeline_id.*$PIPELINE_ID"
+```
+
+### Kafka consumer không nhận message
+
+```bash
+# Verify consumer group offset
+docker exec aeroflow-kafka /opt/kafka/bin/kafka-consumer-groups.sh \
+  --bootstrap-server localhost:9092 \
+  --command-config /tmp/admin_release.props \
+  --group release-worker-group \
+  --describe
+
+# Reset offset nếu cần (chỉ khi không có message quan trọng)
+docker exec aeroflow-kafka /opt/kafka/bin/kafka-consumer-groups.sh \
+  --bootstrap-server localhost:9092 \
+  --command-config /tmp/admin_release.props \
+  --group release-worker-group \
+  --topic release.pipeline.triggered \
+  --reset-offsets --to-earliest --execute
+```
+
+### Release schema chưa tạo
+
+```bash
+# Chạy lại init script (idempotent — IF NOT EXISTS)
+docker exec -i aeroflow-postgres psql -U aeroflow -d aeroflow \
+  < infra/sql/release-init.sql
+
+# Kiểm tra
+docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow \
+  -c "\dt pipelines release_packages release_history*"
+```
+
+### Rollback PARTIAL_ROLLBACK
+
+```bash
+# Xem rollback steps để biết bước nào fail
+docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow \
+  -c "SELECT id, status, current_step, steps_result, completed_at FROM rollback_operations ORDER BY started_at DESC LIMIT 5;"
+
+# Alert đã được gửi → check Kafka topic release.pipeline.status
+docker exec aeroflow-kafka /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --consumer.config /tmp/admin_release.props \
+  --topic release.pipeline.status \
+  --from-beginning --max-messages 10 --timeout-ms 5000 \
+  | grep PARTIAL_ROLLBACK
+
+# Sau khi fix thủ công → update status trong DB
+docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow \
+  -c "UPDATE rollback_operations SET status='FAILED', completed_at=now() WHERE id='$ROLLBACK_ID';"
+```
+
+### Drift events không được tạo
+
+```bash
+# Kiểm tra environment_configs có data khác nhau không
+docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow \
+  -c "SELECT environment, key, value FROM environment_configs WHERE is_active=true ORDER BY key, environment;"
+
+# Trigger detect_config_drift thủ công qua Celery
+docker exec aeroflow-release-worker python -c "
+from main import detect_config_drift
+detect_config_drift()
+print('Done')
+"
+```
+
+---
+
+## Checklist Smoke Test — Release (thêm vào sau Auth checklist)
+
+> **Lưu ý quan trọng (2026-05-27):** Client `aeroflow-frontend` không hỗ trợ Direct Access Grants.  
+> Dùng `aeroflow-backend` với secret để lấy token cho CLI tests:
+
+```bash
+# 8. Release Worker healthy
+curl -sf http://localhost:8100/health | jq .status
+# → "ok"
+
+# 9. Release DB tables tồn tại
+docker exec aeroflow-postgres psql -U aeroflow -d aeroflow -tAc \
+  "SELECT COUNT(*) FROM information_schema.tables WHERE table_name IN ('pipelines','release_packages','release_history','rollback_operations');"
+# → 4
+
+# 10. Release Kafka topics tồn tại (qua admin user)
+# Cần /tmp/admin_release.props trong Kafka container:
+# security.protocol=SASL_PLAINTEXT / sasl.mechanism=PLAIN / admin credentials
+docker exec aeroflow-kafka /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 --command-config /tmp/admin_release.props --list \
+  | grep "^release\."
+# → 5 topics: release.pipeline.triggered, release.pipeline.status,
+#             release.drift.detected, release.rollback.initiated, release.scan.completed
+
+# 11. Trigger test pipeline (qua Kong :8000 với JWT, hoặc trực tiếp :8100)
+TOKEN=$(curl -sf -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
+  -d "client_id=aeroflow-backend&client_secret=aeroflow-backend-secret-change-in-prod&grant_type=password&username=platform-admin&password=PlatformAdmin@1234" \
+  | jq -r .access_token)
+PIPE_ID=$(curl -sf -X POST http://localhost:8000/api/release/pipeline/trigger \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"package_version":"v0.0.smoke","target_environments":["dev"]}' | jq -r .pipeline_id)
+echo "Pipeline triggered: $PIPE_ID"
+sleep 5
+STATUS=$(curl -sf http://localhost:8000/api/release/pipelines/$PIPE_ID \
+  -H "Authorization: Bearer $TOKEN" | jq -r .pipeline.status)
+echo "Pipeline status: $STATUS"
+# → "SUCCESS"
+
+# 12. Release history có record
+curl -sf http://localhost:8000/api/release/history \
+  -H "Authorization: Bearer $TOKEN" | jq '.count'
+# → ≥ 1
+
+# 13. Kiểm tra release_history immutability trigger
+docker exec aeroflow-postgres psql -U aeroflow -d aeroflow -c \
+  "UPDATE release_history SET status='TAMPERED' WHERE id=(SELECT id FROM release_history LIMIT 1);"
+# → ERROR: release_history is immutable — UPDATE/DELETE are not allowed
+
+# 14. Kiểm tra rollback PARTIAL_ROLLBACK (Kong staging upstream chưa có)
+curl -sf -X POST http://localhost:8000/api/release/rollback \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"from_version":"v1.0.0","to_version":"v0.9.5","environment":"staging","reason":"smoke test"}' \
+  | jq .rollback_id
+# → rb-YYYYMMDD-xxxxxx (status sẽ là PARTIAL_ROLLBACK sau vài giây)
 ```

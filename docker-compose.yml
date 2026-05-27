@@ -1,5 +1,6 @@
-# ─── Auth & Gateway Stack ────────────────────────────────────────────
+# ─── Auth & Gateway + Release Management Stack ───────────────────────
 # Services: PostgreSQL · Keycloak (HA) · HAProxy LB · Kong · Frontend (Vite dev)
+#           Redis · Release Worker (FastAPI + Celery)
 # Keycloak HA: 2 nodes Active/Active behind HAProxy, Infinispan session sync
 # Run: docker compose up -d
 
@@ -10,6 +11,7 @@ networks:
 volumes:
   postgres_data:
   kong_data:
+  redis_data:
 
 services:
 
@@ -320,3 +322,54 @@ services:
         condition: service_healthy
     networks:
       - aeroflow-net
+
+  # ── Redis (Celery broker cho Release Worker) ────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: aeroflow-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - aeroflow-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Release Worker (FastAPI + Celery) ──────────────────────────────
+  # Xử lý pipeline: build → scan → approve → deploy → rollback
+  # Nhận trigger từ Kafka topic: release.pipeline.triggered
+  release-worker:
+    build:
+      context: ./services/release-worker
+    container_name: aeroflow-release-worker
+    restart: unless-stopped
+    ports:
+      - "8100:8100"
+    environment:
+      DATABASE_URL: postgresql://aeroflow:aeroflow_secret@postgres:5432/aeroflow
+      KAFKA_BOOTSTRAP: kafka:9092
+      KAFKA_USERNAME: release-worker
+      KAFKA_PASSWORD: ReleaseWorker@1234
+      CELERY_BROKER: redis://redis:6379/0
+      KONG_ADMIN_URL: http://kong:8001
+      OTEL_EXPORTER_OTLP_ENDPOINT: ""   # disable OTLP khi không có Jaeger
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - aeroflow-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8100/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
