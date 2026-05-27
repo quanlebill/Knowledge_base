@@ -2,11 +2,11 @@ import re
 import uuid
 from neo4j import AsyncGraphDatabase
 from services.database_connector.db_config import DBConfig
-from services.database_connector.response_model import Success, Error
+from services.database_connector.response_model import ResponseModel, Success, Error
 
 from fastapi import APIRouter, FastAPI
-from services.database_connector.Neo4j.API_model.api_model import *
-from services.database_connector.Neo4j.API_model.enum_type import *
+from api_schema.request import *
+from api_schema.enums import *
 
 driver = AsyncGraphDatabase.driver(
     DBConfig.NEO4J_URI,
