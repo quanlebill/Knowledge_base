@@ -1,10 +1,10 @@
-from qdrant_client import models
+﻿from qdrant_client import models
 import qdrant_client
 from pydantic import ValidationError
 
 from services.database_connector.db_config import DBConfig
 from services.database_connector.response_model import ResponseModel, Success, Error
-from input_schema.request import (
+from .input_schema.request import (
     CreateCollectionRequest,
     AddPointsRequest,
     UpdatePayloadRequest,
@@ -12,8 +12,8 @@ from input_schema.request import (
     DeletePointsRequest,
     SearchRequest,
 )
-from input_schema.enums import DistanceMetric, MatchType
-from input_schema.base_struct import MatchingPayload
+from .input_schema.enums import DistanceMetric, MatchType
+from .input_schema.base_struct import MatchingPayload
 
 from typing import List
 
@@ -189,3 +189,4 @@ async def vector_search(item: dict) -> ResponseModel:
         with_payload=True,
     )
     return Success(data=[r.model_dump() for r in results])
+

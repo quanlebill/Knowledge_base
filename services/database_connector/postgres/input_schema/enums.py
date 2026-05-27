@@ -26,9 +26,13 @@ class PolicyFilteringType(Enum):
     NATURAL_LANG = "Natural Language"
     EXACT_MATCH = "Exact Match For Word or Phrase"
 
+PolicyFormat = PolicyFilteringType
+
 class PolicyExtractionType(Enum):
-    EMTITY_NODE= "Entity"
+    ENTITY_NODE = "Entity"
     RELATIONSHIP_EDGE = "Relationship Edge"
+
+PolicyType = PolicyExtractionType
 
 class ConflictType(Enum):
     CONTENT_CONTRADICTION = "content_contradiction"

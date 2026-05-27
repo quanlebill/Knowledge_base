@@ -9,3 +9,8 @@ coverage
 .idea
 .claude
 *.log
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+data_agent.egg-info

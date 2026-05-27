@@ -1,4 +1,4 @@
-import re
+﻿import re
 import uuid
 from pydantic import ValidationError
 
@@ -6,8 +6,8 @@ from neo4j import AsyncGraphDatabase
 
 from services.database_connector.db_config import DBConfig
 from services.database_connector.response_model import ResponseModel, Success, Error
-from input_schema.request import AddNodeRequest, AddRelationshipRequest, GraphExpandRequest
-from input_schema.enums import RelationshipDirection
+from .input_schema.request import AddNodeRequest, AddRelationshipRequest, GraphExpandRequest
+from .input_schema.enums import RelationshipDirection
 
 
 driver = AsyncGraphDatabase.driver(
@@ -116,3 +116,4 @@ async def graph_expand(item: dict) -> ResponseModel:
         records = await result.data()
 
     return Success(data=records)
+

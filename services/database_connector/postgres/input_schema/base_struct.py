@@ -1,24 +1,25 @@
+from datetime import datetime as _dt
 from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional, Any, Literal, Annotated
+from typing import Optional, Any, Literal, Annotated, Union
 import uuid
 from .enums import *
 
 
 class Document(BaseModel):
-    source_type: Literal[SourceType.DOC]
+    source_type: Literal["doc"]
     doc_type: str
     author: str | None
-    published_date: datetime.datetime | None
+    published_date: _dt | None
 
 class Image(BaseModel):
-    source_type: Literal[SourceType.IMAGE]
+    source_type: Literal["image"]
     video_type: str
     height: int
     width: int
     color_space: str | None
 
 class Video(BaseModel):
-    source_type: Literal[SourceType.VIDEO]
+    source_type: Literal["video"]
     video_type: str
     height: int
     width: int
@@ -26,9 +27,9 @@ class Video(BaseModel):
     total_frame: int
 
 class Web(BaseModel):
-    source_type: Literal[SourceType.WEB]
+    source_type: Literal["web"]
     url: str
-    web_name:str
+    web_name: str
 
 MetadataType = Annotated[
     Union[
