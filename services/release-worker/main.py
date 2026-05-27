@@ -158,18 +158,23 @@ def _run_pipeline_impl(pipeline_event: dict):
 
         try:
             # ── Bước 1: Tạo pipeline record ──────────────────────────
+            target_envs_str = (target_envs[0] if target_envs else "dev")
             with get_pg_conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         """INSERT INTO pipelines
-                           (id, triggered_by, trigger_type, commit_sha, branch, package_version, status)
-                           VALUES (%s, %s, %s, %s, %s, %s, 'RUNNING')
+                           (id, pipeline_name, triggered_by, trigger_type, commit_sha, branch,
+                            package_version, target_env, status)
+                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'RUNNING')
                            ON CONFLICT (id) DO UPDATE SET status='RUNNING', updated_at=now()""",
-                        (pipeline_id, triggered_by,
+                        (pipeline_id,
+                         pipeline_event.get("pipeline_name"),
+                         triggered_by,
                          pipeline_event.get("trigger_type", "MANUAL"),
                          pipeline_event.get("commit_sha"),
                          pipeline_event.get("branch"),
-                         package_version)
+                         package_version,
+                         target_envs_str)
                     )
 
             # ── Bước 2: Build artifact ────────────────────────────────
@@ -704,6 +709,7 @@ class TriggerPipelineRequest(BaseModel):
     commit_sha: Optional[str] = None
     branch: Optional[str] = None
     package_version: str
+    pipeline_name: Optional[str] = None
     target_environments: list[str] = ["dev"]
 
 
@@ -826,6 +832,88 @@ def trigger_rollback(
     execute_rollback.delay(event)
     log.info("api.rollback.triggered", rollback_id=rollback_id, user=user["user_id"])
     return {"rollback_id": rollback_id, "status": "initiated"}
+
+
+@app.get("/api/release/pipelines")
+def list_pipelines(
+    status: Optional[str] = None,
+    limit: int = 50,
+    user: dict = Depends(get_current_user),
+):
+    """List tất cả pipelines — cho UI Deployments tab."""
+    with get_pg_conn() as conn:
+        with conn.cursor() as cur:
+            if status:
+                cur.execute(
+                    """SELECT id, pipeline_name, triggered_by, trigger_type, commit_sha,
+                              branch, package_version, target_env, status, risk_score,
+                              error_message, created_at, updated_at, completed_at
+                       FROM pipelines
+                       WHERE status = %s
+                       ORDER BY created_at DESC LIMIT %s""",
+                    (status, limit)
+                )
+            else:
+                cur.execute(
+                    """SELECT id, pipeline_name, triggered_by, trigger_type, commit_sha,
+                              branch, package_version, target_env, status, risk_score,
+                              error_message, created_at, updated_at, completed_at
+                       FROM pipelines
+                       ORDER BY created_at DESC LIMIT %s""",
+                    (limit,)
+                )
+            cols = ["id", "pipeline_name", "triggered_by", "trigger_type", "commit_sha",
+                    "branch", "package_version", "target_env", "status", "risk_score",
+                    "error_message", "created_at", "updated_at", "completed_at"]
+            rows = [dict(zip(cols, row)) for row in cur.fetchall()]
+            for row in rows:
+                for k in ("created_at", "updated_at", "completed_at"):
+                    if row.get(k):
+                        row[k] = row[k].isoformat()
+    return {"pipelines": rows, "count": len(rows)}
+
+
+@app.get("/api/release/rollback-targets")
+def list_rollback_targets(user: dict = Depends(get_current_user)):
+    """
+    Trả danh sách pipeline có thể rollback: lấy 2 lần deploy gần nhất mỗi (name, env)
+    từ release_history, tính current vs previous version.
+    """
+    with get_pg_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """WITH history_with_name AS (
+                     SELECT
+                       rh.pipeline_id,
+                       COALESCE(p.pipeline_name, rh.pipeline_id) AS name,
+                       rh.environment,
+                       rh.status,
+                       p.package_version,
+                       rh.deployed_at,
+                       ROW_NUMBER() OVER (
+                         PARTITION BY COALESCE(p.pipeline_name, rh.pipeline_id), rh.environment
+                         ORDER BY rh.deployed_at DESC
+                       ) AS rn
+                     FROM release_history rh
+                     JOIN pipelines p ON p.id = rh.pipeline_id
+                     WHERE rh.status IN ('SUCCESS', 'ROLLED_BACK')
+                   ),
+                   current_v AS (
+                     SELECT pipeline_id, name, environment, package_version AS current_version
+                     FROM history_with_name WHERE rn = 1
+                   ),
+                   previous_v AS (
+                     SELECT name, environment, package_version AS previous_version
+                     FROM history_with_name WHERE rn = 2
+                   )
+                   SELECT c.pipeline_id, c.name, c.current_version, pv.previous_version, c.environment
+                   FROM current_v c
+                   JOIN previous_v pv ON pv.name = c.name AND pv.environment = c.environment
+                   ORDER BY c.name, c.environment"""
+            )
+            cols = ["pipeline_id", "name", "current_version", "previous_version", "environment"]
+            rows = [dict(zip(cols, row)) for row in cur.fetchall()]
+    return {"targets": rows, "count": len(rows)}
 
 
 @app.get("/api/release/history")
