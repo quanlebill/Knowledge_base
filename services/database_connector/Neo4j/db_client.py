@@ -1,38 +1,42 @@
 import re
 import uuid
+from pydantic import ValidationError
+
 from neo4j import AsyncGraphDatabase
+
 from services.database_connector.db_config import DBConfig
 from services.database_connector.response_model import ResponseModel, Success, Error
+from input_schema.request import AddNodeRequest, AddRelationshipRequest, GraphExpandRequest
+from input_schema.enums import RelationshipDirection
 
-from fastapi import APIRouter, FastAPI
-from api_schema.request import *
-from api_schema.enums import *
 
 driver = AsyncGraphDatabase.driver(
     DBConfig.NEO4J_URI,
     auth=(DBConfig.NEO4J_USER, DBConfig.NEO4J_PASSWORD),
 )
 
-router = APIRouter(prefix='/neo4j')
 
-def validate_node_name(value: str) -> str:
-    # Only allow alphanumeric and underscore
+def _validate_node_name(value: str) -> str:
     if not re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', value):
         raise ValueError(f"Invalid identifier '{value}': only letters, digits and underscores allowed")
     return value
 
 
-@router.post("/add_node", response_model=ResponseModel)
-async def add_node(item: AddNodeRequest):
+async def add_node(item: dict) -> ResponseModel:
     try:
-        label = validate_node_name(item.node.label)
+        validated = AddNodeRequest.model_validate(item)
+    except ValidationError as e:
+        return Error(code=422, error=str(e))
+
+    try:
+        label = _validate_node_name(validated.node.label)
     except ValueError as e:
         return Error(code=400, error=str(e))
 
     node_id = str(uuid.uuid4())
-    props = {**item.node.properties, "id": node_id}
-    if item.node.embedding:
-        props["embedding"] = item.node.embedding
+    props = {**validated.node.properties.model_dump(), "id": node_id}
+    if validated.node.embedding:
+        props["embedding"] = validated.node.embedding
 
     async with driver.session() as session:
         result = await session.run(
@@ -43,11 +47,14 @@ async def add_node(item: AddNodeRequest):
     return Success(data={"id": record["id"]})
 
 
-@router.post("/add_relationship", response_model=ResponseModel)
-async def add_relationship(item: AddRelationshipRequest):
-    # type is stored as a property on the unified RELATED_TO edge
-    props = {**(item.relationship.properties or {}), "type": item.relationship.type}
-    direction = item.relationship.direction
+async def add_relationship(item: dict) -> ResponseModel:
+    try:
+        validated = AddRelationshipRequest.model_validate(item)
+    except ValidationError as e:
+        return Error(code=422, error=str(e))
+
+    props = {**(validated.relationship.properties or {}), "type": validated.relationship.type}
+    direction = validated.relationship.direction
 
     if direction == RelationshipDirection.OUTGOING.value:
         pattern = "(a)-[r:RELATED_TO $props]->(b)"
@@ -63,8 +70,8 @@ async def add_relationship(item: AddRelationshipRequest):
             CREATE {pattern}
             RETURN r.type AS type
             """,
-            from_id=item.from_node_id,
-            to_id=item.to_node_id,
+            from_id=validated.from_node_id,
+            to_id=validated.to_node_id,
             props=props,
         )
         record = await result.single()
@@ -74,20 +81,24 @@ async def add_relationship(item: AddRelationshipRequest):
     return Success(data={"type": record["type"]})
 
 
-@router.post("/expand", response_model=ResponseModel)
-async def graph_expand(item: GraphExpandRequest):
+async def graph_expand(item: dict) -> ResponseModel:
+    try:
+        validated = GraphExpandRequest.model_validate(item)
+    except ValidationError as e:
+        return Error(code=422, error=str(e))
+
     similarity_expr = (
         """
         CASE WHEN neighbour.embedding IS NOT NULL
              THEN vector.similarity.cosine(neighbour.embedding, $query_vector)
              ELSE 0.0 END
         """
-        if item.query_vector
+        if validated.query_vector
         else "0.0"
     )
 
     query = f"""
-        MATCH (start {{id: $start_id}})-[*1..{item.max_hops}]-(neighbour)
+        MATCH (start {{id: $start_id}})-[*1..{validated.max_hops}]-(neighbour)
         WHERE neighbour.id <> $start_id
         WITH DISTINCT neighbour, {similarity_expr} AS similarity
         ORDER BY similarity DESC
@@ -98,14 +109,10 @@ async def graph_expand(item: GraphExpandRequest):
     async with driver.session() as session:
         result = await session.run(
             query,
-            start_id=item.start_node_id,
-            max_neighbours=item.max_neighbours,
-            query_vector=item.query_vector or [],
+            start_id=validated.start_node_id,
+            max_neighbours=validated.max_neighbours,
+            query_vector=validated.query_vector or [],
         )
         records = await result.data()
 
     return Success(data=records)
-
-
-app = FastAPI()
-app.include_router(router)
