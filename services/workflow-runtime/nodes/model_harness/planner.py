@@ -22,12 +22,19 @@ _SYSTEM = (
 def planner_node(state: AgentState) -> dict:
     t0 = time.monotonic()
 
+    memory_ctx = state.get("memory_context", [])
+    memory_block = ""
+    if memory_ctx:
+        memory_block = "\n\nRelevant memories:\n" + "\n".join(
+            f"- {m['content']}" for m in memory_ctx
+        )
+
     response = litellm.completion(
         model="openai/planner",
         api_base=_LITELLM_BASE,
         api_key=_LITELLM_KEY,
         messages=[
-            {"role": "system", "content": _SYSTEM},
+            {"role": "system", "content": _SYSTEM + memory_block},
             {"role": "user", "content": state["query"]},
         ],
         temperature=0,

@@ -13,6 +13,7 @@ from config_loader import load_agent_config
 from observability import get_langfuse_handler
 from node_registry import NODE_REGISTRY
 from db import init_db, create_conversation, save_message, save_trace
+from memory_middleware import retrieve_memories, apply_memory_policy, _DEV_AGENT_ID, _DEV_TENANT_ID
 
 app = FastAPI(title="workflow-runtime", version="0.1.0")
 
@@ -87,44 +88,78 @@ def get_system_prompts(request: Request):
 
 
 @app.post("/api/conversations/run")
-async def run_conversation(req: RunRequest):
-    # Resolve or create conversation ID
+async def run_conversation(req: RunRequest, request: Request):
+    cfg      = load_agent_config(req.agent_id)
+    agent_id = cfg.get("agent_id", _DEV_AGENT_ID)
+    tenant_id = request.headers.get("X-Tenant-ID", _DEV_TENANT_ID)
+
+    # RETRIEVE memory trước khi build state
+    memory_context = []
+    if cfg.get("memory_enabled"):
+        memory_context = await retrieve_memories(agent_id, req.query)
+
     conv_id = req.conversation_id or await create_conversation()
 
     state = {
         "query": req.query,
         "messages": [m.model_dump() for m in req.messages],
+        "memory_context": memory_context,
         "tool_calls": [],
         "kb_chunks": [],
         "mcp_results": [],
         "rrf_results": [],
         "reranked_chunks": [],
         "response": "",
-        "config": load_agent_config(req.agent_id),
+        "guardrail_triggered": False,
+        "guardrail_message": "",
+        "config": cfg,
     }
 
     handler = get_langfuse_handler(run_name=f"conv-{conv_id or 'new'}")
     callbacks = [handler] if handler else []
 
+    # If output patterns are configured we must buffer the response before streaming,
+    # because we can't un-send tokens that have already been sent to the client.
+    has_output_guardrail = bool(cfg.get("guardrail_output_patterns"))
+
     async def event_stream():
         full_response: list[str] = []
+        guardrail_triggered = False
+        guardrail_msg = ""
         t0 = time.monotonic()
         try:
             async for chunk in _graph.astream(state, config={"callbacks": callbacks}):
+                if "guardrail_output" in chunk:
+                    g = chunk["guardrail_output"]
+                    guardrail_triggered = g.get("guardrail_triggered", False)
+                    guardrail_msg = g.get("guardrail_message", "")
+
                 if "reasoner" in chunk:
-                    response = chunk["reasoner"].get("response", "")
-                    if response:
-                        full_response.append(response)
-                        yield f"data: {response}\n\n"
+                    token = chunk["reasoner"].get("response", "")
+                    if token:
+                        full_response.append(token)
+                        # Stream real-time only when output guardrail is not active
+                        if not has_output_guardrail:
+                            yield f"data: {token}\n\n"
+
+            # Decide what to send after graph finishes
+            if guardrail_triggered:
+                yield f"data: {guardrail_msg}\n\n"
+            elif has_output_guardrail:
+                # Output guardrail checked and passed — send buffered response now
+                combined = "".join(full_response)
+                if combined:
+                    yield f"data: {combined}\n\n"
+
             yield "data: [DONE]\n\n"
+
         except Exception as e:
             yield f"data: [ERROR] {str(e)}\n\n"
         finally:
-            # Persist conversation turn after stream completes
+            latency = int((time.monotonic() - t0) * 1000)
+            assistant_text = guardrail_msg if guardrail_triggered else "".join(full_response)
             if conv_id:
-                latency = int((time.monotonic() - t0) * 1000)
                 await save_message(conv_id, "user", req.query)
-                assistant_text = "".join(full_response)
                 asst_msg_id = await save_message(
                     conv_id, "assistant", assistant_text, latency_ms=latency
                 )
@@ -134,9 +169,12 @@ async def run_conversation(req: RunRequest):
                         trace_index=0,
                         tool_name="reasoner",
                         input={"query": req.query},
-                        output={"response": assistant_text},
+                        output={"response": assistant_text, "guardrail_triggered": guardrail_triggered},
                         latency_ms=latency,
                     )
+            if cfg.get("memory_enabled") and not guardrail_triggered:
+                final_state = {**state, "response": assistant_text}
+                await apply_memory_policy(final_state, agent_id, tenant_id)
 
     response = StreamingResponse(event_stream(), media_type="text/event-stream")
     response.headers["X-Conversation-Id"] = conv_id or ""
