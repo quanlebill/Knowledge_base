@@ -20,8 +20,9 @@ export default defineConfig(({mode}) => {
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
       proxy: {
         // Proxy /api/release → Kong gateway (injects X-User-Id / X-User-Roles from JWT)
+        // Use host.docker.internal so Vite dev server inside Docker can reach Kong on the host network
         '/api/release': {
-          target: 'http://localhost:8000',
+          target: 'http://host.docker.internal:8000',
           changeOrigin: true,
         },
       },

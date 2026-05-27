@@ -18,7 +18,9 @@
   - [R8. Rollback](#r8--rollback)
   - [R9. Drift Detection](#r9--drift-detection)
   - [R10. Release History Query](#r10--release-history-query)
-  - [R11. Troubleshooting Release](#r11--troubleshooting-release)
+  - [R11. Kong Services cho Rollback](#r11--kong-services-cho-rollback-setup-một-lần)
+  - [R12. New API Endpoints (2026-05-27)](#r12--new-api-endpoints-2026-05-27)
+  - [R14. Troubleshooting Release](#r14--troubleshooting-release)
 
 ---
 
@@ -103,8 +105,8 @@ aeroflow-frontend           Up
 
 | Username | Password | Role | Email | Ghi chú |
 |---|---|---|---|---|
-| `platform-admin` | `Admin@1234` | `platform-admin` | admin@aeroflow.local | Có quyền `realm-management:view-users` — xem được toàn bộ users qua IAM |
-| `ai-engineer` | `Engineer@1234` | `ai-engineer` | engineer@aeroflow.local | |
+| `platform-admin` | `PlatformAdmin@1234` | `platform-admin` | admin@aeroflow.local | Có quyền `realm-management:view-users` — xem được toàn bộ users qua IAM |
+| `ai-engineer` | `AiEngineer@1234` | `ai-engineer` | engineer@aeroflow.local | |
 | `executive-viewer` | `Viewer@1234` | `executive-viewer` | viewer@aeroflow.local | |
 
 > Các tài khoản này được import sẵn từ `realm-export.json` khi stack khởi động lần đầu.  
@@ -353,7 +355,7 @@ curl http://localhost:8082/health/ready → {"status": "UP"}
 
 ```bash
 curl -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@1234"
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=PlatformAdmin@1234"
 → {"token_type":"Bearer","expires_in":900}
 
 # Token RS256, issuer: http://localhost:8080/realms/aeroflow
@@ -369,7 +371,7 @@ curl -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token
 docker stop aeroflow-keycloak-1
 sleep 5
 curl -s -X POST "http://localhost:8080/realms/aeroflow/protocol/openid-connect/token" \
-  -d "grant_type=password&client_id=aeroflow-frontend&username=ai-engineer&password=TestPass@123"
+  -d "grant_type=password&client_id=aeroflow-frontend&username=ai-engineer&password=AiEngineer@1234"
 → "expires_in":900   ← HAProxy chuyển sang node2 thành công
 
 docker start aeroflow-keycloak-1   # Khôi phục
@@ -456,7 +458,7 @@ curl .../attack-detection/brute-force/users/$USER_ID
 → {"disabled":true,"numFailures":2,"numTemporaryLockouts":0}
 
 # Thử đúng password — vẫn bị từ chối
-curl -X POST .../token -d "username=ai-engineer&password=TestPass@123"
+curl -X POST .../token -d "username=ai-engineer&password=AiEngineer@1234"
 → {"error":"invalid_grant","error_description":"Invalid user credentials"}
 
 # Restore: failureFactor=30, clear lockout
@@ -552,7 +554,7 @@ sleep 20
 # Thử login qua HAProxy (port 8080) — phải vẫn hoạt động qua node2
 curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=PlatformAdmin@1234" \
   | jq .access_token | head -c 50
 ```
 
@@ -579,7 +581,7 @@ curl -s http://localhost:8081/health/ready | jq .status   # → "UP"
 # Lấy token qua node1 trực tiếp
 TOKEN=$(curl -s -X POST http://localhost:8081/realms/aeroflow/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=ai-engineer&password=Engineer@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=ai-engineer&password=AiEngineer@1234" \
   | jq -r .access_token)
 
 # Introspect token qua node2 trực tiếp
@@ -612,7 +614,7 @@ http.server.HTTPServer(('0.0.0.0', 8888), H).serve_forever()
 # Bước 2: lấy token
 TOKEN=$(curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=PlatformAdmin@1234" \
   | jq -r .access_token)
 
 # Bước 3: gọi qua Kong
@@ -700,7 +702,7 @@ docker compose logs kong --tail=100 2>&1 | grep -c "fetch"
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=PlatformAdmin@1234" \
   | jq -r .access_token)
 
 # Gửi 305 request
@@ -734,7 +736,7 @@ done
 # Lần 6 — dù password đúng cũng bị từ chối
 curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=ai-engineer&password=Engineer@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=ai-engineer&password=AiEngineer@1234" \
   | jq .error_description
 ```
 
@@ -767,21 +769,21 @@ echo "User unlocked"
 # Session 1
 TOKEN1=$(curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=PlatformAdmin@1234" \
   | jq -r .access_token)
 echo "Session 1: ${TOKEN1:0:20}..."
 
 # Session 2
 TOKEN2=$(curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=PlatformAdmin@1234" \
   | jq -r .access_token)
 echo "Session 2: ${TOKEN2:0:20}..."
 
 # Session 3 — phải bị từ chối hoặc session cũ nhất bị revoke
 TOKEN3=$(curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=PlatformAdmin@1234" \
   | jq '{access_token: .access_token[:20], error: .error}')
 echo "Session 3: $TOKEN3"
 ```
@@ -824,7 +826,7 @@ echo "Before: $COUNT_BEFORE"
 # Bước 2: trigger login event
 curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=PlatformAdmin@1234" \
   > /dev/null
 
 # Bước 3: đợi consumer xử lý (~3s)
@@ -887,7 +889,7 @@ echo 'unauthorized-message' | kafka-console-producer.sh \
 # Login để tạo event
 curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=ai-engineer&password=Engineer@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=ai-engineer&password=AiEngineer@1234" \
   > /dev/null
 
 # Xem events qua Admin API
@@ -982,7 +984,7 @@ docker compose logs keycloak-node2 --tail=10 2>&1 | grep -c "GET /realms"
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=PlatformAdmin@1234" \
   | jq -r .access_token)
 
 echo $TOKEN | cut -d. -f2 | base64 -d 2>/dev/null | jq '{
@@ -1081,7 +1083,7 @@ docker compose logs audit-consumer | grep "Stored\|error"
 
 # Trigger event: đăng nhập vào Keycloak → SPI push ngay
 curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=PlatformAdmin@1234" \
   > /dev/null
 sleep 5
 docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow \
@@ -1151,7 +1153,7 @@ curl -sf http://localhost:8080/realms/aeroflow/protocol/openid-connect/certs | j
 # 4. Lấy token thành công
 TOKEN=$(curl -sf -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=PlatformAdmin@1234" \
   | jq -r .access_token)
 [ -n "$TOKEN" ] && echo "Token OK" || echo "Token FAIL"
 
@@ -1316,15 +1318,20 @@ docker exec aeroflow-kafka /opt/kafka/bin/kafka-topics.sh \
 | TR-09 | Approve staging → deploy | ✅ | POST approve → `status=approved` → pipeline `SUCCESS`, `release_history staging\|SUCCESS` |
 | TR-10 | Reject staging | ✅ | POST reject → `status=FAILED`, `error_message="Rejected by <user_id>"` |
 | TR-11 | Rollback trigger | ✅ | POST /rollback → `rb-20260527-85ceaf` tạo, Kafka event `rollback.initiated` |
-| TR-12 | Rollback compensating steps | ✅ | Step 1 (update_db_pointer) SUCCESS; Step 2 (reroute_kong) gặp Kong 404 → compensate revert step1 |
-| TR-13 | Rollback PARTIAL_ROLLBACK khi step fail | ✅ | Kong upstream `aeroflow-staging` không tồn tại → `status=PARTIAL_ROLLBACK`, `current_step=2` |
+| TR-12 | Rollback compensating steps | ✅ | Step 1 (update_db_pointer) SUCCESS; Step 2 (reroute_kong) SUCCESS sau khi tạo Kong services; Step 3 (redeploy_snapshot) SUCCESS |
+| TR-13 | Rollback FULL SUCCESS sau fix Kong | ✅ | `aeroflow-prod` + `aeroflow-staging` Kong services đã tạo → `status=SUCCESS`, `current_step=3`; `release_history` có entry `ROLLED_BACK` |
 | TR-14 | Release history ghi đúng | ✅ | Tất cả deploy ghi vào `release_history` (pipeline_id, env, status, triggered_by, deployed_at) |
 | TR-15 | Drift detection | ✅ | Insert prod/staging config khác nhau → `drift_events` ghi 3 drifted keys, `severity=CRITICAL_DRIFT` |
 | TR-16 | Kafka ACL ci-service chỉ WRITE trigger | ✅ | ci-service WRITE `pipeline.triggered` OK; READ `pipeline.status` → `GroupAuthorizationFailedError` |
 | TR-17 | release_history immutable | ✅ | Trigger `fn_release_history_immutable` block UPDATE/DELETE: `"release_history is immutable"` |
 | TR-18 | release_history partitioned | ✅ | 4 partitions (2026-05 → 2026-08); insert `2026-06-15` → `release_history_2026_06` ✓ |
+| TR-19 | Drift detection API | ✅ | `POST /drift/detect` → `{"status":"drift_detected","drift_id":2,"drift_keys":["dictionary_item_added","values_changed"]}` |
+| TR-20 | Drift list API | ✅ | `GET /drift` → trả `drift_events` array với `id`, `env_pair`, `drift_keys`, `severity`, `resolved` |
+| TR-21 | Drift resolve API | ✅ | `POST /drift/resolve/2` → `{"status":"resolved","drift_id":2,"resolved_by":"..."}` |
+| TR-22 | Partition auto-create API | ✅ | `POST /admin/create-partition` → `{"status":"created","table":"release_history_2026_06"}` (idempotent) |
+| TR-23 | Kong services cho rollback | ✅ | `aeroflow-prod` và `aeroflow-staging` Kong services tồn tại; rollback step 2 PATCH thành công |
 
-> **Ngày chạy test:** 2026-05-27 · **Kết quả:** 18/18 PASS (0 FAIL, 0 SKIP)
+> **Ngày chạy test:** 2026-05-27 · **Kết quả:** 23/23 PASS (0 FAIL, 0 SKIP)
 
 ---
 
@@ -1342,14 +1349,10 @@ docker exec aeroflow-kafka /opt/kafka/bin/kafka-topics.sh \
 
 | # | Hạng mục | Mức độ | Ghi chú |
 |---|----------|--------|---------|
-| 1 | **Drift detection endpoint** | Medium | Không có `POST /api/release/drift/check` — `detect_config_drift()` là Celery beat task, không trigger được thủ công qua API |
-| 2 | **Kong staging upstream** cho rollback step 2 | Medium | `aeroflow-staging` upstream chưa đăng ký Kong → rollback step 2 luôn PARTIAL_ROLLBACK trong dev env |
-| 3 | **MinIO snapshot redeploy** (rollback step 3) | Low | `_step3_redeploy_snapshot()` chỉ có TODO comment, không implement thật |
-| 4 | **Celery worker** cho production | Low | Hiện tại dùng thread trực tiếp; cần Celery worker process cho retry, rate-limit, observability đầy đủ |
-| 5 | **OTEL/Jaeger** tracing | Low | `OTEL_EXPORTER_OTLP_ENDPOINT=""` → gRPC error khởi động (non-fatal). Cần deploy Jaeger/OTEL Collector |
-| 6 | **MongoDB integration** | Low | `MONGO_URI` configured nhưng package manifest ghi PostgreSQL, không dùng MongoDB |
-| 7 | **Partition tự động** hàng tháng | Low | Hiện tại tạo thủ công partitions 2026-05→08; cần pg_cron job tự tạo partition mỗi tháng |
-| 8 | **Production environment** approval chain | Low | Chưa test target=production (cần approval cả staging + production) |
+| 1 | **Celery worker** cho production | Low | Hiện dùng thread trực tiếp; cần Celery worker process cho retry/rate-limit/observability |
+| 2 | **OTEL/Jaeger** tracing | Low | `OTEL_EXPORTER_OTLP_ENDPOINT=""` → gRPC error non-fatal. Cần deploy Jaeger/OTEL Collector |
+| 3 | **MongoDB integration** | Low | `MONGO_URI` configured nhưng package manifest ghi PostgreSQL; MongoDB chưa dùng, có thể bỏ |
+| 4 | **Production environment** approval chain | Low | Chưa test target=production (hai-stage: staging + production approval) |
 
 ---
 
@@ -1359,7 +1362,7 @@ docker exec aeroflow-kafka /opt/kafka/bin/kafka-topics.sh \
 # 1. Lấy token platform-admin
 TOKEN=$(curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=PlatformAdmin@1234" \
   | jq -r .access_token)
 
 # 2. Trigger pipeline target dev (auto-promote)
@@ -1488,7 +1491,7 @@ docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow \
 
 # 4. Test rollback bởi non-admin → phải bị 403
 AI_TOKEN=$(curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=ai-engineer&password=Engineer@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=ai-engineer&password=AiEngineer@1234" \
   | jq -r .access_token)
 
 curl -s -X POST http://localhost:8100/api/release/rollback \
@@ -1511,6 +1514,8 @@ docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow \
 ---
 
 ## R9 — Drift Detection
+
+> **Cập nhật 2026-05-27:** `POST /api/release/drift/detect` đã có — gọi inline, không cần Celery beat. Xem §R12 cho các endpoint mới.
 
 ```bash
 # 1. Insert config khác nhau cho prod và staging
@@ -1587,7 +1592,96 @@ docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow \
 
 ---
 
-## R11 — Troubleshooting Release
+## R11 — Kong Services cho Rollback (setup một lần)
+
+Rollback step 2 (`reroute_kong`) cần service `aeroflow-{environment}` tồn tại trong Kong.  
+Nếu chưa có, tạo thủ công một lần qua Kong Admin API:
+
+```bash
+# aeroflow-prod service
+curl -X POST http://localhost:8001/services \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "aeroflow-prod",
+    "url": "http://host.docker.internal:8888/prod"
+  }'
+
+# aeroflow-staging service
+curl -X POST http://localhost:8001/services \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "aeroflow-staging",
+    "url": "http://host.docker.internal:8888/staging"
+  }'
+
+# Verify
+curl -s http://localhost:8001/services | jq '.data[] | select(.name | startswith("aeroflow-")) | {name, url: .host}'
+```
+
+Sau khi tạo, rollback cho `environment=production` hoặc `environment=staging` sẽ PATCH service tương ứng để update `tags: ["version:X.Y.Z"]`.
+
+---
+
+## R12 — New API Endpoints (2026-05-27)
+
+Các endpoint mới thêm vào `release-worker` — tất cả đều đi qua Kong `:8000` với JWT.
+
+### Drift Detection API
+
+```bash
+TOKEN=$(curl -sf -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "client_id=aeroflow-backend&client_secret=aeroflow-backend-secret-change-in-prod&grant_type=password&username=platform-admin&password=PlatformAdmin@1234" \
+  | jq -r .access_token)
+
+# 1. Trigger drift detection thủ công (không cần Celery)
+curl -sf -X POST http://localhost:8000/api/release/drift/detect \
+  -H "Authorization: Bearer $TOKEN"
+# → {"status":"drift_detected","drift_id":2,"drift_keys":["dictionary_item_added","values_changed"],...}
+# hoặc → {"status":"clean","drift_keys":[],"severity":null}
+
+# 2. List drift events
+curl -sf "http://localhost:8000/api/release/drift?resolved=false" \
+  -H "Authorization: Bearer $TOKEN" | jq '.drift_events[].severity'
+
+# 3. Mark drift resolved (sau khi sync config)
+curl -sf -X POST "http://localhost:8000/api/release/drift/resolve/1" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"notes": "Config đã sync prod ↔ staging"}'
+# → {"status":"resolved","drift_id":1,"resolved_by":"<user-id>"}
+```
+
+### Partition Auto-Creation API
+
+```bash
+# Tạo partition tháng tiếp theo (gọi đầu mỗi tháng, idempotent)
+curl -sf -X POST http://localhost:8000/api/release/admin/create-partition \
+  -H "Authorization: Bearer $TOKEN"
+# → {"status":"created","table":"release_history_2026_06","from":"2026-06-01","to":"2026-07-01"}
+
+# Verify trong PostgreSQL
+docker exec aeroflow-postgres psql -U aeroflow -d aeroflow \
+  -c "\dt release_history_*"
+```
+
+**Lịch gọi khuyến nghị:** CI/CD job ngày 25 hàng tháng, hoặc cronjob:
+```bash
+# crontab: 0 2 25 * * curl -sf -X POST http://localhost:8000/api/release/admin/create-partition -H "Authorization: Bearer $TOKEN"
+```
+
+### Release UI — 4 tính năng mới (2026-05-27)
+
+| Tính năng | Mô tả |
+|-----------|-------|
+| **Trigger Pipeline** | Button `+` ở header Deployments → form: package_version, pipeline_name, branch, env checkboxes → POST trigger |
+| **Pipeline Steps Detail** | Expand row → lazy-load step timeline (build → scan → deploy); cached, không re-fetch |
+| **Environment & Status Filters** | Chip groups (DEV/STAGING/UAT/PROD + Running/Approval/Failed) lọc bảng Deployments; reset khi đổi tab |
+| **Trigger Type Badge** | Badge inline tên pipeline: Push (git), Manual, Scheduled |
+
+---
+
+## R14 — Troubleshooting Release
 
 ### Release Worker không start
 
@@ -1642,6 +1736,8 @@ docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow \
 
 ### Rollback PARTIAL_ROLLBACK
 
+> **Lưu ý:** Kể từ 2026-05-27, Kong services `aeroflow-prod` và `aeroflow-staging` đã được tạo → rollback step 2 không còn fail. PARTIAL_ROLLBACK chỉ xảy ra nếu Kong Admin API không reachable.
+
 ```bash
 # Xem rollback steps để biết bước nào fail
 docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow \
@@ -1654,6 +1750,10 @@ docker exec aeroflow-kafka /opt/kafka/bin/kafka-console-consumer.sh \
   --topic release.pipeline.status \
   --from-beginning --max-messages 10 --timeout-ms 5000 \
   | grep PARTIAL_ROLLBACK
+
+# Fix: tạo lại Kong services nếu bị xoá (xem §R11)
+curl -X POST http://localhost:8001/services -H "Content-Type: application/json" \
+  -d '{"name":"aeroflow-staging","url":"http://host.docker.internal:8888/staging"}'
 
 # Sau khi fix thủ công → update status trong DB
 docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow \
@@ -1725,10 +1825,29 @@ docker exec aeroflow-postgres psql -U aeroflow -d aeroflow -c \
   "UPDATE release_history SET status='TAMPERED' WHERE id=(SELECT id FROM release_history LIMIT 1);"
 # → ERROR: release_history is immutable — UPDATE/DELETE are not allowed
 
-# 14. Kiểm tra rollback PARTIAL_ROLLBACK (Kong staging upstream chưa có)
-curl -sf -X POST http://localhost:8000/api/release/rollback \
+# 14. Kiểm tra rollback SUCCESS (Kong services aeroflow-prod/staging đã tạo)
+ROLLBACK_ID=$(curl -sf -X POST http://localhost:8000/api/release/rollback \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"from_version":"v1.0.0","to_version":"v0.9.5","environment":"staging","reason":"smoke test"}' \
-  | jq .rollback_id
-# → rb-YYYYMMDD-xxxxxx (status sẽ là PARTIAL_ROLLBACK sau vài giây)
+  | jq -r .rollback_id)
+echo "Rollback: $ROLLBACK_ID"
+sleep 3
+docker exec aeroflow-postgres psql -U aeroflow -d aeroflow -tAc \
+  "SELECT status FROM rollback_operations WHERE id='$ROLLBACK_ID';"
+# → SUCCESS  (Kong services aeroflow-staging + aeroflow-prod đã tạo → step 2 SUCCESS)
+
+# 15. Drift detection API
+curl -sf -X POST http://localhost:8000/api/release/drift/detect \
+  -H "Authorization: Bearer $TOKEN" | jq .status
+# → "drift_detected" hoặc "clean" (tuỳ environment_configs)
+
+# 16. Drift list API
+curl -sf http://localhost:8000/api/release/drift \
+  -H "Authorization: Bearer $TOKEN" | jq .count
+# → số drift events đã detect
+
+# 17. Partition tháng tiếp theo
+curl -sf -X POST http://localhost:8000/api/release/admin/create-partition \
+  -H "Authorization: Bearer $TOKEN" | jq .table
+# → "release_history_2026_06" (hoặc tháng tiếp theo)
 ```

@@ -41,6 +41,16 @@ export interface RollbackTargetRaw {
   environment: string;
 }
 
+export interface PipelineStepRaw {
+  step_name: string;
+  status: string;
+  started_at: string | null;
+  completed_at: string | null;
+  duration_ms: number | null;
+  output: Record<string, unknown> | null;
+  error: string | null;
+}
+
 /** UI-facing shapes (mapped from Raw) */
 export interface DeploymentUI {
   id: string;
@@ -55,6 +65,7 @@ export interface DeploymentUI {
   branch: string | null;
   commitSha: string | null;
   errorMessage: string | null;
+  triggerType: string;
 }
 
 export interface HistoryUI {
@@ -74,6 +85,20 @@ export interface RollbackTargetUI {
   current: string;
   previous: string;
   env: string;
+}
+
+export interface PipelineStepUI {
+  stepName: string;
+  status: string;
+  duration: string;
+  error: string | null;
+}
+
+export interface TriggerPipelineParams {
+  packageVersion: string;
+  pipelineName?: string;
+  branch?: string;
+  targetEnvironments: string[];
 }
 
 /* ─── Time helpers ───────────────────────────────────────────────────── */
@@ -142,6 +167,7 @@ export function mapPipeline(p: PipelineRaw): DeploymentUI {
     branch:       p.branch,
     commitSha:    p.commit_sha,
     errorMessage: p.error_message,
+    triggerType:  p.trigger_type ?? 'MANUAL',
   };
 }
 
@@ -213,6 +239,43 @@ export async function fetchRollbackTargets(token: string): Promise<RollbackTarge
   return data.targets.map(mapRollbackTarget);
 }
 
+export async function fetchPipelineDetail(
+  token: string,
+  pipelineId: string,
+): Promise<PipelineStepUI[]> {
+  const data = await apiFetch<{ pipeline: PipelineRaw; steps: PipelineStepRaw[] }>(
+    `${API_BASE}/pipelines/${pipelineId}`,
+    token,
+  );
+  return (data.steps ?? []).map(s => ({
+    stepName: s.step_name,
+    status:   s.status,
+    duration: formatDuration(s.duration_ms),
+    error:    s.error,
+  }));
+}
+
+export async function triggerPipeline(
+  token: string,
+  params: TriggerPipelineParams,
+): Promise<{ pipeline_id: string; status: string }> {
+  const res = await fetch(`${API_BASE}/pipeline/trigger`, {
+    method:  'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body:    JSON.stringify({
+      package_version:     params.packageVersion,
+      pipeline_name:       params.pipelineName || undefined,
+      branch:              params.branch || undefined,
+      target_environments: params.targetEnvironments,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { detail?: string };
+    throw new Error(err.detail ?? `${res.status} ${res.statusText}`);
+  }
+  return res.json() as Promise<{ pipeline_id: string; status: string }>;
+}
+
 export async function triggerRollback(
   token: string,
   fromVersion: string,
@@ -226,8 +289,8 @@ export async function triggerRollback(
     body:    JSON.stringify({ from_version: fromVersion, to_version: toVersion, environment, reason }),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as any).detail ?? `${res.status} ${res.statusText}`);
+    const err = await res.json().catch(() => ({})) as { detail?: string };
+    throw new Error(err.detail ?? `${res.status} ${res.statusText}`);
   }
   return res.json();
 }

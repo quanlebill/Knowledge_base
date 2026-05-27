@@ -136,7 +136,9 @@
       "Bash(npx vite *)",
       "Bash(exist node_modules\\\\.vite rmdir /s /q node_modules\\\\.vite)",
       "PowerShell(curl -s -o $null -w \"%{http_code}\" \"http://localhost:8080/admin/realms/aeroflow/events?max=1\" -H \"Authorization: Bearer test\" 2>&1)",
-      "PowerShell(Invoke-WebRequest -Uri \"http://localhost:8080/health/ready\" -UseBasicParsing)"
+      "PowerShell(Invoke-WebRequest -Uri \"http://localhost:8080/health/ready\" -UseBasicParsing)",
+      "Bash(bash infra/kafka/release-setup.sh)",
+      "PowerShell(docker exec aeroflow-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --command-config /tmp/admin_release.props --list 2>&1)"
     ]
   }
 }

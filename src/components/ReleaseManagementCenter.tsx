@@ -4,13 +4,17 @@ import {
   Rocket, History, RotateCcw, CheckCircle2, XCircle,
   Clock, Search, AlertTriangle, Activity, RefreshCw,
   Loader2, GitBranch, GitCommit, ChevronDown, ChevronUp,
+  Plus,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAppState } from '../AppStateContext';
 import { useAuth } from '../lib/AuthProvider';
 import {
-  fetchPipelines, fetchHistory, fetchRollbackTargets, triggerRollback, approveDeployment,
+  fetchPipelines, fetchHistory, fetchRollbackTargets,
+  fetchPipelineDetail, triggerPipeline,
+  triggerRollback, approveDeployment,
   DeploymentUI, HistoryUI, RollbackTargetUI, PipelineRaw,
+  PipelineStepUI, TriggerPipelineParams,
 } from '../lib/releaseApi';
 
 type Tab = 'DEPLOYMENTS' | 'HISTORY' | 'ROLLBACK';
@@ -33,6 +37,32 @@ const DEPLOY_STATUS: Record<string, { label: string; color: string; bg: string }
   ROLLED_BACK:      { label: 'Rolled Back', color: 'text-slate-600',   bg: 'bg-slate-50 border-slate-200'      },
   QUEUED:           { label: 'Queued',      color: 'text-slate-600',   bg: 'bg-slate-50 border-slate-200'      },
 };
+
+/* ─── Feature 4: trigger_type badge map ─────────────────────────────── */
+const TRIGGER_TYPE: Record<string, { label: string; icon: React.ElementType }> = {
+  GIT_PUSH:  { label: 'Push',      icon: GitBranch },
+  MANUAL:    { label: 'Manual',    icon: Activity  },
+  SCHEDULED: { label: 'Scheduled', icon: Clock     },
+};
+
+/* ─── Feature 2: step status map ────────────────────────────────────── */
+const STEP_STATUS: Record<string, { color: string; bg: string; border: string }> = {
+  SUCCESS:     { color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200' },
+  FAILED:      { color: 'text-red-700',     bg: 'bg-red-50',     border: 'border-red-200'     },
+  RUNNING:     { color: 'text-amber-700',   bg: 'bg-amber-50',   border: 'border-amber-200'   },
+  IN_PROGRESS: { color: 'text-amber-700',   bg: 'bg-amber-50',   border: 'border-amber-200'   },
+  SKIPPED:     { color: 'text-slate-500',   bg: 'bg-slate-50',   border: 'border-slate-200'   },
+};
+const STEP_STATUS_DEFAULT = { color: 'text-slate-500', bg: 'bg-slate-50', border: 'border-slate-200' };
+
+/* ─── Feature 3: filter constants ───────────────────────────────────── */
+const DEPLOYMENTS_ENVS    = ['ALL', 'DEV', 'STAGING', 'UAT', 'PROD'] as const;
+const DEPLOYMENTS_STATUSES = [
+  { key: 'ALL',              label: 'All'      },
+  { key: 'BUILDING',         label: 'Running'  },
+  { key: 'WAITING_APPROVAL', label: 'Approval' },
+  { key: 'FAILED',           label: 'Failed'   },
+] as const;
 
 /* ─── useReleaseData hook ────────────────────────────────────────────── */
 
@@ -84,13 +114,39 @@ const ReleaseManagementCenter = () => {
     loading, error, reload, lastRefreshed,
   } = useReleaseData();
 
+  /* ── Existing state ── */
   const [search,      setSearch]      = useState('');
   const [confirmId,   setConfirmId]   = useState<string | null>(null);
   const [actionMsg,   setActionMsg]   = useState<string | null>(null);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
+  /* ── Feature 1: trigger form state ── */
+  const [showTriggerForm,   setShowTriggerForm]   = useState(false);
+  const [triggerFormData,   setTriggerFormData]   = useState<TriggerPipelineParams & { pipelineName: string; branch: string }>({
+    packageVersion:     '',
+    pipelineName:       '',
+    branch:             '',
+    targetEnvironments: [],
+  });
+  const [triggerSubmitting, setTriggerSubmitting] = useState(false);
+  const [triggerError,      setTriggerError]      = useState<string | null>(null);
+
+  /* ── Feature 2: pipeline steps cache ── */
+  const [pipelineSteps, setPipelineSteps] = useState<Record<string, PipelineStepUI[] | 'loading' | 'error'>>({});
+
+  /* ── Feature 3: filter state ── */
+  const [envFilter,    setEnvFilter]    = useState<string>('ALL');
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+
+  /* ── Tab helpers ── */
   const activeTab    = (subTab['release-management'] as Tab) ?? 'DEPLOYMENTS';
-  const setActiveTab = (id: Tab) => setSubTab('release-management', id);
+  const setActiveTab = (id: Tab) => {
+    setSubTab('release-management', id);
+    if (id !== 'DEPLOYMENTS') {
+      setEnvFilter('ALL');
+      setStatusFilter('ALL');
+    }
+  };
 
   const tabs = [
     { id: 'DEPLOYMENTS', label: 'Deployments',    icon: Rocket    },
@@ -98,19 +154,29 @@ const ReleaseManagementCenter = () => {
     { id: 'ROLLBACK',    label: 'Rollback Center', icon: RotateCcw },
   ];
 
-  const activeCount     = deployments.filter(d =>
+  /* ── Derived state ── */
+  const activeCount   = deployments.filter(d =>
     ['BUILDING', 'VALIDATING', 'PROMOTING', 'WAITING_APPROVAL'].includes(d.status)
   ).length;
-  const successRate     = deployments.length
+  const successRate   = deployments.length
     ? Math.round(deployments.filter(d => d.status === 'SUCCESS').length / deployments.length * 100)
     : 0;
-  const rollbackCount   = history.filter(h => h.status === 'ROLLED_BACK').length;
-  const lastDeploy      = deployments.find(d => d.status === 'SUCCESS')?.startedAt ?? '--';
+  const rollbackCount = history.filter(h => h.status === 'ROLLED_BACK').length;
+  const lastDeploy    = deployments.find(d => d.status === 'SUCCESS')?.startedAt ?? '--';
 
   const filteredHistory = history.filter(r =>
     r.name.toLowerCase().includes(search.toLowerCase()) ||
     r.id.toLowerCase().includes(search.toLowerCase())
   );
+
+  /* ── Feature 3: filtered deployments ── */
+  const filteredDeployments = deployments.filter(d => {
+    const envMatch    = envFilter === 'ALL'    || d.env === envFilter;
+    const statusMatch = statusFilter === 'ALL' || d.status === statusFilter;
+    return envMatch && statusMatch;
+  });
+
+  /* ── Handlers ── */
 
   const handleApprove = async (dep: DeploymentUI, decision: 'APPROVED' | 'REJECTED') => {
     if (!user?.token) return;
@@ -145,6 +211,52 @@ const ReleaseManagementCenter = () => {
     }
     setConfirmId(null);
   };
+
+  /* ── Feature 1: trigger handler ── */
+  const handleTrigger = async () => {
+    if (!user?.token) return;
+    const { packageVersion, pipelineName, branch, targetEnvironments } = triggerFormData;
+    if (!packageVersion.trim()) {
+      setTriggerError('Package version is required.');
+      return;
+    }
+    if (targetEnvironments.length === 0) {
+      setTriggerError('Select at least one target environment.');
+      return;
+    }
+    setTriggerSubmitting(true);
+    setTriggerError(null);
+    try {
+      const { pipeline_id } = await triggerPipeline(user.token, {
+        packageVersion:     packageVersion.trim(),
+        pipelineName:       pipelineName.trim() || undefined,
+        branch:             branch.trim() || undefined,
+        targetEnvironments,
+      });
+      setActionMsg(`🚀 Pipeline triggered: ${pipeline_id}`);
+      setTimeout(() => setActionMsg(null), 6000);
+      setShowTriggerForm(false);
+      setTriggerFormData({ packageVersion: '', pipelineName: '', branch: '', targetEnvironments: [] });
+      reload();
+    } catch (e) {
+      setTriggerError(e instanceof Error ? e.message : 'Trigger failed');
+    } finally {
+      setTriggerSubmitting(false);
+    }
+  };
+
+  /* ── Feature 2: lazy-load steps on expand ── */
+  useEffect(() => {
+    if (!expandedRow || !user?.token) return;
+    if (pipelineSteps[expandedRow] !== undefined) return;
+    const id    = expandedRow;
+    const token = user.token;
+    setPipelineSteps(prev => ({ ...prev, [id]: 'loading' }));
+    fetchPipelineDetail(token, id)
+      .then(steps => setPipelineSteps(prev => ({ ...prev, [id]: steps })))
+      .catch(()   => setPipelineSteps(prev => ({ ...prev, [id]: 'error'  })));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expandedRow, user?.token]);
 
   /* ── Render ── */
 
@@ -205,10 +317,10 @@ const ReleaseManagementCenter = () => {
       {/* Summary Metrics */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'Active Deployments', value: String(activeCount), icon: Rocket,       color: 'text-[#B88719]' },
-          { label: 'Last Release',       value: lastDeploy,          icon: Clock,        color: 'text-blue-600'  },
-          { label: 'Success Rate',       value: `${successRate}%`,   icon: CheckCircle2, color: 'text-emerald-600' },
-          { label: 'Rollbacks',          value: String(rollbackCount), icon: RotateCcw, color: 'text-amber-600' },
+          { label: 'Active Deployments', value: String(activeCount),   icon: Rocket,       color: 'text-[#B88719]'    },
+          { label: 'Last Release',       value: lastDeploy,            icon: Clock,        color: 'text-blue-600'     },
+          { label: 'Success Rate',       value: `${successRate}%`,     icon: CheckCircle2, color: 'text-emerald-600'  },
+          { label: 'Rollbacks',          value: String(rollbackCount),  icon: RotateCcw,   color: 'text-amber-600'    },
         ].map(s => (
           <div key={s.label} className="glass-panel p-5 rounded-2xl">
             <s.icon className={cn('w-4 h-4 mb-3', s.color)} />
@@ -242,18 +354,173 @@ const ReleaseManagementCenter = () => {
         {/* ── DEPLOYMENTS ─────────────────────────────────── */}
         {activeTab === 'DEPLOYMENTS' && (
           <div className="glass-panel rounded-2xl overflow-hidden">
+
+            {/* Panel header with Trigger button */}
             <div className="px-5 py-4 bg-[#FDFAF2] border-b border-[#E8DFC8] flex items-center justify-between">
               <h3 className="text-sm font-bold text-[#111111] flex items-center gap-2">
                 <Activity className="w-4 h-4 text-[#B88719]" />
                 Active & Recent Deployments
               </h3>
-              <span className="text-[10px] font-mono text-[#777]">
-                {loading ? 'loading…' : `${activeCount} active · ${deployments.length} total`}
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] font-mono text-[#777]">
+                  {loading ? 'loading…' : `${filteredDeployments.filter(d => ['BUILDING','VALIDATING','PROMOTING','WAITING_APPROVAL'].includes(d.status)).length} active · ${filteredDeployments.length} shown`}
+                </span>
+                <button
+                  onClick={() => { setShowTriggerForm(v => !v); setTriggerError(null); }}
+                  className={cn(
+                    'flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase border transition-all',
+                    showTriggerForm
+                      ? 'bg-[#B88719] text-white border-[#8A5A00]'
+                      : 'bg-white border-[#BFA66A] text-[#5A5A5A] hover:border-[#8A5A00] hover:text-[#8A5A00]',
+                  )}
+                >
+                  <Plus className="w-3 h-3" />
+                  {showTriggerForm ? 'Cancel' : 'Trigger'}
+                </button>
+              </div>
             </div>
 
-            {deployments.length === 0 && !loading ? (
-              <div className="p-10 text-center text-[#777] text-sm font-mono">No deployments found</div>
+            {/* Feature 1: Collapsible trigger form */}
+            {showTriggerForm && (
+              <div className="border-b border-[#E8DFC8] px-5 py-4 bg-[#FDFAF2] space-y-3">
+                {triggerError && (
+                  <div className="p-2 bg-red-50 border border-red-200 rounded-lg text-[10px] text-red-700 font-mono flex items-center gap-1.5">
+                    <AlertTriangle className="w-3 h-3 shrink-0" />
+                    {triggerError}
+                  </div>
+                )}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[9px] font-bold text-[#777] uppercase tracking-widest mb-1">
+                      Package Version <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. v2.4.1"
+                      value={triggerFormData.packageVersion}
+                      onChange={e => setTriggerFormData(p => ({ ...p, packageVersion: e.target.value }))}
+                      className="w-full bg-white border border-[#BFA66A] px-3 py-1.5 rounded-lg text-[11px] font-mono focus:outline-none focus:border-[#8A5A00] transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-bold text-[#777] uppercase tracking-widest mb-1">
+                      Pipeline Name
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="optional"
+                      value={triggerFormData.pipelineName}
+                      onChange={e => setTriggerFormData(p => ({ ...p, pipelineName: e.target.value }))}
+                      className="w-full bg-white border border-[#BFA66A] px-3 py-1.5 rounded-lg text-[11px] font-mono focus:outline-none focus:border-[#8A5A00] transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-bold text-[#777] uppercase tracking-widest mb-1">
+                      Branch
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="optional"
+                      value={triggerFormData.branch}
+                      onChange={e => setTriggerFormData(p => ({ ...p, branch: e.target.value }))}
+                      className="w-full bg-white border border-[#BFA66A] px-3 py-1.5 rounded-lg text-[11px] font-mono focus:outline-none focus:border-[#8A5A00] transition-colors"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[9px] font-bold text-[#777] uppercase tracking-widest mb-1.5">
+                    Target Environments <span className="text-red-500">*</span>
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {(['dev', 'staging', 'uat', 'prod'] as const).map(env => {
+                      const isChecked = triggerFormData.targetEnvironments.includes(env);
+                      return (
+                        <label
+                          key={env}
+                          className={cn(
+                            'flex items-center gap-1.5 px-3 py-1 rounded-lg border text-[10px] font-bold uppercase cursor-pointer transition-all select-none',
+                            isChecked
+                              ? 'bg-[#B88719] text-white border-[#8A5A00]'
+                              : 'bg-white border-[#BFA66A] text-[#5A5A5A] hover:border-[#8A5A00]',
+                          )}
+                        >
+                          <input
+                            type="checkbox"
+                            className="sr-only"
+                            checked={isChecked}
+                            onChange={() => {
+                              setTriggerFormData(p => ({
+                                ...p,
+                                targetEnvironments: isChecked
+                                  ? p.targetEnvironments.filter(e => e !== env)
+                                  : [...p.targetEnvironments, env],
+                              }));
+                            }}
+                          />
+                          {env}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    onClick={handleTrigger}
+                    disabled={triggerSubmitting}
+                    className="flex items-center gap-1.5 px-4 py-1.5 bg-[#B88719] hover:bg-[#8A5A00] text-white rounded-lg text-[10px] font-bold uppercase transition-all disabled:opacity-50"
+                  >
+                    {triggerSubmitting
+                      ? <Loader2 className="w-3 h-3 animate-spin" />
+                      : <Rocket className="w-3 h-3" />}
+                    {triggerSubmitting ? 'Triggering…' : 'Trigger Pipeline'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Feature 3: Filter chips */}
+            <div className="px-5 py-2.5 bg-white border-b border-[#E8DFC8] flex flex-wrap gap-x-4 gap-y-2 items-center">
+              <div className="flex gap-1.5 flex-wrap">
+                {DEPLOYMENTS_ENVS.map(env => (
+                  <button
+                    key={env}
+                    onClick={() => setEnvFilter(env)}
+                    className={cn(
+                      'px-2.5 py-0.5 rounded-full border text-[9px] font-bold uppercase transition-all',
+                      envFilter === env
+                        ? 'bg-[#B88719] text-white border-[#8A5A00]'
+                        : 'bg-white border-[#BFA66A] text-[#5A5A5A] hover:border-[#8A5A00] hover:text-[#8A5A00]',
+                    )}
+                  >
+                    {env}
+                  </button>
+                ))}
+              </div>
+              <div className="w-px h-4 bg-[#E8DFC8] hidden sm:block" />
+              <div className="flex gap-1.5 flex-wrap">
+                {DEPLOYMENTS_STATUSES.map(s => (
+                  <button
+                    key={s.key}
+                    onClick={() => setStatusFilter(s.key)}
+                    className={cn(
+                      'px-2.5 py-0.5 rounded-full border text-[9px] font-bold uppercase transition-all',
+                      statusFilter === s.key
+                        ? 'bg-[#111111] text-white border-[#111111]'
+                        : 'bg-white border-[#BFA66A] text-[#5A5A5A] hover:border-[#111111] hover:text-[#111111]',
+                    )}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {filteredDeployments.length === 0 && !loading ? (
+              <div className="p-10 text-center text-[#777] text-sm font-mono">
+                {envFilter !== 'ALL' || statusFilter !== 'ALL'
+                  ? 'No deployments match current filters'
+                  : 'No deployments found'}
+              </div>
             ) : (
               <>
                 {/* Desktop */}
@@ -271,18 +538,27 @@ const ReleaseManagementCenter = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#F0E8D4]">
-                    {deployments.map(dep => {
+                    {filteredDeployments.map(dep => {
                       const sc = DEPLOY_STATUS[dep.status] ?? DEPLOY_STATUS['QUEUED'];
                       const isExpanded = expandedRow === dep.id;
                       const canApprove = dep.status === 'WAITING_APPROVAL';
+                      const tt = TRIGGER_TYPE[dep.triggerType] ?? { label: dep.triggerType, icon: Activity };
+                      const TriggerIcon = tt.icon;
                       return (
                         <React.Fragment key={dep.id}>
                           <tr
                             className={cn('hover:bg-[#FFF9E8] transition-colors cursor-pointer', isExpanded && 'bg-[#FFF9E8]')}
                             onClick={() => setExpandedRow(isExpanded ? null : dep.id)}
                           >
+                            {/* Feature 4: trigger_type badge next to name */}
                             <td className="px-5 py-3.5">
-                              <div className="text-xs font-bold text-[#111111] uppercase">{dep.name}</div>
+                              <div className="flex items-center gap-2">
+                                <div className="text-xs font-bold text-[#111111] uppercase">{dep.name}</div>
+                                <div className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-[#F4E8C3] border border-[#BFA66A] rounded text-[8px] font-bold text-[#5A5A5A] shrink-0">
+                                  <TriggerIcon className="w-2.5 h-2.5" />
+                                  {tt.label}
+                                </div>
+                              </div>
                               <div className="text-[9px] font-mono text-[#777] mt-0.5">{dep.id} · {dep.version}</div>
                             </td>
                             <td className="px-4 py-3.5">
@@ -313,10 +589,12 @@ const ReleaseManagementCenter = () => {
                             </td>
                           </tr>
 
-                          {/* Expanded detail row */}
+                          {/* Expanded detail row — branch/commit/error/approve + Feature 2: steps */}
                           {isExpanded && (
                             <tr className="bg-[#FDFAF2]">
-                              <td colSpan={8} className="px-5 py-4">
+                              <td colSpan={8} className="px-5 py-4 space-y-4">
+
+                                {/* Existing: branch / commit / error / approve */}
                                 <div className="flex flex-wrap gap-6 text-[10px] font-mono text-[#5A5A5A]">
                                   {dep.branch && (
                                     <div className="flex items-center gap-1">
@@ -353,6 +631,72 @@ const ReleaseManagementCenter = () => {
                                     </div>
                                   )}
                                 </div>
+
+                                {/* Feature 2: Pipeline Steps */}
+                                <div>
+                                  <div className="text-[9px] font-black text-[#777] uppercase tracking-widest mb-2">
+                                    Pipeline Steps
+                                  </div>
+                                  {(() => {
+                                    const steps = pipelineSteps[dep.id];
+                                    if (steps === undefined || steps === 'loading') {
+                                      return (
+                                        <div className="flex items-center gap-1.5 text-[10px] font-mono text-[#777]">
+                                          <Loader2 className="w-3 h-3 animate-spin text-[#B88719]" />
+                                          Loading steps…
+                                        </div>
+                                      );
+                                    }
+                                    if (steps === 'error') {
+                                      return (
+                                        <div className="text-[10px] font-mono text-red-600 flex items-center gap-1">
+                                          <AlertTriangle className="w-3 h-3" />
+                                          Failed to load step data.
+                                        </div>
+                                      );
+                                    }
+                                    if (steps.length === 0) {
+                                      return (
+                                        <div className="text-[10px] font-mono text-[#777]">
+                                          No step data available.
+                                        </div>
+                                      );
+                                    }
+                                    return (
+                                      <div className="space-y-1">
+                                        {steps.map((step, idx) => {
+                                          const ss = STEP_STATUS[step.status] ?? STEP_STATUS_DEFAULT;
+                                          const isRunning = step.status === 'RUNNING' || step.status === 'IN_PROGRESS';
+                                          return (
+                                            <div
+                                              key={idx}
+                                              className={cn(
+                                                'flex items-center gap-2.5 px-3 py-1.5 rounded-lg border text-[10px] font-mono',
+                                                ss.bg, ss.border,
+                                              )}
+                                            >
+                                              {isRunning
+                                                ? <Loader2 className={cn('w-3 h-3 animate-spin shrink-0', ss.color)} />
+                                                : <CheckCircle2 className={cn('w-3 h-3 shrink-0', ss.color)} />}
+                                              <span className={cn('font-bold', ss.color)}>{step.stepName}</span>
+                                              <span className={cn('ml-auto text-[9px]', ss.color)}>{step.status}</span>
+                                              <span className="text-[#999] text-[9px]">{step.duration}</span>
+                                              {step.error && (
+                                                <span
+                                                  className="text-red-600 text-[9px] truncate max-w-[200px]"
+                                                  title={step.error}
+                                                >
+                                                  {step.error}
+                                                </span>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+
                               </td>
                             </tr>
                           )}
@@ -364,13 +708,22 @@ const ReleaseManagementCenter = () => {
 
                 {/* Mobile */}
                 <div className="lg:hidden divide-y divide-[#F0E8D4]">
-                  {deployments.map(dep => {
+                  {filteredDeployments.map(dep => {
                     const sc = DEPLOY_STATUS[dep.status] ?? DEPLOY_STATUS['QUEUED'];
+                    const tt = TRIGGER_TYPE[dep.triggerType] ?? { label: dep.triggerType, icon: Activity };
+                    const TriggerIcon = tt.icon;
                     return (
                       <div key={dep.id} className="p-4 space-y-2 hover:bg-[#FFF9E8]">
                         <div className="flex justify-between items-start">
                           <div>
-                            <div className="text-xs font-bold text-[#111111] uppercase">{dep.name}</div>
+                            {/* Feature 4: trigger_type badge on mobile */}
+                            <div className="flex items-center gap-1.5">
+                              <div className="text-xs font-bold text-[#111111] uppercase">{dep.name}</div>
+                              <div className="inline-flex items-center gap-0.5 px-1 py-0.5 bg-[#F4E8C3] border border-[#BFA66A] rounded text-[8px] font-bold text-[#5A5A5A]">
+                                <TriggerIcon className="w-2.5 h-2.5" />
+                                {tt.label}
+                              </div>
+                            </div>
                             <div className="text-[9px] font-mono text-[#777]">{dep.id} · {dep.version}</div>
                           </div>
                           <div className={cn('text-[9px] font-bold px-1.5 py-0.5 rounded-full border', sc.bg, sc.color)}>
