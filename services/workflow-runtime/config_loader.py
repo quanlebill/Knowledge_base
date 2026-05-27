@@ -14,6 +14,7 @@ DEV_CONFIG = {
     "max_tokens": 1000,
     "reranker_top_n": 5,
     "memory_enabled": False,
+    "mcp_endpoints": [],
 }
 
 

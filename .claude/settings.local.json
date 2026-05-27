@@ -13,7 +13,17 @@
       "Bash(python3 -c \"import sys,json; print\\(sorted\\(json.load\\(sys.stdin\\).keys\\(\\)\\)\\)\")",
       "Bash(curl -s http://localhost:8001/api/llm-providers)",
       "Bash(curl -s http://localhost:8001/api/system-prompts)",
-      "Bash(xargs grep -l \"canvas\\\\|Canvas\\\\|ReactFlow\\\\|react-flow\\\\|workflow\\\\|Workflow\")"
+      "Bash(xargs grep -l \"canvas\\\\|Canvas\\\\|ReactFlow\\\\|react-flow\\\\|workflow\\\\|Workflow\")",
+      "Bash(curl -N -s -X POST http://localhost:8001/api/conversations/run -H \"Content-Type: application/json\" -d '{\"query\":\"test\",\"agent_id\":\"test\",\"messages\":[]}' --max-time 20)",
+      "Bash(dir \"d:\\\\Nhong\\\\GTEL\\\\Data-Agent\\\\services\\\\workflow-runtime\")",
+      "Bash(docker cp *)",
+      "Bash(docker exec *)",
+      "PowerShell(docker exec data-agent-workflow-runtime-1 ls /app/migrations/)",
+      "PowerShell(docker exec data-agent-workflow-runtime-1 ls /app/)",
+      "PowerShell(docker exec data-agent-workflow-runtime-1 pip show asyncpg 2>&1)",
+      "PowerShell(docker exec data-agent-workflow-runtime-1 pip install \"asyncpg>=0.29\" 2>&1)",
+      "PowerShell(docker exec data-agent-workflow-runtime-1 printenv DATABASE_URL 2>&1)",
+      "PowerShell(docker exec data-agent-workflow-runtime-1 python /app/migrations/run_migrations.py 2>&1)"
     ]
   }
 }

@@ -1,1 +1,2 @@
 CREATE DATABASE langfuse;
+CREATE DATABASE litellm;

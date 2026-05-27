@@ -36,7 +36,7 @@ services:
     env_file: .env
     environment:
       REDIS_URL: redis://redis:6379
-      DATABASE_URL: postgresql://admin:dev123@postgres:5432/dataagent
+      DATABASE_URL: postgresql://admin:dev123@postgres:5432/litellm
     command: ["--config", "/app/config.yaml", "--port", "4000"]
     depends_on:
       - postgres

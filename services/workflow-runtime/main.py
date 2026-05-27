@@ -1,6 +1,7 @@
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
 
+import time
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -11,6 +12,7 @@ from graph import build_graph
 from config_loader import load_agent_config
 from observability import get_langfuse_handler
 from node_registry import NODE_REGISTRY
+from db import init_db, create_conversation, save_message, save_trace
 
 app = FastAPI(title="workflow-runtime", version="0.1.0")
 
@@ -22,6 +24,11 @@ app.add_middleware(
 )
 
 _graph = build_graph()
+
+
+@app.on_event("startup")
+async def startup():
+    await init_db()
 
 
 class Message(BaseModel):
@@ -81,6 +88,9 @@ def get_system_prompts(request: Request):
 
 @app.post("/api/conversations/run")
 async def run_conversation(req: RunRequest):
+    # Resolve or create conversation ID
+    conv_id = req.conversation_id or await create_conversation()
+
     state = {
         "query": req.query,
         "messages": [m.model_dump() for m in req.messages],
@@ -93,18 +103,41 @@ async def run_conversation(req: RunRequest):
         "config": load_agent_config(req.agent_id),
     }
 
-    handler = get_langfuse_handler(run_name=f"conv-{req.conversation_id or 'new'}")
+    handler = get_langfuse_handler(run_name=f"conv-{conv_id or 'new'}")
     callbacks = [handler] if handler else []
 
     async def event_stream():
+        full_response: list[str] = []
+        t0 = time.monotonic()
         try:
             async for chunk in _graph.astream(state, config={"callbacks": callbacks}):
                 if "reasoner" in chunk:
                     response = chunk["reasoner"].get("response", "")
                     if response:
+                        full_response.append(response)
                         yield f"data: {response}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:
             yield f"data: [ERROR] {str(e)}\n\n"
+        finally:
+            # Persist conversation turn after stream completes
+            if conv_id:
+                latency = int((time.monotonic() - t0) * 1000)
+                await save_message(conv_id, "user", req.query)
+                assistant_text = "".join(full_response)
+                asst_msg_id = await save_message(
+                    conv_id, "assistant", assistant_text, latency_ms=latency
+                )
+                if asst_msg_id:
+                    await save_trace(
+                        message_id=asst_msg_id,
+                        trace_index=0,
+                        tool_name="reasoner",
+                        input={"query": req.query},
+                        output={"response": assistant_text},
+                        latency_ms=latency,
+                    )
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    response = StreamingResponse(event_stream(), media_type="text/event-stream")
+    response.headers["X-Conversation-Id"] = conv_id or ""
+    return response
