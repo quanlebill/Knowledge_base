@@ -140,6 +140,7 @@ export interface QdrantPoint {
 export interface GraphNode { id: string; name: string; description?: string; }
 export interface GraphEdge { from: string; to: string; description?: string; score?: number; }
 export interface LayoutNode { id: string; x: number; y: number; r: number; label: string; core: boolean; }
+export interface Neo4jSchema { entities: string[]; connections: Record<string, string[]>; }
 
 export function computeGraphLayout(
   nodes: GraphNode[],

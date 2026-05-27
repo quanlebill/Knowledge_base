@@ -271,10 +271,6 @@ async def create(table_name: str, data: dict) -> ResponseModel:
     if cfg.ts_create:
         row[cfg.ts_create] = _now()
 
-    for f in cfg.json_fields:
-        if f in row:
-            row[f] = _json(row[f])
-
     if cfg.pk_strategy == "serial":
         # Exclude PK column(s) — DB generates them via SERIAL
         insert_row = {k: v for k, v in row.items() if k not in cfg.pk}
@@ -371,10 +367,6 @@ async def update(table_name: str, data: dict) -> ResponseModel:
     update_fields = all_fields
     if not update_fields:
         return Error(code=400, error="No fields to update")
-
-    for f in cfg.json_fields:
-        if f in update_fields:
-            update_fields[f] = _json(update_fields[f])
 
     pk_count = len(cfg.pk)
     where_clause = " AND ".join(f"{k} = ${i + 1}" for i, k in enumerate(cfg.pk))

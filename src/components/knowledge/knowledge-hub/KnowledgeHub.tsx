@@ -15,16 +15,16 @@ import {
   GraphHubTab, DBSubType, DBDocument, getSubType, DB_SUBTYPES,
   WTableEntry, WConfig, WConnection, getWarehouseConnection, formatRows, nextVersion,
   ChunkVersion, Chunk, QdrantCollection, QdrantPoint, QueryStep,
-  GraphNode, GraphEdge, LayoutNode, computeGraphLayout,
+  GraphNode, GraphEdge, LayoutNode, Neo4jSchema, computeGraphLayout,
   FALLBACK_DOCS, FALLBACK_CHUNKS, ALL_AVAILABLE_TABLES, FALLBACK_WAREHOUSE_CONFIGS,
-  FALLBACK_QDRANT, AVAILABLE_NODES, AVAILABLE_RELS, FALLBACK_EDGES, FALLBACK_REL_LABELS,
+  FALLBACK_QDRANT, AVAILABLE_NODES, FALLBACK_EDGES, FALLBACK_REL_LABELS,
   FALLBACK_NODES, buildCypher, PAGE_SIZE,
 } from './knowledgeHub.data';
 export const KnowledgeHubView = () => {
   const { documents, docsLoading } = useAppState();
   const [activeTab, setActiveTab] = useState<GraphHubTab>('DATABASE');
 
-  /* â”€â”€ Database: derive GOLD docs from shared context (same source as Data Layers) â”€â”€ */
+  /* â"€â"€ Database: derive GOLD docs from shared context (same source as Data Layers) â"€â"€ */
   const docs = useMemo<DBDocument[]>(
     () => documents
       .filter(d => d.layer === 'GOLD')
@@ -50,7 +50,7 @@ export const KnowledgeHubView = () => {
   const [selectedChunk, setSelectedChunk]   = useState<Chunk | null>(null);
   const [selectedVersion, setSelectedVersion] = useState<ChunkVersion | null>(null);
 
-  /* â”€â”€ Warehouse config state â”€â”€ */
+  /* â"€â"€ Warehouse config state â"€â"€ */
   const [warehouseConfigs, setWarehouseConfigs]           = useState<WConfig[]>([]);
   const [warehouseConfigsLoading, setWarehouseConfigsLoading] = useState(false);
   const [selectedConfig, setSelectedConfig]               = useState<WConfig | null>(null);
@@ -60,7 +60,7 @@ export const KnowledgeHubView = () => {
   const [newCfgSelectedIds, setNewCfgSelectedIds]         = useState<Set<string>>(new Set());
   const [newCfgSchemaFilter, setNewCfgSchemaFilter]       = useState<string>('All');
 
-  /* â”€â”€ Qdrant state â”€â”€ */
+  /* â"€â"€ Qdrant state â"€â"€ */
   const [qdrantCollections, setQdrantCollections]       = useState<QdrantCollection[]>([]);
   const [selectedCollection, setSelectedCollection]     = useState<QdrantCollection | null>(null);
   const [qdrantQuery, setQdrantQuery]                   = useState('');
@@ -71,7 +71,7 @@ export const KnowledgeHubView = () => {
   const [newVerDrawerOpen, setNewVerDrawerOpen] = useState(false);
   const [newVerContent, setNewVerContent]       = useState('');
 
-  /* â”€â”€ Auto-computed next version tags â”€â”€ */
+  /* â"€â"€ Auto-computed next version tags â"€â"€ */
   const autoNextChunkVer = useMemo(
     () => nextVersion(selectedChunk?.versions.map(v => v.version_number) ?? []),
     [selectedChunk],
@@ -81,46 +81,57 @@ export const KnowledgeHubView = () => {
     [warehouseConfigs],
   );
 
-  /* â”€â”€ Query builder state â”€â”€ */
+  /* â"€â"€ Query builder state â"€â"€ */
   const [startNode, setStartNode] = useState(AVAILABLE_NODES[0]);
   const [steps, setSteps]         = useState<QueryStep[]>([]);
   const [cypher, setCypher]       = useState('');
   const [queryRan, setQueryRan]   = useState(false);
   const [queryRunning, setQueryRunning] = useState(false);
 
-  /* â”€â”€ Neo4j graph state (initialised from fallback, replaced by API data) â”€â”€ */
+  /* â"€â"€ Neo4j graph state (initialised from fallback, replaced by API data) â"€â"€ */
   const [neoNodes,     setNeoNodes]     = useState<LayoutNode[]>(
     FALLBACK_NODES.map((n, i) => ({ ...n, id: `fn-${i}` })),
   );
   const [neoEdges,     setNeoEdges]     = useState<Array<[number,number,number,number]>>(FALLBACK_EDGES);
   const [neoRelLabels, setNeoRelLabels] = useState<Array<[number,number,string]>>(FALLBACK_REL_LABELS);
+  const [neoSchema,    setNeoSchema]    = useState<Neo4jSchema | null>(null);
+  const [neoLoading,   setNeoLoading]   = useState(false);
 
-  /* â”€â”€ Fetch: Qdrant on mount â”€â”€ */
+  /* â"€â"€ Fetch: Qdrant on mount â"€â"€ */
   useEffect(() => {
     mockGet<QdrantCollection[]>('/api/knowledge/qdrant/collections')
       .then(setQdrantCollections)
       .catch(() => setQdrantCollections(FALLBACK_QDRANT));
   }, []);
 
-  /* â”€â”€ Fetch: Neo4j graph when NEO4J tab is active â”€â”€ */
+  /* â"€â"€ Fetch: Neo4j graph + schema when NEO4J tab is active â"€â"€ */
   useEffect(() => {
     if (activeTab !== 'NEO4J') return;
-    mockGet<{ nodes: GraphNode[]; edges: GraphEdge[] }>('/api/knowledge/neo4j/graph')
-      .then(data => {
-        if (data?.nodes?.length) {
+    setNeoLoading(true);
+    Promise.all([
+      mockGet<{ nodes: GraphNode[]; edges: GraphEdge[] }>('/api/knowledge/neo4j/graph'),
+      mockGet<Neo4jSchema>('/api/knowledge/neo4j/schema'),
+    ])
+      .then(([graphData, schema]) => {
+        if (graphData?.nodes?.length) {
           const { layoutNodes, layoutEdges, layoutRelLabels } = computeGraphLayout(
-            data.nodes,
-            data.edges ?? [],
+            graphData.nodes,
+            graphData.edges ?? [],
           );
           setNeoNodes(layoutNodes);
           setNeoEdges(layoutEdges);
           setNeoRelLabels(layoutRelLabels);
         }
+        if (schema?.entities?.length) {
+          setNeoSchema(schema);
+          setStartNode(schema.entities[0]);
+        }
       })
-      .catch(() => {}); // keep fallback on error
+      .catch(() => {}) // keep fallback on error
+      .finally(() => setNeoLoading(false));
   }, [activeTab]);
 
-  /* â”€â”€ Delete confirmation state â”€â”€ */
+  /* â"€â"€ Delete confirmation state â"€â"€ */
   const [pendingDeleteDoc,     setPendingDeleteDoc]     = useState<string | null>(null);
   const [pendingDeleteChunk,   setPendingDeleteChunk]   = useState<string | null>(null);
   const [pendingDeleteVersion, setPendingDeleteVersion] = useState<string | null>(null);
@@ -177,7 +188,7 @@ export const KnowledgeHubView = () => {
     } catch { /* ForbiddenToast handles 403 */ } finally { setPendingDeleteTable(null); }
   };
 
-  /* â”€â”€ Qdrant toggle active â”€â”€ */
+  /* â"€â"€ Qdrant toggle active â"€â"€ */
   const [qdrantToggling, setQdrantToggling] = useState(false);
   const handleToggleActive = async () => {
     if (!selectedCollection) return;
@@ -197,7 +208,7 @@ export const KnowledgeHubView = () => {
     }
   };
 
-  /* â”€â”€ Qdrant semantic search â”€â”€ */
+  /* â"€â"€ Qdrant semantic search â"€â"€ */
   const handleQdrantSearch = async () => {
     if (!selectedCollection || !qdrantQuery.trim()) return;
     setQdrantSearching(true);
@@ -215,7 +226,7 @@ export const KnowledgeHubView = () => {
     }
   };
 
-  /* â”€â”€ Fetch: chunks or warehouse configs when a doc is selected â”€â”€ */
+  /* â"€â"€ Fetch: chunks or warehouse configs when a doc is selected â"€â"€ */
   useEffect(() => {
     if (!selectedDoc) {
       setChunks([]); setSelectedChunk(null); setSelectedVersion(null);
@@ -245,7 +256,7 @@ export const KnowledgeHubView = () => {
             ...chunk,
             versions: chunk.versions.map(v => ({
               ...v,
-              status: (v.status === 'active' ? 'Active' : 'Inactive') as 'Active' | 'Inactive',
+              status: (v.status?.toLowerCase() === 'active' ? 'Active' : 'Inactive') as 'Active' | 'Inactive',
             })),
           }));
           setChunks(list);
@@ -261,13 +272,13 @@ export const KnowledgeHubView = () => {
     }
   }, [selectedDoc]);
 
-  /* â”€â”€ Chunk helpers â”€â”€ */
+  /* â"€â"€ Chunk helpers â"€â"€ */
   const handleChunkChange = (chunk: Chunk) => {
     setSelectedChunk(chunk);
     setSelectedVersion(chunk.versions[0]);
   };
 
-  /* â”€â”€ Activate a version (set as Active, demote others) â”€â”€ */
+  /* â"€â"€ Activate a version (set as Active, demote others) â"€â"€ */
   const activateVersion = (ver: ChunkVersion) => {
     if (!selectedChunk || !selectedDoc) return;
     const updatedVersions = selectedChunk.versions.map(v => ({
@@ -283,7 +294,7 @@ export const KnowledgeHubView = () => {
     }).catch(() => {});
   };
 
-  /* â”€â”€ Create new chunk version (auto-versioned, persisted to server) â”€â”€ */
+  /* â"€â"€ Create new chunk version (auto-versioned, persisted to server) â"€â"€ */
   const handleCreateVersion = () => {
     if (!newVerContent.trim() || !selectedChunk || !selectedDoc) return;
     const now = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
@@ -308,7 +319,7 @@ export const KnowledgeHubView = () => {
     }).catch(() => {});
   };
 
-  /* â”€â”€ Warehouse config helpers â”€â”€ */
+  /* â"€â"€ Warehouse config helpers â"€â"€ */
   const activateConfig = (cfg: WConfig) => {
     if (!selectedDoc) return;
     const updated = warehouseConfigs.map(c => ({
@@ -367,10 +378,18 @@ export const KnowledgeHubView = () => {
   /* reset to page 1 when filter or search changes */
   useEffect(() => { setDbPage(1); }, [dbSubType, dbSearch]);
 
-  /* â”€â”€ Query builder helpers â”€â”€ */
-  const addStep = () => { setSteps(p => [...p, { id: `s-${Date.now()}`, relationship: AVAILABLE_RELS[0], nodeType: AVAILABLE_NODES[1] }]); setQueryRan(false); };
+  /* â"€â"€ Query builder helpers â"€â"€ */
+  const allEntities = neoSchema?.entities ?? AVAILABLE_NODES;
+  const getTargets = (fromEntity: string) =>
+    neoSchema?.connections[fromEntity] ?? allEntities;
+  const addStep = () => {
+    const prevEntity = steps.length ? steps[steps.length - 1].nodeType : startNode;
+    const targets = getTargets(prevEntity);
+    setSteps(p => [...p, { id: `s-${Date.now()}`, relationship: 'RELATED_TO', nodeType: targets[0] ?? allEntities[0] }]);
+    setQueryRan(false);
+  };
   const deleteStep = (id: string) => { setSteps(p => p.filter(s => s.id !== id)); setQueryRan(false); };
-  const updateStep = (id: string, f: 'relationship'|'nodeType', v: string) => { setSteps(p => p.map(s => s.id===id ? {...s,[f]:v} : s)); setQueryRan(false); };
+  const updateStep = (id: string, v: string) => { setSteps(p => p.map(s => s.id === id ? { ...s, nodeType: v } : s)); setQueryRan(false); };
 
   const tabs: { id: GraphHubTab; label: string; icon: React.ElementType }[] = [
     { id: 'DATABASE', label: 'Database', icon: Database },
@@ -466,7 +485,7 @@ export const KnowledgeHubView = () => {
           {docsLoading ? (
             <div className="flex items-center justify-center py-20 text-slate-400 text-sm">Loading databaseâ€¦</div>
           ) : !selectedDoc ? (
-            /* â”€â”€ GOLD-STYLE DOCUMENT TABLE â”€â”€ */
+            /* â"€â"€ GOLD-STYLE DOCUMENT TABLE â"€â"€ */
             <div className="space-y-4">
 
               {/* Search + filter row */}
@@ -595,7 +614,7 @@ export const KnowledgeHubView = () => {
                 {totalPages > 1 && (
                   <div className="px-6 py-4 border-t border-[#BFA66A]/15 bg-[#FFFDF8] flex items-center justify-between">
                     <span className="text-[10px] font-mono text-slate-500">
-                      {(safePage - 1) * PAGE_SIZE + 1}â€“{Math.min(safePage * PAGE_SIZE, searchedDocs.length)} of {searchedDocs.length}
+                      {(safePage - 1) * PAGE_SIZE + 1}â€"{Math.min(safePage * PAGE_SIZE, searchedDocs.length)} of {searchedDocs.length}
                     </span>
                     <div className="flex items-center gap-1.5">
                       <button
@@ -651,7 +670,7 @@ export const KnowledgeHubView = () => {
             </div>
 
           ) : selectedDoc.subType === 'Warehouse' ? (
-            /* â”€â”€ WAREHOUSE CONFIGS VIEW (chunk-style split panel) â”€â”€ */
+            /* â"€â"€ WAREHOUSE CONFIGS VIEW (chunk-style split panel) â"€â"€ */
             <div className="space-y-4">
               {/* New-config drawer */}
               <DetailDrawer
@@ -938,7 +957,7 @@ export const KnowledgeHubView = () => {
             </div>
 
           ) : (
-            /* â”€â”€ CHUNKS VIEW â”€â”€ */
+            /* â"€â"€ CHUNKS VIEW â"€â"€ */
             <div className="space-y-4">
               {/* Back header */}
               <div className="flex items-center gap-3">
@@ -1178,7 +1197,7 @@ export const KnowledgeHubView = () => {
       {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• QDRANT TAB â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       {activeTab === 'QDRANT' && (
         <>
-          {/* â”€â”€ Collection detail drawer â”€â”€ */}
+          {/* â"€â"€ Collection detail drawer â"€â"€ */}
           <DetailDrawer
             isOpen={!!selectedCollection}
             onClose={() => { setSelectedCollection(null); setQdrantQuery(''); setQdrantPoints([]); }}
@@ -1192,13 +1211,13 @@ export const KnowledgeHubView = () => {
             {selectedCollection && (
               <div className="flex h-full gap-0 divide-x divide-[#BFA66A]/15">
 
-                {/* â”€â”€ LEFT: Collection metadata â”€â”€ */}
+                {/* â"€â"€ LEFT: Collection metadata â"€â"€ */}
                 <div className="w-[280px] shrink-0 p-5 space-y-5 overflow-y-auto">
                   <p className="text-[10px] font-black uppercase tracking-widest text-[#6B6B6B]">Collection Info</p>
 
                   {[
                     { label: 'Collection ID',    value: selectedCollection.id },
-                    { label: 'Embedding Model',  value: selectedCollection.embedding_model ?? 'â€”' },
+                    { label: 'Embedding Model',  value: selectedCollection.embedding_model ?? 'â€"' },
                     { label: 'Dimensions',       value: String(selectedCollection.dimensions) },
                     { label: 'Distance Metric',  value: selectedCollection.distance },
                     { label: 'Vector Points',    value: selectedCollection.points.toLocaleString() },
@@ -1247,7 +1266,7 @@ export const KnowledgeHubView = () => {
                   </div>
                 </div>
 
-                {/* â”€â”€ RIGHT: Natural-language search â”€â”€ */}
+                {/* â"€â"€ RIGHT: Natural-language search â"€â"€ */}
                 <div className="flex-1 flex flex-col min-w-0">
                   {/* Query bar */}
                   <div className={cn('px-5 py-4 border-b border-[#BFA66A]/15 shrink-0', selectedCollection.active ? 'bg-[#FFFDF8]' : 'bg-slate-50')}>
@@ -1258,7 +1277,7 @@ export const KnowledgeHubView = () => {
                         value={qdrantQuery}
                         onChange={e => selectedCollection.active && setQdrantQuery(e.target.value)}
                         onKeyDown={e => e.key === 'Enter' && selectedCollection.active && handleQdrantSearch()}
-                        placeholder={selectedCollection.active ? 'Ask a natural-language questionâ€¦' : 'Collection is inactive â€” activate to query'}
+                        placeholder={selectedCollection.active ? 'Ask a natural-language questionâ€¦' : 'Collection is inactive â€" activate to query'}
                         disabled={!selectedCollection.active}
                         className={cn(
                           'flex-1 border rounded-xl px-4 py-2 text-xs font-mono placeholder-slate-400 focus:outline-none transition-all',
@@ -1358,10 +1377,10 @@ export const KnowledgeHubView = () => {
             )}
           </DetailDrawer>
 
-          {/* â”€â”€ Collection grid â”€â”€ */}
+          {/* â"€â"€ Collection grid â"€â"€ */}
           <div className="space-y-4">
             <p className="text-sm text-slate-500 font-medium">
-              {qdrantCollections.filter(c => c.active).length} active Â· {qdrantCollections.length} total collections â€” click a card to inspect
+              {qdrantCollections.filter(c => c.active).length} active Â· {qdrantCollections.length} total collections â€" click a card to inspect
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {qdrantCollections.map(col => (
@@ -1402,7 +1421,7 @@ export const KnowledgeHubView = () => {
                     </div>
                     <div>
                       <span className="text-[8px] font-mono text-slate-400 font-bold uppercase tracking-wider block mb-0.5">Embedding Model</span>
-                      <span className="text-[10px] font-bold font-mono text-slate-600">{col.embedding_model ?? 'â€”'}</span>
+                      <span className="text-[10px] font-bold font-mono text-slate-600">{col.embedding_model ?? 'â€"'}</span>
                     </div>
                     <div>
                       <span className="text-[8px] font-mono text-slate-400 font-bold uppercase tracking-wider block mb-1">Indexed</span>
@@ -1425,7 +1444,7 @@ export const KnowledgeHubView = () => {
       {activeTab === 'NEO4J' && (
         <div className="flex gap-5" style={{ height: 580 }}>
 
-          {/* â”€â”€ LEFT: Query Builder â”€â”€ */}
+          {/* â"€â"€ LEFT: Query Builder â"€â"€ */}
           <div className="w-[340px] shrink-0 border border-[#BFA66A]/25 rounded-3xl overflow-hidden bg-white shadow-sm flex flex-col">
             {/* Header */}
             <div className="px-5 py-4 bg-[#FFFDF8] border-b border-[#BFA66A]/15 flex items-center justify-between shrink-0">
@@ -1459,47 +1478,48 @@ export const KnowledgeHubView = () => {
 
             {/* Builder steps */}
             <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
-              {/* Start node â€” always present */}
+              {/* Start node â€" always present */}
               <div className="flex items-center gap-2 px-3 py-2.5 bg-[#FFF9E8] border-2 border-[#B88719] rounded-xl">
                 <Circle className="w-3.5 h-3.5 text-[#B88719] shrink-0" />
-                <select value={startNode} onChange={e => { setStartNode(e.target.value); setQueryRan(false); }}
+                <select value={startNode} onChange={e => { setStartNode(e.target.value); setSteps([]); setQueryRan(false); }}
                   className="bg-transparent text-xs font-bold text-[#8A5A00] focus:outline-none cursor-pointer flex-1">
-                  {AVAILABLE_NODES.map(n => <option key={n} value={n}>{n}</option>)}
+                  {allEntities.map(n => <option key={n} value={n}>{n}</option>)}
                 </select>
                 <span className="text-[9px] font-mono text-[#8A5A00]/50 uppercase tracking-wider shrink-0">start</span>
               </div>
 
-              {/* Step rows â€” vertical */}
-              {steps.map(step => (
-                <div key={step.id} className="ml-3 border-l-2 border-[#BFA66A]/30 pl-3 space-y-1.5">
-                  {/* Relationship */}
-                  <div className="flex items-center gap-1.5">
-                    <ArrowDown className="w-3 h-3 text-slate-300 shrink-0" />
-                    <div className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg flex-1 min-w-0">
-                      <span className="text-[9px] font-mono text-slate-400 shrink-0">[</span>
-                      <select value={step.relationship} onChange={e => updateStep(step.id, 'relationship', e.target.value)}
-                        className="bg-transparent text-[11px] font-bold text-slate-700 font-mono focus:outline-none cursor-pointer flex-1 min-w-0">
-                        {AVAILABLE_RELS.map(r => <option key={r} value={r}>{r}</option>)}
-                      </select>
-                      <span className="text-[9px] font-mono text-slate-400 shrink-0">]</span>
+              {/* Step rows â€" vertical */}
+              {steps.map((step, si) => {
+                const fromEntity = si === 0 ? startNode : steps[si - 1].nodeType;
+                const targets = getTargets(fromEntity);
+                return (
+                  <div key={step.id} className="ml-3 border-l-2 border-[#BFA66A]/30 pl-3 space-y-1.5">
+                    {/* Relationship â€" fixed RELATED_TO */}
+                    <div className="flex items-center gap-1.5">
+                      <ArrowDown className="w-3 h-3 text-slate-300 shrink-0" />
+                      <div className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg flex-1 min-w-0">
+                        <span className="text-[9px] font-mono text-slate-400 shrink-0">[</span>
+                        <span className="text-[11px] font-bold text-slate-500 font-mono flex-1 select-none">RELATED_TO</span>
+                        <span className="text-[9px] font-mono text-slate-400 shrink-0">]</span>
+                      </div>
+                    </div>
+                    {/* Target node + delete */}
+                    <div className="flex items-center gap-1.5 ml-4">
+                      <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#F5F0E8] border border-[#BFA66A]/40 rounded-xl flex-1 min-w-0">
+                        <Circle className="w-2.5 h-2.5 text-[#B88719] shrink-0" />
+                        <select value={step.nodeType} onChange={e => updateStep(step.id, e.target.value)}
+                          className="bg-transparent text-[11px] font-bold text-[#8A5A00] focus:outline-none cursor-pointer flex-1 min-w-0">
+                          {targets.map(n => <option key={n} value={n}>{n}</option>)}
+                        </select>
+                      </div>
+                      <button onClick={() => deleteStep(step.id)}
+                        className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer border border-transparent hover:border-red-100 shrink-0">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </div>
-                  {/* Target node + delete */}
-                  <div className="flex items-center gap-1.5 ml-4">
-                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#F5F0E8] border border-[#BFA66A]/40 rounded-xl flex-1 min-w-0">
-                      <Circle className="w-2.5 h-2.5 text-[#B88719] shrink-0" />
-                      <select value={step.nodeType} onChange={e => updateStep(step.id, 'nodeType', e.target.value)}
-                        className="bg-transparent text-[11px] font-bold text-[#8A5A00] focus:outline-none cursor-pointer flex-1 min-w-0">
-                        {AVAILABLE_NODES.map(n => <option key={n} value={n}>{n}</option>)}
-                      </select>
-                    </div>
-                    <button onClick={() => deleteStep(step.id)}
-                      className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer border border-transparent hover:border-red-100 shrink-0">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
 
               {/* Add Step */}
               <button onClick={addStep}
@@ -1521,10 +1541,18 @@ export const KnowledgeHubView = () => {
             </div>
           </div>
 
-          {/* â”€â”€ RIGHT: Graph Canvas â”€â”€ */}
+          {/* â"€â"€ RIGHT: Graph Canvas â"€â"€ */}
           <div className="flex-1 rounded-3xl relative overflow-hidden bg-[#0A0909] border border-white/6">
+            {neoLoading && (
+              <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#0A0909]/80 backdrop-blur-sm">
+                <div className="flex flex-col items-center gap-2">
+                  <Loader2 className="w-6 h-6 text-[#B88719] animate-spin" />
+                  <span className="text-[10px] font-mono text-[#B88719]/70 uppercase tracking-widest">Loading Graph</span>
+                </div>
+              </div>
+            )}
             <div className="absolute top-5 left-5 flex flex-col gap-1.5 z-10">
-              {['+','â€“','âŠ¡'].map((s,i) => (
+              {['+','â€"','âŠ¡'].map((s,i) => (
                 <button key={i} className="w-8 h-8 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 text-slate-400 text-sm flex items-center justify-center font-mono">{s}</button>
               ))}
             </div>

@@ -126,7 +126,8 @@ CREATE TABLE IF NOT EXISTS KBConflict (
     incoming_snapshot      JSONB,
     resolution_instruction TEXT,
     resolved_at            TIMESTAMPTZ,
-    resolved_by            UUID
+    resolved_by            UUID,
+    selected_resolution_method VARCHAR(50)
 );
 -- Used when joining KBConflictBatch with its pending conflicts
 CREATE INDEX IF NOT EXISTS idx_conflict_batch_pending       ON KBConflict (batch_id) WHERE status = 'pending';
