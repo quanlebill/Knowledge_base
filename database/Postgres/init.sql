@@ -1,116 +1,114 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
-CREATE SCHEMA IF NOT EXISTS "KB";
-
 -- ── Enums ─────────────────────────────────────────────────────────────────────
 
-CREATE TYPE "KB"."Language"        AS ENUM ('english', 'vietnamese');
-CREATE TYPE "KB"."SourceType"      AS ENUM ('doc', 'web', 'image', 'video', 'warehouse');
-CREATE TYPE "KB"."Tier"            AS ENUM ('bronze', 'silver', 'gold');
-CREATE TYPE "KB"."PolicyFormat"    AS ENUM ('Natural Language', 'Exact Match For Word or Phrase');
-CREATE TYPE "KB"."PolicyType"      AS ENUM ('Entity', 'Relationship Edge');
-CREATE TYPE "KB"."ConflictType"    AS ENUM ('content_contradiction','content_conflict','content_duplicate','content_update','table_schema');
-CREATE TYPE "KB"."ConflictSeverity" AS ENUM ('low', 'medium', 'high');
-CREATE TYPE "KB"."ConflictStatus"  AS ENUM ('pending', 'awaiting', 'resolved');
-CREATE TYPE "KB"."TaskType"        AS ENUM ('embedding', 'Vision Language Model');
-CREATE TYPE "KB"."SimilarityMetric" AS ENUM ('cosine', 'euclidean', 'dot');
-CREATE TYPE "KB"."HttpMethod"      AS ENUM ('GET', 'POST', 'PUT', 'PATCH', 'DELETE');
-CREATE TYPE "KB"."APIType"         AS ENUM ('NEO4J', 'QDRANT', 'RETRIEVE');
+CREATE TYPE KBLanguage        AS ENUM ('english', 'vietnamese');
+CREATE TYPE KBSourceType      AS ENUM ('doc', 'web', 'image', 'video', 'warehouse');
+CREATE TYPE KBTier            AS ENUM ('bronze', 'silver', 'gold');
+CREATE TYPE KBPolicyFormat    AS ENUM ('Natural Language', 'Exact Match For Word or Phrase');
+CREATE TYPE KBPolicyType      AS ENUM ('Entity', 'Relationship Edge');
+CREATE TYPE KBConflictType    AS ENUM ('content_contradiction','content_conflict','content_duplicate','content_update','table_schema');
+CREATE TYPE KBConflictSeverity AS ENUM ('low', 'medium', 'high');
+CREATE TYPE KBConflictStatus  AS ENUM ('pending', 'awaiting', 'resolved');
+CREATE TYPE KBTaskType        AS ENUM ('embedding', 'Vision Language Model');
+CREATE TYPE KBSimilarityMetric AS ENUM ('cosine', 'euclidean', 'dot');
+CREATE TYPE KBHttpMethod      AS ENUM ('GET', 'POST', 'PUT', 'PATCH', 'DELETE');
+CREATE TYPE KBAPIType         AS ENUM ('NEO4J', 'QDRANT', 'RETRIEVE');
 
--- ── KB.Model ──────────────────────────────────────────────────────────────────
+-- ── KBModel ───────────────────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS "KB"."Model" (
+CREATE TABLE IF NOT EXISTS KBModel (
     model_id    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     model_name  VARCHAR(50),
-    task_type   "KB"."TaskType" NOT NULL
+    task_type   KBTaskType NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_model_task_type ON "KB"."Model" (task_type);
+CREATE INDEX IF NOT EXISTS idx_model_task_type ON KBModel (task_type);
 
--- ── KB.ModelVersion ───────────────────────────────────────────────────────────
+-- ── KBModelVersion ────────────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS "KB"."ModelVersion" (
+CREATE TABLE IF NOT EXISTS KBModelVersion (
     version_id     SERIAL PRIMARY KEY,
-    model_id       UUID REFERENCES "KB"."Model"(model_id),
+    model_id       UUID REFERENCES KBModel(model_id),
     version_number INT,
     added_on       TIMESTAMPTZ,
     added_by       UUID,
     config         JSONB,
     is_active      BOOL DEFAULT FALSE
 );
-CREATE INDEX IF NOT EXISTS idx_modelversion_active ON "KB"."ModelVersion" (model_id, version_id) WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_modelversion_active ON KBModelVersion (model_id, version_id) WHERE is_active = TRUE;
 
--- ── KB.Data ───────────────────────────────────────────────────────────────────
+-- ── KBData ────────────────────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS "KB"."Data" (
+CREATE TABLE IF NOT EXISTS KBData (
     data_id      UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id    UUID NOT NULL,
     role_id      UUID NOT NULL,
     name         VARCHAR(50) UNIQUE,
     extension    VARCHAR(10),
-    language     "KB"."Language",
-    source_type  "KB"."SourceType" NOT NULL,
-    current_tier "KB"."Tier" NOT NULL DEFAULT 'bronze',
+    language     KBLanguage,
+    source_type  KBSourceType NOT NULL,
+    current_tier KBTier NOT NULL DEFAULT 'bronze',
     added_on     TIMESTAMPTZ,
     added_by     UUID,
     abstract     TEXT,
     metadata     JSONB,
     path         TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_data_tenant_source   ON "KB"."Data" (tenant_id, source_type);
-CREATE INDEX IF NOT EXISTS idx_data_tenant_role     ON "KB"."Data" (tenant_id, role_id);
-CREATE INDEX IF NOT EXISTS idx_data_tenant_tier     ON "KB"."Data" (tenant_id, current_tier);
+CREATE INDEX IF NOT EXISTS idx_data_tenant_source   ON KBData (tenant_id, source_type);
+CREATE INDEX IF NOT EXISTS idx_data_tenant_role     ON KBData (tenant_id, role_id);
+CREATE INDEX IF NOT EXISTS idx_data_tenant_tier     ON KBData (tenant_id, current_tier);
 
--- ── KB.LifecycleHistory ───────────────────────────────────────────────────────
+-- ── KBLifecycleHistory ────────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS "KB"."LifecycleHistory" (
+CREATE TABLE IF NOT EXISTS KBLifecycleHistory (
     history_id      UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    data_id         UUID NOT NULL REFERENCES "KB"."Data"(data_id),
-    from_tier       "KB"."Tier",
-    to_tier         "KB"."Tier" NOT NULL,
+    data_id         UUID NOT NULL REFERENCES KBData(data_id),
+    from_tier       KBTier,
+    to_tier         KBTier NOT NULL,
     transitioned_at TIMESTAMPTZ NOT NULL,
     approved_by     UUID,
     notes           TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_lifecycle_data_id ON "KB"."LifecycleHistory" (data_id);
+CREATE INDEX IF NOT EXISTS idx_lifecycle_data_id ON KBLifecycleHistory (data_id);
 
--- ── KB.FilterPolicy ───────────────────────────────────────────────────────────
+-- ── KBFilterPolicy ────────────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS "KB"."FilterPolicy" (
+CREATE TABLE IF NOT EXISTS KBFilterPolicy (
     policy_id   UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id   UUID NOT NULL,
     policy_name VARCHAR NOT NULL,
-    configformat "KB"."PolicyFormat" NOT NULL,
+    configformat KBPolicyFormat NOT NULL,
     config      JSONB,
     is_active   BOOL DEFAULT FALSE,
     created_at  TIMESTAMPTZ,
     created_by  UUID,
-    language    "KB"."Language"
+    language    KBLanguage
 );
-CREATE INDEX IF NOT EXISTS idx_filterpolicy_tenant_lang ON "KB"."FilterPolicy" (tenant_id, language);
+CREATE INDEX IF NOT EXISTS idx_filterpolicy_tenant_lang ON KBFilterPolicy (tenant_id, language);
 
--- ── KB.ExtractionPolicy ───────────────────────────────────────────────────────
+-- ── KBExtractionPolicy ────────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS "KB"."ExtractionPolicy" (
+CREATE TABLE IF NOT EXISTS KBExtractionPolicy (
     policy_id       UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id       UUID NOT NULL,
     policy_name     VARCHAR NOT NULL,
-    policy_type     "KB"."PolicyType" NOT NULL,
+    policy_type     KBPolicyType NOT NULL,
     custom_override TEXT,
     created_at      TIMESTAMPTZ,
     created_by      UUID,
-    language        "KB"."Language"
+    language        KBLanguage
 );
-CREATE INDEX IF NOT EXISTS idx_extractionpolicy_tenant_lang ON "KB"."ExtractionPolicy" (tenant_id, language);
+CREATE INDEX IF NOT EXISTS idx_extractionpolicy_tenant_lang ON KBExtractionPolicy (tenant_id, language);
 
--- ── KB.Conflict ───────────────────────────────────────────────────────────────
+-- ── KBConflict ────────────────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS "KB"."Conflict" (
+CREATE TABLE IF NOT EXISTS KBConflict (
     conflict_id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id              UUID,
-    conflict_type          "KB"."ConflictType" NOT NULL,
+    conflict_type          KBConflictType NOT NULL,
     detected_at            TIMESTAMPTZ,
-    severity               "KB"."ConflictSeverity" NOT NULL,
-    status                 "KB"."ConflictStatus" NOT NULL DEFAULT 'pending',
+    severity               KBConflictSeverity NOT NULL,
+    status                 KBConflictStatus NOT NULL DEFAULT 'pending',
     detailed_explanation   TEXT,
     existing_snapshot      JSONB,
     incoming_snapshot      JSONB,
@@ -118,33 +116,33 @@ CREATE TABLE IF NOT EXISTS "KB"."Conflict" (
     resolved_at            TIMESTAMPTZ,
     resolved_by            UUID
 );
-CREATE INDEX IF NOT EXISTS idx_conflict_tenant_status_severity ON "KB"."Conflict" (tenant_id, status, severity);
+CREATE INDEX IF NOT EXISTS idx_conflict_tenant_status_severity ON KBConflict (tenant_id, status, severity);
 
--- ── KB.Warehouse ──────────────────────────────────────────────────────────────
+-- ── KBWarehouse ───────────────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS "KB"."Warehouse" (
+CREATE TABLE IF NOT EXISTS KBWarehouse (
     warehouse_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     service      VARCHAR(50) NOT NULL,
     description  TEXT
 );
 
--- ── KB.Warehouse_Config ───────────────────────────────────────────────────────
+-- ── KBWarehouse_Config ────────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS "KB"."Warehouse_Config" (
+CREATE TABLE IF NOT EXISTS KBWarehouse_Config (
     config_id      UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    warehouse_id   UUID NOT NULL REFERENCES "KB"."Warehouse"(warehouse_id),
+    warehouse_id   UUID NOT NULL REFERENCES KBWarehouse(warehouse_id),
     version_number INT,
     is_active      BOOL,
     config         JSONB,
     created_at     TIMESTAMPTZ,
     created_by     UUID
 );
-CREATE INDEX IF NOT EXISTS idx_warehouseconfig_version   ON "KB"."Warehouse_Config" (warehouse_id, version_number);
-CREATE INDEX IF NOT EXISTS idx_warehouseconfig_active    ON "KB"."Warehouse_Config" (warehouse_id) WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_warehouseconfig_version   ON KBWarehouse_Config (warehouse_id, version_number);
+CREATE INDEX IF NOT EXISTS idx_warehouseconfig_active    ON KBWarehouse_Config (warehouse_id) WHERE is_active = TRUE;
 
--- ── KB.Table ──────────────────────────────────────────────────────────────────
+-- ── KBTable ───────────────────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS "KB"."Table" (
+CREATE TABLE IF NOT EXISTS KBTable (
     owner_id    UUID,
     table_id    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     table_name  VARCHAR(50),
@@ -153,121 +151,121 @@ CREATE TABLE IF NOT EXISTS "KB"."Table" (
     created_on  TIMESTAMPTZ,
     created_by  UUID
 );
-CREATE INDEX IF NOT EXISTS idx_table_name     ON "KB"."Table" (table_name);
-CREATE INDEX IF NOT EXISTS idx_table_owner_id ON "KB"."Table" (owner_id);
+CREATE INDEX IF NOT EXISTS idx_table_name     ON KBTable (table_name);
+CREATE INDEX IF NOT EXISTS idx_table_owner_id ON KBTable (owner_id);
 
--- ── KB.TextBlock ──────────────────────────────────────────────────────────────
+-- ── KBTextBlock ───────────────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS "KB"."TextBlock" (
+CREATE TABLE IF NOT EXISTS KBTextBlock (
     block_id    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    owner_id    UUID REFERENCES "KB"."Data"(data_id),
+    owner_id    UUID REFERENCES KBData(data_id),
     block_index INT
 );
-CREATE INDEX IF NOT EXISTS idx_textblock_owner ON "KB"."TextBlock" (owner_id, block_id);
+CREATE INDEX IF NOT EXISTS idx_textblock_owner ON KBTextBlock (owner_id, block_id);
 
--- ── KB.TextBlockVersion ───────────────────────────────────────────────────────
+-- ── KBTextBlockVersion ────────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS "KB"."TextBlockVersion" (
+CREATE TABLE IF NOT EXISTS KBTextBlockVersion (
     version_id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    block_id           UUID NOT NULL REFERENCES "KB"."TextBlock"(block_id),
+    block_id           UUID NOT NULL REFERENCES KBTextBlock(block_id),
     version_number     INT NOT NULL,
     content            TEXT,
     created_at         TIMESTAMPTZ,
     created_by         UUID,
     is_active          BOOL DEFAULT FALSE,
     table_involved     BOOL,
-    embedding_model_id UUID REFERENCES "KB"."Model"(model_id),
+    embedding_model_id UUID REFERENCES KBModel(model_id),
     payload            JSONB
 );
-CREATE INDEX IF NOT EXISTS idx_textblockversion_active ON "KB"."TextBlockVersion" (block_id, version_number) WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_textblockversion_active ON KBTextBlockVersion (block_id, version_number) WHERE is_active = TRUE;
 
--- ── KB.TextTable ──────────────────────────────────────────────────────────────
+-- ── KBTextTable ───────────────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS "KB"."TextTable" (
-    version_id  UUID PRIMARY KEY REFERENCES "KB"."TextBlockVersion"(version_id),
+CREATE TABLE IF NOT EXISTS KBTextTable (
+    version_id  UUID PRIMARY KEY REFERENCES KBTextBlockVersion(version_id),
     table_name  VARCHAR(50),
     description TEXT,
     data        JSONB
 );
 
--- ── KB.QdrantConnection ───────────────────────────────────────────────────────
+-- ── KBQdrantConnection ────────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS "KB"."QdrantConnection" (
+CREATE TABLE IF NOT EXISTS KBQdrantConnection (
     connection_id    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id        UUID,
     is_active        BOOL,
     created_at       TIMESTAMPTZ,
     total_collection INT DEFAULT 0
 );
-CREATE INDEX IF NOT EXISTS idx_qdrantconn_active ON "KB"."QdrantConnection" (tenant_id) WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_qdrantconn_active ON KBQdrantConnection (tenant_id) WHERE is_active = TRUE;
 
--- ── KB.QdrantCollection ───────────────────────────────────────────────────────
+-- ── KBQdrantCollection ────────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS "KB"."QdrantCollection" (
+CREATE TABLE IF NOT EXISTS KBQdrantCollection (
     collection_id    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    connection_id    UUID NOT NULL REFERENCES "KB"."QdrantConnection"(connection_id),
+    connection_id    UUID NOT NULL REFERENCES KBQdrantConnection(connection_id),
     collection_name  VARCHAR(50) NOT NULL,
     is_active        BOOL,
-    similarity_metric "KB"."SimilarityMetric" DEFAULT 'cosine',
+    similarity_metric KBSimilarityMetric DEFAULT 'cosine',
     points_count     INT DEFAULT 0,
     vector_dimension INT,
-    embedding_model_id UUID REFERENCES "KB"."Model"(model_id)
+    embedding_model_id UUID REFERENCES KBModel(model_id)
 );
-CREATE INDEX IF NOT EXISTS idx_qdrantcol_connection ON "KB"."QdrantCollection" (connection_id);
+CREATE INDEX IF NOT EXISTS idx_qdrantcol_connection ON KBQdrantCollection (connection_id);
 
--- ── KB.Neo4jConnection ────────────────────────────────────────────────────────
+-- ── KBNeo4jConnection ─────────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS "KB"."Neo4jConnection" (
+CREATE TABLE IF NOT EXISTS KBNeo4jConnection (
     connection_id      UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id          UUID,
     is_connected       BOOL,
     total_node         INT DEFAULT 0,
     total_edge         INT DEFAULT 0,
     created_at         TIMESTAMPTZ,
-    embedding_model_id UUID REFERENCES "KB"."Model"(model_id)
+    embedding_model_id UUID REFERENCES KBModel(model_id)
 );
-CREATE INDEX IF NOT EXISTS idx_neo4jconn_active ON "KB"."Neo4jConnection" (tenant_id) WHERE is_connected = TRUE;
+CREATE INDEX IF NOT EXISTS idx_neo4jconn_active ON KBNeo4jConnection (tenant_id) WHERE is_connected = TRUE;
 
--- ── KB.Neo4jNode ──────────────────────────────────────────────────────────────
+-- ── KBNeo4jNode ───────────────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS "KB"."Neo4jNode" (
-    connection_id    UUID REFERENCES "KB"."Neo4jConnection"(connection_id),
+CREATE TABLE IF NOT EXISTS KBNeo4jNode (
+    connection_id    UUID REFERENCES KBNeo4jConnection(connection_id),
     node_id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     node_name        VARCHAR(50),
     node_description TEXT,
     inserted_at      TIMESTAMPTZ
 );
-CREATE INDEX IF NOT EXISTS idx_neo4jnode_connection ON "KB"."Neo4jNode" (connection_id);
+CREATE INDEX IF NOT EXISTS idx_neo4jnode_connection ON KBNeo4jNode (connection_id);
 
--- ── KB.Neo4jRelationship ──────────────────────────────────────────────────────
+-- ── KBNeo4jRelationship ───────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS "KB"."Neo4jRelationship" (
-    from_node   UUID REFERENCES "KB"."Neo4jNode"(node_id),
-    to_node     UUID REFERENCES "KB"."Neo4jNode"(node_id),
+CREATE TABLE IF NOT EXISTS KBNeo4jRelationship (
+    from_node   UUID REFERENCES KBNeo4jNode(node_id),
+    to_node     UUID REFERENCES KBNeo4jNode(node_id),
     score       FLOAT,
     description TEXT,
     PRIMARY KEY (from_node, to_node)
 );
 
--- ── KB.EntityLookup ───────────────────────────────────────────────────────────
+-- ── KBEntityLookup ────────────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS "KB"."EntityLookup" (
+CREATE TABLE IF NOT EXISTS KBEntityLookup (
     lookup_id      UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     alias_name     VARCHAR(50) NOT NULL,
     canonical_name VARCHAR(50) NOT NULL,
     created_at     TIMESTAMPTZ
 );
-CREATE INDEX IF NOT EXISTS idx_entitylookup_alias ON "KB"."EntityLookup" USING HASH (alias_name);
+CREATE INDEX IF NOT EXISTS idx_entitylookup_alias ON KBEntityLookup USING HASH (alias_name);
 
--- ── KB.PublishAPI ─────────────────────────────────────────────────────────────
+-- ── KBPublishAPI ──────────────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS "KB"."PublishAPI" (
+CREATE TABLE IF NOT EXISTS KBPublishAPI (
     id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id    UUID,
     name         VARCHAR(50),
-    type         "KB"."APIType",
+    type         KBAPIType,
     endpoint_url VARCHAR(100),
-    http_method  "KB"."HttpMethod",
+    http_method  KBHttpMethod,
     is_published BOOL DEFAULT FALSE
 );
-CREATE INDEX IF NOT EXISTS idx_publishapi_active ON "KB"."PublishAPI" (tenant_id) WHERE is_published = TRUE;
+CREATE INDEX IF NOT EXISTS idx_publishapi_active ON KBPublishAPI (tenant_id) WHERE is_published = TRUE;
