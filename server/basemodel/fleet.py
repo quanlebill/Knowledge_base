@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from enum_type import *
+from .enum_type import *
 
 class ContentCount(BaseModel):
     documents: int

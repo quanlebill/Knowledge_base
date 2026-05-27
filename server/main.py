@@ -1,3 +1,8 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))  # project root for services.*
+sys.path.insert(0, str(Path(__file__).parent))          # server/ for basemodel.*, router, service
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from router import router

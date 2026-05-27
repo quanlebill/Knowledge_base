@@ -136,6 +136,55 @@ export interface QdrantPoint {
   intent: string[];
 }
 
+/* ─── Neo4j graph types ──────────────────────────────────────────── */
+export interface GraphNode { id: string; name: string; description?: string; }
+export interface GraphEdge { from: string; to: string; description?: string; score?: number; }
+export interface LayoutNode { id: string; x: number; y: number; r: number; label: string; core: boolean; }
+
+export function computeGraphLayout(
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+): {
+  layoutNodes: LayoutNode[];
+  layoutEdges: Array<[number, number, number, number]>;
+  layoutRelLabels: Array<[number, number, string]>;
+} {
+  if (!nodes.length) return { layoutNodes: [], layoutEdges: [], layoutRelLabels: [] };
+
+  const cx = 450, cy = 280, radius = 190;
+  const layoutNodes: LayoutNode[] = nodes.map((n, i) => {
+    if (i === 0) return { id: n.id, x: cx, y: cy, r: 18, label: n.name, core: true };
+    const angle = (2 * Math.PI * (i - 1)) / Math.max(nodes.length - 1, 1) - Math.PI / 2;
+    return {
+      id: n.id,
+      x: Math.round(cx + radius * Math.cos(angle)),
+      y: Math.round(cy + radius * Math.sin(angle)),
+      r: 12,
+      label: n.name,
+      core: false,
+    };
+  });
+
+  const posMap = new Map(layoutNodes.map(n => [n.id, { x: n.x, y: n.y }]));
+  const layoutEdges: Array<[number, number, number, number]> = [];
+  const layoutRelLabels: Array<[number, number, string]> = [];
+
+  for (const e of edges) {
+    const from = posMap.get(e.from);
+    const to   = posMap.get(e.to);
+    if (!from || !to) continue;
+    layoutEdges.push([from.x, from.y, to.x, to.y]);
+    const label = e.description?.match(/\[(\w+)\]/)?.[1] ?? '';
+    if (label) layoutRelLabels.push([
+      Math.round((from.x + to.x) / 2),
+      Math.round((from.y + to.y) / 2),
+      label,
+    ]);
+  }
+
+  return { layoutNodes, layoutEdges, layoutRelLabels };
+}
+
 /* ─── Neo4j query builder ────────────────────────────────────────── */
 export interface QueryStep { id: string; relationship: string; nodeType: string; }
 

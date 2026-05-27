@@ -15,6 +15,7 @@ import {
   GraphHubTab, DBSubType, DBDocument, getSubType, DB_SUBTYPES,
   WTableEntry, WConfig, WConnection, getWarehouseConnection, formatRows, nextVersion,
   ChunkVersion, Chunk, QdrantCollection, QdrantPoint, QueryStep,
+  GraphNode, GraphEdge, LayoutNode, computeGraphLayout,
   FALLBACK_DOCS, FALLBACK_CHUNKS, ALL_AVAILABLE_TABLES, FALLBACK_WAREHOUSE_CONFIGS,
   FALLBACK_QDRANT, AVAILABLE_NODES, AVAILABLE_RELS, FALLBACK_EDGES, FALLBACK_REL_LABELS,
   FALLBACK_NODES, buildCypher, PAGE_SIZE,
@@ -85,6 +86,14 @@ export const KnowledgeHubView = () => {
   const [steps, setSteps]         = useState<QueryStep[]>([]);
   const [cypher, setCypher]       = useState('');
   const [queryRan, setQueryRan]   = useState(false);
+  const [queryRunning, setQueryRunning] = useState(false);
+
+  /* â”€â”€ Neo4j graph state (initialised from fallback, replaced by API data) â”€â”€ */
+  const [neoNodes,     setNeoNodes]     = useState<LayoutNode[]>(
+    FALLBACK_NODES.map((n, i) => ({ ...n, id: `fn-${i}` })),
+  );
+  const [neoEdges,     setNeoEdges]     = useState<Array<[number,number,number,number]>>(FALLBACK_EDGES);
+  const [neoRelLabels, setNeoRelLabels] = useState<Array<[number,number,string]>>(FALLBACK_REL_LABELS);
 
   /* â”€â”€ Fetch: Qdrant on mount â”€â”€ */
   useEffect(() => {
@@ -92,6 +101,24 @@ export const KnowledgeHubView = () => {
       .then(setQdrantCollections)
       .catch(() => setQdrantCollections(FALLBACK_QDRANT));
   }, []);
+
+  /* â”€â”€ Fetch: Neo4j graph when NEO4J tab is active â”€â”€ */
+  useEffect(() => {
+    if (activeTab !== 'NEO4J') return;
+    mockGet<{ nodes: GraphNode[]; edges: GraphEdge[] }>('/api/knowledge/neo4j/graph')
+      .then(data => {
+        if (data?.nodes?.length) {
+          const { layoutNodes, layoutEdges, layoutRelLabels } = computeGraphLayout(
+            data.nodes,
+            data.edges ?? [],
+          );
+          setNeoNodes(layoutNodes);
+          setNeoEdges(layoutEdges);
+          setNeoRelLabels(layoutRelLabels);
+        }
+      })
+      .catch(() => {}); // keep fallback on error
+  }, [activeTab]);
 
   /* â”€â”€ Delete confirmation state â”€â”€ */
   const [pendingDeleteDoc,     setPendingDeleteDoc]     = useState<string | null>(null);
@@ -1406,10 +1433,22 @@ export const KnowledgeHubView = () => {
                   <p className="text-[10px] text-slate-500">Generates Cypher path</p>
                 </div>
               </div>
-              <button onClick={() => { setCypher(buildCypher(startNode, steps)); setQueryRan(true); }}
+              <button
+                onClick={async () => {
+                  const generated = buildCypher(startNode, steps);
+                  setCypher(generated);
+                  setQueryRan(true);
+                  setQueryRunning(true);
+                  try {
+                    await mockMutate('POST', '/api/knowledge/neo4j/query', { cypher: generated });
+                  } catch { /* ignore — result is display-only */ }
+                  finally { setQueryRunning(false); }
+                }}
                 className="flex items-center gap-1.5 px-3 py-2 bg-[#B88719] text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-[#8A5A00] transition-all cursor-pointer">
-                <Play className="w-3.5 h-3.5" />
-                Run
+                {queryRunning
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <Play    className="w-3.5 h-3.5" />}
+                {queryRunning ? 'Running' : 'Run'}
               </button>
             </div>
 
@@ -1503,16 +1542,16 @@ export const KnowledgeHubView = () => {
                     <polygon points="0 0, 7 2.5, 0 5" fill="rgba(184,135,25,0.35)" />
                   </marker>
                 </defs>
-                {FALLBACK_EDGES.map((e,i) => (
+                {neoEdges.map((e,i) => (
                   <motion.line key={`e-${i}`} x1={e[0]} y1={e[1]} x2={e[2]} y2={e[3]} stroke="rgba(184,135,25,0.22)" strokeWidth="1.5" markerEnd="url(#arrow)"
                     initial={{opacity:0}} animate={{opacity:1}} transition={{delay:i*0.12,duration:0.5}} />
                 ))}
-                {FALLBACK_REL_LABELS.map(([x,y,label],i) => (
+                {neoRelLabels.map(([x,y,label],i) => (
                   <motion.text key={`rl-${i}`} x={x} y={y} textAnchor="middle" fill="rgba(184,135,25,0.5)" fontSize="8" fontFamily="monospace" fontWeight="bold"
                     initial={{opacity:0}} animate={{opacity:1}} transition={{delay:1.2+i*0.08}}>{label}</motion.text>
                 ))}
-                {FALLBACK_NODES.map((node,i) => (
-                  <motion.g key={node.label} initial={{scale:0,opacity:0}} animate={{scale:1,opacity:1}} transition={{delay:i*0.1,type:'spring',stiffness:200,damping:18}}>
+                {neoNodes.map((node,i) => (
+                  <motion.g key={node.id} initial={{scale:0,opacity:0}} animate={{scale:1,opacity:1}} transition={{delay:i*0.1,type:'spring',stiffness:200,damping:18}}>
                     <circle cx={node.x} cy={node.y} r={node.r*3.8} fill={node.core ? 'url(#coreGlow)' : 'url(#subGlow)'} />
                     <circle cx={node.x} cy={node.y} r={node.r} fill={node.core ? '#B88719' : '#6B4400'} stroke={node.core ? 'rgba(255,220,120,0.4)' : 'rgba(184,135,25,0.25)'} strokeWidth="1.5" />
                     <text x={node.x} y={node.y+node.r+13} textAnchor="middle" fill="rgba(255,255,255,0.45)" fontSize="9" fontFamily="monospace" fontWeight="bold">{node.label}</text>

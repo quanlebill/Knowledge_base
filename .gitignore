@@ -6,3 +6,11 @@ coverage/
 *.log
 .env*
 !.env.example
+.idea
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+data_agent.egg-info/
+.data_agent.egg-info/

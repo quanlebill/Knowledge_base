@@ -1,19 +1,21 @@
-FROM node:20-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 
-COPY server/requirements.txt ./server/requirements.txt
-RUN apt-get update && apt-get install -y python3 python3-pip \
-    && pip3 install --break-system-packages -r server/requirements.txt
+RUN apt-get update && apt-get install -y --no-install-recommends gcc \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY package.json package-lock.json* ./
-RUN npm install
+COPY pyproject.toml ./
+COPY services/ ./services/
+COPY server/ ./server/
+COPY testing/ ./testing/
 
-COPY . .
+RUN pip install --no-cache-dir -e . \
+    && pip install --no-cache-dir -r server/requirements.txt \
+    && pip install --no-cache-dir pytest pytest-asyncio httpx
 
-ENV VITE_MOCK_AUTH=true
+WORKDIR /app/server
 
-EXPOSE 3000
 EXPOSE 8000
 
-CMD ["sh", "-c", "uvicorn testing.server:app --host 0.0.0.0 --port 8000 & npm run dev"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
