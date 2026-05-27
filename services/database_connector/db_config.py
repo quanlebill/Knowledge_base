@@ -22,10 +22,3 @@ class DBConfig:
             f"postgresql://{cls.POSTGRES_USER}:{cls.POSTGRES_PASSWORD}"
             f"@{cls.POSTGRES_HOST}:{cls.POSTGRES_PORT}/{cls.POSTGRES_DB}"
         )
-
-
-"""
-Error Code
-200: Success
-409: Fail to create collection due to existed
-"""
