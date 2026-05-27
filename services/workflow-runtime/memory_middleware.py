@@ -48,7 +48,7 @@ async def apply_memory_policy(state: dict, agent_id: str, tenant_id: str) -> Non
         )
         for policy in policies:
             action = policy["action_type"]
-            if action == "ADD":
+            if action == "add":
                 response = state.get("response", "").strip()
                 query    = state.get("query", "").strip()
                 if response:
@@ -61,7 +61,7 @@ async def apply_memory_policy(state: dict, agent_id: str, tenant_id: str) -> Non
                         """,
                         tenant_id, agent_id, content,
                     )
-                    logger.info("memory | ADD saved for agent=%s", agent_id)
-            # TODO: UPDATE, DELETE, SUMMARIZE
+                    logger.info("memory | add saved for agent=%s", agent_id)
+            # TODO: update, delete, summarize
     except Exception as e:
         logger.warning("memory | apply_policy failed: %s", e)
