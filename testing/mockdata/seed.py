@@ -490,6 +490,7 @@ async def seed_text_blocks(doc_ids: dict, model_ids: dict) -> dict:
             "version_number":    1,
             "content":           summary + " (full content placeholder)",
             "created_by":        ADDED_BY,
+            "is_active":         True,
             "embedding_model_id": embed_model_id,
             "table_involved":    False,
             "payload": {
@@ -497,7 +498,7 @@ async def seed_text_blocks(doc_ids: dict, model_ids: dict) -> dict:
                 "entities": ["VPC" if i == 0 else "IAM", "Cloud Architecture"],
                 "intents":  ["configure", "design"],
             },
-        }), f"  KBTextBlockVersion: silver block={i} v1")
+        }), f"  KBTextBlockVersion: silver block={i} v1 (active)")
 
     # KBTable (standalone table registry for gold doc)
     ok(await pg.create("KBTable", {

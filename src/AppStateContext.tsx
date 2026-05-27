@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { Role, Industry, TenantContext, User, Environment } from './types';
+import { Role, Industry, TenantContext, User, Environment, KnowledgeDocument } from './types';
+import { mockGet } from './lib/mockApi';
 
 interface AppStateContextType {
   role: Role;
@@ -21,6 +22,17 @@ interface AppStateContextType {
 
   /* Navigation imperatives */
   navigate: (moduleId: string, subId?: string) => void;
+
+  /* Documents — loaded on mount, mutated in-place */
+  documents: KnowledgeDocument[];
+  docsLoading: boolean;
+  addDocument: (doc: KnowledgeDocument) => void;
+  updateDocument: (id: string, patch: Partial<KnowledgeDocument>) => void;
+  deleteDocument: (id: string) => void;
+
+  /* Wizard trigger — sidebar action buttons */
+  pendingAction: string | null;
+  setPendingAction: (action: string | null) => void;
 }
 
 const AppStateContext = createContext<AppStateContextType | undefined>(undefined);
@@ -86,7 +98,7 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  /* Keep URL hash in sync with state (replaceState — doesn't add to history) */
+  /* Keep URL hash in sync with state */
   useEffect(() => {
     writeHash(activeModule, subTab[activeModule]);
   }, [activeModule, subTab]);
@@ -106,6 +118,37 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
     setTenantState(prev => ({ ...prev, ...newTenant }));
   };
 
+  /* Documents */
+  const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
+  const [docsLoading, setDocsLoading] = useState(true);
+
+  useEffect(() => {
+    mockGet<KnowledgeDocument[]>('/api/data/documents')
+      .then(data => setDocuments(data ?? []))
+      .catch(() => setDocuments([]))
+      .finally(() => setDocsLoading(false));
+  }, []);
+
+  const addDocument = useCallback((doc: KnowledgeDocument) => {
+    setDocuments(prev => [doc, ...prev]);
+  }, []);
+
+  const updateDocument = useCallback((id: string, patch: Partial<KnowledgeDocument>) => {
+    setDocuments(prev => prev.map(d => {
+      if (d.id !== id) return d;
+      const updated = { ...d, ...patch };
+      if (patch.metadata) updated.metadata = { ...d.metadata, ...patch.metadata };
+      return updated;
+    }));
+  }, []);
+
+  const deleteDocument = useCallback((id: string) => {
+    setDocuments(prev => prev.filter(d => d.id !== id));
+  }, []);
+
+  /* Wizard trigger */
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+
   return (
     <AppStateContext.Provider
       value={{
@@ -124,6 +167,13 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
         setSubTab,
         getSubTab,
         navigate,
+        documents,
+        docsLoading,
+        addDocument,
+        updateDocument,
+        deleteDocument,
+        pendingAction,
+        setPendingAction,
       }}
     >
       {children}

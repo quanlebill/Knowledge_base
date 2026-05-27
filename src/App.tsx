@@ -2,7 +2,7 @@ import React from 'react';
 import { AppStateProvider, useAppState } from './AppStateContext';
 import { AppLayout } from './components/Layout';
 import { ExecutiveDashboard } from './components/ExecutiveDashboard';
-import KnowledgeOpsCenter from './components/KnowledgeOpsCenter';
+import KnowledgeOpsCenter from './components/knowledge/KnowledgeOpsCenter';
 import AIRuntimeCenter from './components/AIRuntimeCenter';
 import OperationsCenter from './components/OperationsCenter';
 import ReleaseManagementCenter from './components/ReleaseManagementCenter';

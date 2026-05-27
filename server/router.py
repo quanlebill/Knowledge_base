@@ -432,11 +432,18 @@ async def get_chunks(doc_id: str, claims: JWTClaims = Depends(parse_jwt)):
                 }
             if r.get("version_id") is None:
                 continue
-            payload = r.get("payload") or {}
+            _raw_payload = r.get("payload")
+            if isinstance(_raw_payload, str):
+                try:
+                    payload = json.loads(_raw_payload)
+                except Exception:
+                    payload = {}
+            else:
+                payload = _raw_payload or {}
             version = {
                 "version_number":  _s(r["version_number"]),
                 "create_at":       _s(r.get("created_at", "")),
-                "status":          "active" if r.get("is_active") else "draft",
+                "status":          "active" if r.get("is_active") else "inactive",
                 "embedding_models": _s(r.get("embedding_model_id", "")),
                 "entities":        payload.get("entities", []),
                 "intent":          ", ".join(payload.get("intents", [])),
@@ -587,15 +594,39 @@ async def get_tables(doc_id: str, claims: JWTClaims = Depends(parse_jwt)):
             "limit": 100,
         }))
 
-        return OK([
-            {
+        def _parse_data(r) -> dict:
+            raw = r.get("data")
+            if isinstance(raw, str):
+                try:
+                    return json.loads(raw)
+                except Exception:
+                    return {}
+            return raw or {}
+
+        def _normalize(r) -> dict:
+            data      = _parse_data(r)
+            raw_cols  = data.get("columns", [])
+            raw_rows  = data.get("rows", [])
+            # Columns: lift plain strings → {name, type, nullable}
+            if raw_cols and isinstance(raw_cols[0], str):
+                columns = [{"name": c, "type": "TEXT", "nullable": True} for c in raw_cols]
+            else:
+                columns = raw_cols
+            # Rows: lift arrays → {colName: value} dicts
+            col_names = [c if isinstance(c, str) else c.get("name", "") for c in raw_cols]
+            if raw_rows and isinstance(raw_rows[0], list):
+                rows = [dict(zip(col_names, row)) for row in raw_rows]
+            else:
+                rows = raw_rows
+            return {
                 "id":          _s(r["id"]),
-                "table_name":  r.get("table_name"),
-                "description": r.get("description"),
-                "data":        r.get("data"),
+                "name":        r.get("table_name") or "",
+                "description": r.get("description") or "",
+                "columns":     columns,
+                "rows":        rows,
             }
-            for r in rows
-        ])
+
+        return OK([_normalize(r) for r in rows])
     except Exception as e:
         return ERR(500, str(e))
 
@@ -1195,45 +1226,50 @@ async def get_conflicts(claims: JWTClaims = Depends(parse_jwt)):
             "limit": 500,
         }))
 
+        # Group by batch; each conflict carries its own status
         batches: dict[str, dict] = {}
         for r in rows:
             bid = _s(r["batch_id"])
             if bid not in batches:
                 batches[bid] = {
-                    "batch_id":     bid,
-                    "batch_name":   r.get("batch_title"),
-                    "batch_status": r.get("batch_status"),
+                    "batch_id":       bid,
+                    "batch_name":     r.get("batch_title"),
                     "extracted_date": _s(r.get("batch_created_at", ""))[:10],
-                    "conflicts":    [],
+                    "conflicts":      [],
                 }
             if r.get("conflict_id") is None:
                 continue
             batches[bid]["conflicts"].append({
-                "conflict_id":   _s(r["conflict_id"]),
-                "conflict_type": _conflict_type(r.get("conflict_type") or ""),
-                "severity":      _severity(r.get("severity") or ""),
-                "detected_at":   _s(r.get("detected_at", "")),
+                "conflict_id":    _s(r["conflict_id"]),
+                "conflict_type":  _conflict_type(r.get("conflict_type") or ""),
+                "severity":       _severity(r.get("severity") or ""),
+                "detected_at":    _s(r.get("detected_at", "")),
+                "_status":        r.get("conflict_status") or "pending",
             })
 
-        pending_batches:   list[dict] = []
+        pending_batches:    list[dict] = []
         awaiting_summaries: list[dict] = []
         resolved_summaries: list[dict] = []
 
+        def _strip(c: dict) -> dict:
+            return {k: v for k, v in c.items() if k != "_status"}
+
         for b in batches.values():
-            status   = b["batch_status"]
-            conflicts = b["conflicts"]
-            if status == "pending":
+            pending_in_batch = [c for c in b["conflicts"] if c["_status"] == "pending"]
+            awaiting         = [c for c in b["conflicts"] if c["_status"] == "awaiting"]
+            resolved         = [c for c in b["conflicts"] if c["_status"] == "resolved"]
+
+            # Batch appears in pending only if it still has pending conflicts
+            if pending_in_batch:
                 pending_batches.append({
-                    "batch_id":               b["batch_id"],
-                    "batch_name":             b["batch_name"],
-                    "extracted_date":         b["extracted_date"],
-                    "number_pending_conflict": len(conflicts),
-                    "conflicts":              conflicts,
+                    "batch_id":                b["batch_id"],
+                    "batch_name":              b["batch_name"],
+                    "extracted_date":          b["extracted_date"],
+                    "number_pending_conflict": len(pending_in_batch),
+                    "conflicts":               [_strip(c) for c in pending_in_batch],
                 })
-            elif status == "awaiting":
-                awaiting_summaries.extend(conflicts)
-            elif status == "resolved":
-                resolved_summaries.extend(conflicts)
+            awaiting_summaries.extend(_strip(c) for c in awaiting)
+            resolved_summaries.extend(_strip(c) for c in resolved)
 
         return OK({"pending": pending_batches, "awaiting": awaiting_summaries, "resolved": resolved_summaries})
     except Exception as e:
@@ -1278,23 +1314,38 @@ async def get_conflict_detail(conflict_id: str, claims: JWTClaims = Depends(pars
 
         if not rows:
             return ERR(404, f"Conflict {conflict_id} not found")
+        def _snap(raw) -> dict:
+            if raw is None:
+                return {}
+            if isinstance(raw, str):
+                try:
+                    val = json.loads(raw)
+                    # doubly-encoded: stored as JSON string inside JSONB
+                    if isinstance(val, str):
+                        val = json.loads(val)
+                    return val if isinstance(val, dict) else {}
+                except Exception:
+                    return {}
+            return raw if isinstance(raw, dict) else {}
+
         r = rows[0]
         expl = r.get("detailed_explanation") or ""
         return OK({
-            "conflict_id":            _s(r["conflict_id"]),
-            "conflict_type":          _conflict_type(r.get("conflict_type") or ""),
-            "where_happens":          expl[:60],
-            "severity":               _severity(r.get("severity") or ""),
-            "detected_at":            _s(r.get("detected_at", "")),
-            "status":                 r.get("status"),
-            "batch_id":               _s(r["batch_id"]),
-            "detailed_explanation":   expl,
-            "existing_snapshot":      r.get("existing_snapshot") or {},
-            "incoming_snapshot":      r.get("incoming_snapshot") or {},
-            "affected_location":      "",
-            "resolution_instruction": r.get("resolution_instruction"),
-            "resolved_at":            _s(r.get("resolved_at")) if r.get("resolved_at") else None,
-            "resolved_by":            _s(r.get("resolved_by")) if r.get("resolved_by") else None,
+            "conflict_id":                  _s(r["conflict_id"]),
+            "conflict_type":                _conflict_type(r.get("conflict_type") or ""),
+            "where_happens":                expl[:60],
+            "severity":                     _severity(r.get("severity") or ""),
+            "detected_at":                  _s(r.get("detected_at", "")),
+            "status":                       r.get("status"),
+            "batch_id":                     _s(r["batch_id"]),
+            "detailed_explanation":         expl,
+            "existing_snapshot":            _snap(r.get("existing_snapshot")),
+            "incoming_snapshot":            _snap(r.get("incoming_snapshot")),
+            "affected_location":            "",
+            "resolution_instruction":       r.get("resolution_instruction") or "",
+            "selected_resolution_method":   None,
+            "resolved_at":                  _s(r.get("resolved_at")) if r.get("resolved_at") else None,
+            "resolved_by":                  _s(r.get("resolved_by")) if r.get("resolved_by") else None,
         })
     except Exception as e:
         return ERR(500, str(e))

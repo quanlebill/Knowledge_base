@@ -240,7 +240,14 @@ export const KnowledgeHubView = () => {
       setChunksLoading(true);
       mockGet<Chunk[]>(`/api/knowledge/documents/${selectedDoc.id}/chunks`)
         .then(data => {
-          const list = data.length ? data : FALLBACK_CHUNKS;
+          const raw = data.length ? data : FALLBACK_CHUNKS;
+          const list = raw.map(chunk => ({
+            ...chunk,
+            versions: chunk.versions.map(v => ({
+              ...v,
+              status: (v.status === 'active' ? 'Active' : 'Inactive') as 'Active' | 'Inactive',
+            })),
+          }));
           setChunks(list);
           setSelectedChunk(list[0]);
           setSelectedVersion(list[0].versions[0]);
@@ -306,7 +313,7 @@ export const KnowledgeHubView = () => {
     if (!selectedDoc) return;
     const updated = warehouseConfigs.map(c => ({
       ...c,
-      status: (c.id === cfg.id ? 'Active' : c.status === 'Active' ? 'Draft' : c.status) as WConfig['status'],
+      status: (c.id === cfg.id ? 'Active' : c.status === 'Active' ? 'Inactive' : c.status) as WConfig['status'],
     }));
     setWarehouseConfigs(updated);
     setSelectedConfig(updated.find(c => c.id === cfg.id) ?? null);
@@ -804,9 +811,7 @@ export const KnowledgeHubView = () => {
                             <div className="flex items-center justify-between mb-1.5">
                               <span className={cn(
                                 'text-[9px] font-black uppercase px-1.5 py-0.5 rounded tracking-wide',
-                                cfg.status === 'Active'   ? 'text-green-800 bg-green-500/10'  :
-                                cfg.status === 'Draft'    ? 'text-amber-800 bg-amber-500/10'  :
-                                'text-slate-500 bg-slate-100'
+                                cfg.status === 'Active' ? 'text-green-800 bg-green-500/10' : 'text-slate-500 bg-slate-100'
                               )}>{cfg.status}</span>
                               <span className="text-[9px] font-mono text-slate-400">{cfg.tables.length} tables</span>
                             </div>
@@ -846,7 +851,7 @@ export const KnowledgeHubView = () => {
                             <span className="text-[9px] font-black uppercase text-[#B88719] bg-[#FFF9E9] border border-[#BFA66A]/30 px-2.5 py-1 rounded-lg font-mono">
                               {selectedConfig.version}
                             </span>
-                            {selectedConfig.status === 'Draft' && (
+                            {selectedConfig.status !== 'Active' && (
                               <button onClick={() => activateConfig(selectedConfig)}
                                 className="flex items-center gap-1 px-3 py-1.5 bg-[#FFF9E8] border border-[#B88719]/40 hover:bg-[#B88719] hover:text-white text-[#8A5A00] rounded-lg text-[10px] font-black uppercase tracking-wide transition-all cursor-pointer">
                                 <Zap className="w-3 h-3" />

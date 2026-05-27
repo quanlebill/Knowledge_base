@@ -63,15 +63,9 @@ const KnowledgeOpsCenter = () => {
 
   const handleSelectAsset = (asset: KnowledgeDocument) => {
     setSelectedAsset(asset);
-    // Gold layer opened from INVENTORY is read-only; KNOWLEDGE tab always editable
     setSelectedAssetReadOnly(activeSubTab === 'INVENTORY' && asset.layer === 'GOLD');
-    if (isWarehouse(asset.metadata?.type)) {
-      setAssetTab('CONFIGS');
-    } else if (assetTab === 'TABLES' && !hasTables(asset.metadata?.type)) {
-      setAssetTab('CHUNKS');
-    } else if (assetTab === 'CONFIGS') {
-      setAssetTab('PREVIEW');
-    }
+    // Always reset to a valid default tab for the asset type
+    setAssetTab(isWarehouse(asset.metadata?.type) ? 'CONFIGS' : 'PREVIEW');
   };
 
   const subTabs = [
@@ -115,6 +109,7 @@ const KnowledgeOpsCenter = () => {
         icon={Zap}
         size="wide"
         persistKey="kb-ingest"
+        footer={null}
       >
         <IngestionWizard
           onCancel={() => setShowIngestionWizard(false)}
@@ -134,6 +129,7 @@ const KnowledgeOpsCenter = () => {
         icon={ServerCog}
         size="wide"
         persistKey="kb-warehouse"
+        footer={null}
       >
         <WarehouseWizard
           onCancel={() => setShowWarehouseWizard(false)}

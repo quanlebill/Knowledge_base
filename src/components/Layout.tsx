@@ -4,10 +4,11 @@ import { useAppState } from '../AppStateContext';
 import { NAV_ITEMS, ROLES, ENVIRONMENTS, MODULE_SUB_ITEMS, SubNavItem } from '../constants';
 import {
   Search, Bell, LogOut, Cpu, LayoutGrid, ChevronDown, Terminal,
-  Building2, Menu, X, Settings, Sparkles, ArrowRight,
+  Building2, Menu, X, Settings, Sparkles, ArrowRight, Plus, Database,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Role, Environment } from '../types';
+import { TaskQueue } from './TaskQueue';
 
 /* ─── Command Palette ─────────────────────────────────────────────── */
 const PALETTE_GROUPS = [
@@ -21,11 +22,11 @@ const PALETTE_GROUPS = [
     { label: 'Settings',            module: 'settings' },
   ]},
   { category: 'Knowledge Base', items: [
-    { label: 'Fleet Overview',      module: 'knowledge-ops', sub: 'FLEET' },
-    { label: 'Register Connectors', module: 'knowledge-ops', sub: 'CONNECTORS' },
-    { label: 'Knowledge Graph',     module: 'knowledge-ops', sub: 'GRAPH' },
-    { label: 'Playground',          module: 'knowledge-ops', sub: 'PLAYGROUND' },
-    { label: 'Conflict Manager',    module: 'knowledge-ops', sub: 'CONFLICTS' },
+    { label: 'Fleet Overview', module: 'knowledge-ops', sub: 'FLEET' },
+    { label: 'Data Layers',    module: 'knowledge-ops', sub: 'INVENTORY' },
+    { label: 'Knowledge Hub',  module: 'knowledge-ops', sub: 'KNOWLEDGE' },
+    { label: 'Conflicts',      module: 'knowledge-ops', sub: 'CONFLICTS' },
+    { label: 'Policies',       module: 'knowledge-ops', sub: 'POLICY' },
   ]},
   { category: 'Agents', items: [
     { label: 'Agent Registry',      module: 'ai-runtime', sub: 'AGENTS' },
@@ -215,7 +216,7 @@ const CONTEXT_HINTS: Record<string, string> = {
 
 /* ─── Secondary Contextual Nav ────────────────────────────────────── */
 const SecondaryNav = () => {
-  const { activeModule, subTab, setSubTab } = useAppState();
+  const { activeModule, subTab, setSubTab, setPendingAction } = useAppState();
   const currentModule = NAV_ITEMS.find(i => i.id === activeModule);
   const subItems = MODULE_SUB_ITEMS[activeModule] ?? [];
 
@@ -261,6 +262,26 @@ const SecondaryNav = () => {
           })}
         </div>
       </div>
+
+      {/* ── Knowledge-ops action buttons ── */}
+      {activeModule === 'knowledge-ops' && (
+        <div className="px-2 pb-2 pt-1 border-t border-[#D6C79F] shrink-0 space-y-1">
+          <button
+            onClick={() => setPendingAction('ACTION_INGEST')}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-[#111111] hover:bg-[#222222] text-white text-[12px] font-semibold transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5 shrink-0" />
+            Add Data
+          </button>
+          <button
+            onClick={() => setPendingAction('ACTION_WAREHOUSE')}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-white hover:bg-[#FFF9E8] border border-[#BFA66A] text-[#111111] text-[12px] font-semibold transition-colors"
+          >
+            <Database className="w-3.5 h-3.5 shrink-0 text-[#B88719]" />
+            Add Warehouse
+          </button>
+        </div>
+      )}
 
       {CONTEXT_HINTS[activeModule] && (
         <div className="p-3 border-t border-[#D6C79F] shrink-0">
@@ -375,6 +396,8 @@ const TopBar = ({
             </button>
           ))}
         </div>
+
+        <TaskQueue />
 
         <button aria-label="Notifications" className="relative w-9 h-9 flex items-center justify-center text-[#3F3F3F] hover:text-[#111111] hover:bg-[#F8EBC4] rounded-lg transition-colors border border-transparent hover:border-[#D6C79F]">
           <Bell className="w-4 h-4" />
@@ -594,17 +617,7 @@ export const AppLayout = ({
           onSearchOpen={() => setIsCommandOpen(true)}
         />
         <main className="flex-1 overflow-y-auto custom-scrollbar pb-20 lg:pb-10 p-4 lg:p-8 bg-[#FCFBF7]">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
-            >
-              {children}
-            </motion.div>
-          </AnimatePresence>
+          {children}
         </main>
       </div>
 

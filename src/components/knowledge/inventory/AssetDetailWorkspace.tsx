@@ -92,7 +92,13 @@ export const AssetDetailWorkspace = ({
     setChunksLoading(true);
     mockGet<Chunk[]>(`/api/knowledge/documents/${document.id}/chunks`)
       .then(data => {
-        const result = data && data.length > 0 ? data : [];
+        const result = (data ?? []).map(chunk => ({
+          ...chunk,
+          versions: chunk.versions.map(v => ({
+            ...v,
+            status: v.status === 'active' ? 'Active' : 'Inactive',
+          })),
+        }));
         setChunks(result);
         if (result.length > 0) {
           setSelectedChunk(result[0]);

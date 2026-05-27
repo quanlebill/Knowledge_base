@@ -78,16 +78,11 @@ export const MODULE_SUB_ITEMS: Record<string, SubNavItem[]> = {
   'dashboard': [],
 
   'knowledge-ops': [
-    { id: 'FLEET',      label: 'Fleet Overview',      icon: Database },
-    { id: 'CONNECTORS', label: 'Register Connectors', icon: Globe },
-    { id: 'INGEST',     label: 'Ingest Knowledge',    icon: Plus,        comingSoon: false },
-    { id: 'INVENTORY',  label: 'Bronze · Silver · Gold', icon: Layers },
-    { id: 'PIPELINES',  label: 'Job Center',          icon: Activity },
-    { id: 'CONFLICTS',  label: 'Conflict Manager',    icon: ShieldAlert, badge: 12 },
-    { id: 'GRAPH',      label: 'Knowledge Graph',     icon: Network },
-    { id: 'PLAYGROUND', label: 'Playground',          icon: Sparkles },
-    { id: 'EMBEDDINGS', label: 'Embedding Mgmt',      icon: Hash },
-    { id: 'GOVERNANCE', label: 'Audit & Lineage',     icon: ShieldCheck },
+    { id: 'FLEET',     label: 'Fleet Overview', icon: Database },
+    { id: 'INVENTORY', label: 'Data Layers',    icon: Layers },
+    { id: 'KNOWLEDGE', label: 'Knowledge Hub',  icon: Network },
+    { id: 'CONFLICTS', label: 'Conflicts',      icon: ShieldAlert, badge: 12 },
+    { id: 'POLICY',    label: 'Policies',       icon: ShieldCheck },
   ],
 
   'ai-runtime': [
