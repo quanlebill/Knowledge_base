@@ -22,6 +22,7 @@ class KBModelVersionRead(BaseModel):
 
 class KBDataRead(BaseModel):
     tenant_id: uuid.UUID
+    data_id: Optional[uuid.UUID] = None
     source_type: Optional[SourceType] = None
     role_id: Optional[uuid.UUID] = None
     current_tier: Optional[Tier] = None
@@ -46,8 +47,17 @@ class KBExtractionPolicyRead(BaseModel):
     model_config = ConfigDict(use_enum_values=True)
 
 
+class KBConflictBatchRead(BaseModel):
+    tenant_id: Optional[uuid.UUID] = None
+    status: Optional[ConflictStatus] = None
+    limit: int = 50
+    offset: int = 0
+    model_config = ConfigDict(use_enum_values=True)
+
+
 class KBConflictRead(BaseModel):
-    tenant_id: uuid.UUID
+    tenant_id: Optional[uuid.UUID] = None
+    batch_id: Optional[uuid.UUID] = None
     status: Optional[ConflictStatus] = None
     severity: Optional[ConflictSeverity] = None
     limit: int = 50

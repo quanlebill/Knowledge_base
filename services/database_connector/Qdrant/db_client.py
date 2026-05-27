@@ -22,6 +22,7 @@ client = qdrant_client.AsyncQdrantClient(
     host=DBConfig.QDRANT_HOST,
     port=DBConfig.QDRANT_PORT,
     grpc_port=DBConfig.QDRANT_GRPC_PORT,
+    check_compatibility=False,
 )
 
 
@@ -36,6 +37,13 @@ def _build_matching_field(data: List[MatchingPayload]) -> list[models.FieldCondi
                 )
             )
     return matching_field
+
+
+async def delete_collection(collection_name: str) -> ResponseModel:
+    if not await client.collection_exists(collection_name):
+        return Success()
+    await client.delete_collection(collection_name)
+    return Success()
 
 
 async def create_collection(item: dict) -> ResponseModel:
@@ -98,7 +106,7 @@ async def add_points(item: dict) -> ResponseModel:
             models.PointStruct(
                 id=p.id,
                 vector=p.vector,
-                payload=p.payload or {},
+                payload=p.payload.model_dump(mode="json") if p.payload else {},
             )
             for p in validated.points
         ],

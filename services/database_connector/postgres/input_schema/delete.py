@@ -26,6 +26,10 @@ class KBExtractionPolicyDelete(BaseModel):
     policy_id: uuid.UUID
 
 
+class KBConflictBatchDelete(BaseModel):
+    batch_id: uuid.UUID
+
+
 class KBConflictDelete(BaseModel):
     conflict_id: uuid.UUID
 

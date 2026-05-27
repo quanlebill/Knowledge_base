@@ -5,24 +5,24 @@ from typing import List, Dict, Set, Tuple, Literal, Annotated, Union
 from typing import Optional, Any
 from pydantic import BaseModel, Field, ConfigDict
 import uuid
-from enum_type import *
+from .enum_type import *
 
 # Model
 class Document(BaseModel):
-    source_type: Literal[SourceType.Document]
+    source_type: Literal[SourceType.DOC]
     doc_type: str
     author: str | None
     published_date: datetime.datetime | None
 
 class Image(BaseModel):
-    source_type: Literal[SourceType.Image]
+    source_type: Literal[SourceType.IMAGE]
     video_type: str
     height: int
     width: int
     color_space: str | None
 
 class Video(BaseModel):
-    source_type: Literal[SourceType.Video]
+    source_type: Literal[SourceType.VIDEO]
     video_type: str
     height: int
     width: int
@@ -30,7 +30,7 @@ class Video(BaseModel):
     total_frame: int
 
 class Web(BaseModel):
-    source_type: Literal[SourceType.Web]
+    source_type: Literal[SourceType.WEB]
     url: str
     web_name:str
 

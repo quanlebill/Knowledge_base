@@ -1,6 +1,6 @@
 from typing import Optional
 from pydantic import BaseModel
-from enum_type import *
+from .enum_type import *
 
 # - Request Models
 # POST /api/knowledge/policies/filtering

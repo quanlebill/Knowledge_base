@@ -5,7 +5,7 @@ from typing import List, Dict, Set, Tuple, Literal, Annotated, Union
 from typing import Optional, Any
 from pydantic import BaseModel, Field, ConfigDict
 import uuid
-from enum_type import *
+from .enum_type import *
 
 
 class Error(BaseModel):

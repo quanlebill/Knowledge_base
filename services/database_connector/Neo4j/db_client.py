@@ -34,7 +34,7 @@ async def add_node(item: dict) -> ResponseModel:
         return Error(code=400, error=str(e))
 
     node_id = str(uuid.uuid4())
-    props = {**validated.node.properties.model_dump(), "id": node_id}
+    props = {**validated.node.properties.model_dump(mode="json"), "id": node_id}
     if validated.node.embedding:
         props["embedding"] = validated.node.embedding
 

@@ -69,10 +69,18 @@ class KBExtractionPolicyCreate(BaseModel):
     model_config = ConfigDict(use_enum_values=True)
 
 
+class KBConflictBatchCreate(BaseModel):
+    batch_title: str
+    tenant_id: Optional[uuid.UUID] = None
+    status: ConflictStatus = ConflictStatus.PENDING
+    model_config = ConfigDict(use_enum_values=True)
+
+
 class KBConflictCreate(BaseModel):
     conflict_type: ConflictType
     severity: ConflictSeverity
     tenant_id: Optional[uuid.UUID] = None
+    batch_id: Optional[uuid.UUID] = None
     status: ConflictStatus = ConflictStatus.PENDING
     detailed_explanation: Optional[str] = None
     existing_snapshot: Optional[dict[str, Any]] = None

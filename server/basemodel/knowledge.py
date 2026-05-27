@@ -1,6 +1,6 @@
 from typing import Any, List, Optional
 from pydantic import BaseModel, ConfigDict, Field
-from enum_type import *
+from .enum_type import *
 
 # DATABASE tab
 class ChunkVersionDetail(BaseModel):
@@ -35,7 +35,6 @@ class RequestActivateChunkVersion(BaseModel):
 
 # POST /api/knowledge/documents/:id/chunks/:chunkId/versions
 class RequestCreateChunkVersion(BaseModel):
-    version_number: str
     text: str
 
 # POST /api/knowledge/warehouses/:id/configs

@@ -12,7 +12,8 @@ from services.database_connector.response_model import ResponseModel, Success, E
 from .input_schema.join import ReadJoinRequest
 from .input_schema.create import (
     KBModelCreate, KBModelVersionCreate, KBDataCreate, KBLifecycleHistoryCreate,
-    KBFilterPolicyCreate, KBExtractionPolicyCreate, KBConflictCreate,
+    KBFilterPolicyCreate, KBExtractionPolicyCreate,
+    KBConflictBatchCreate, KBConflictCreate,
     KBWarehouseCreate, KBWarehouseConfigCreate, KBTableCreate,
     KBTextBlockCreate, KBTextBlockVersionCreate, KBTextTableCreate,
     KBQdrantConnectionCreate, KBQdrantCollectionCreate,
@@ -21,7 +22,8 @@ from .input_schema.create import (
 )
 from .input_schema.update import (
     KBModelUpdate, KBModelVersionUpdate, KBDataUpdate, KBLifecycleHistoryUpdate,
-    KBFilterPolicyUpdate, KBExtractionPolicyUpdate, KBConflictUpdate,
+    KBFilterPolicyUpdate, KBExtractionPolicyUpdate,
+    KBConflictBatchUpdate, KBConflictUpdate,
     KBWarehouseUpdate, KBWarehouseConfigUpdate, KBTableUpdate,
     KBTextBlockUpdate, KBTextBlockVersionUpdate, KBTextTableUpdate,
     KBQdrantConnectionUpdate, KBQdrantCollectionUpdate,
@@ -30,7 +32,8 @@ from .input_schema.update import (
 )
 from .input_schema.read import (
     KBModelRead, KBModelVersionRead, KBDataRead, KBLifecycleHistoryRead,
-    KBFilterPolicyRead, KBExtractionPolicyRead, KBConflictRead,
+    KBFilterPolicyRead, KBExtractionPolicyRead,
+    KBConflictBatchRead, KBConflictRead,
     KBWarehouseRead, KBWarehouseConfigRead, KBTableRead,
     KBTextBlockRead, KBTextBlockVersionRead, KBTextTableRead,
     KBQdrantConnectionRead, KBQdrantCollectionRead,
@@ -39,7 +42,8 @@ from .input_schema.read import (
 )
 from .input_schema.delete import (
     KBModelDelete, KBModelVersionDelete, KBDataDelete, KBLifecycleHistoryDelete,
-    KBFilterPolicyDelete, KBExtractionPolicyDelete, KBConflictDelete,
+    KBFilterPolicyDelete, KBExtractionPolicyDelete,
+    KBConflictBatchDelete, KBConflictDelete,
     KBWarehouseDelete, KBWarehouseConfigDelete, KBTableDelete,
     KBTextBlockDelete, KBTextBlockVersionDelete, KBTextTableDelete,
     KBQdrantConnectionDelete, KBQdrantCollectionDelete,
@@ -52,10 +56,20 @@ from .input_schema.delete import (
 _pool: asyncpg.Pool | None = None
 
 
+async def _init_conn(conn: asyncpg.Connection) -> None:
+    for pg_type in ("json", "jsonb"):
+        await conn.set_type_codec(
+            pg_type,
+            encoder=json.dumps,
+            decoder=json.loads,
+            schema="pg_catalog",
+        )
+
+
 async def pool() -> asyncpg.Pool:
     global _pool
     if _pool is None:
-        _pool = await asyncpg.create_pool(DBConfig.postgres_url())
+        _pool = await asyncpg.create_pool(DBConfig.postgres_url(), setup=_init_conn)
     return _pool
 
 
@@ -132,6 +146,13 @@ TABLE_REGISTRY: dict[str, TableConfig] = {
         json_fields=[], ts_create="created_at",
         create=KBExtractionPolicyCreate, update=KBExtractionPolicyUpdate,
         read=KBExtractionPolicyRead, delete=KBExtractionPolicyDelete,
+    ),
+    "KBConflictBatch": TableConfig(
+        table="KBConflictBatch", pk=["batch_id"], pk_strategy="uuid",
+        json_fields=[], ts_create="created_at",
+        create=KBConflictBatchCreate, update=KBConflictBatchUpdate,
+        read=KBConflictBatchRead, delete=KBConflictBatchDelete,
+        order_by="created_at DESC",
     ),
     "KBConflict": TableConfig(
         table="KBConflict", pk=["conflict_id"], pk_strategy="uuid",

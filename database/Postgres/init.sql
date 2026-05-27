@@ -100,11 +100,23 @@ CREATE TABLE IF NOT EXISTS KBExtractionPolicy (
 );
 CREATE INDEX IF NOT EXISTS idx_extractionpolicy_tenant_lang ON KBExtractionPolicy (tenant_id, language);
 
+-- ── KBConflictBatch ───────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS KBConflictBatch (
+    batch_id    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id   UUID,
+    batch_title VARCHAR(100) NOT NULL,
+    created_at  TIMESTAMPTZ,
+    status      KBConflictStatus NOT NULL DEFAULT 'pending'
+);
+CREATE INDEX IF NOT EXISTS idx_conflictbatch_tenant_status ON KBConflictBatch (tenant_id, status);
+
 -- ── KBConflict ────────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS KBConflict (
     conflict_id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id              UUID,
+    batch_id               UUID REFERENCES KBConflictBatch(batch_id),
     conflict_type          KBConflictType NOT NULL,
     detected_at            TIMESTAMPTZ,
     severity               KBConflictSeverity NOT NULL,
@@ -116,6 +128,9 @@ CREATE TABLE IF NOT EXISTS KBConflict (
     resolved_at            TIMESTAMPTZ,
     resolved_by            UUID
 );
+-- Used when joining KBConflictBatch with its pending conflicts
+CREATE INDEX IF NOT EXISTS idx_conflict_batch_pending       ON KBConflict (batch_id) WHERE status = 'pending';
+-- Used for broader conflict queries (tenant + status + severity filtering)
 CREATE INDEX IF NOT EXISTS idx_conflict_tenant_status_severity ON KBConflict (tenant_id, status, severity);
 
 -- ── KBWarehouse ───────────────────────────────────────────────────────────────
@@ -252,7 +267,7 @@ CREATE TABLE IF NOT EXISTS KBNeo4jRelationship (
 CREATE TABLE IF NOT EXISTS KBEntityLookup (
     lookup_id      UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     alias_name     VARCHAR(50) NOT NULL,
-    canonical_name VARCHAR(50) NOT NULL,
+    canonical_name VARCHAR(200) NOT NULL,
     created_at     TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS idx_entitylookup_alias ON KBEntityLookup USING HASH (alias_name);

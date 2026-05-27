@@ -1,6 +1,6 @@
 from typing import List, Dict, Any, Optional, Literal, Annotated, Union
 from pydantic import BaseModel, Field, ConfigDict
-from enum_type import *
+from .enum_type import *
 
 
 """

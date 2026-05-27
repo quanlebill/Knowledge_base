@@ -1,6 +1,6 @@
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
-from enum_type import *
+from .enum_type import *
 
 #Model
 class ConflictSummary(BaseModel):
@@ -21,7 +21,7 @@ class ConflictBatch(BaseModel):
 # - Request
 # PATCH /api/knowledge/conflicts/:conflictId
 class RequestResolveConflict(BaseModel):
-    selected_resolution_method: ConflictResolution
+    selected_resolution_method: str  # UI sends "Merge" / "Keep Existing" (Title Case)
     resolution_instruction: Optional[str] = None
 
 

@@ -57,8 +57,16 @@ class KBExtractionPolicyUpdate(BaseModel):
     model_config = ConfigDict(use_enum_values=True)
 
 
+class KBConflictBatchUpdate(BaseModel):
+    batch_id: uuid.UUID
+    batch_title: Optional[str] = None
+    status: Optional[ConflictStatus] = None
+    model_config = ConfigDict(use_enum_values=True)
+
+
 class KBConflictUpdate(BaseModel):
     conflict_id: uuid.UUID
+    batch_id: Optional[uuid.UUID] = None
     status: Optional[ConflictStatus] = None
     resolution_instruction: Optional[str] = None
     resolved_by: Optional[uuid.UUID] = None
@@ -91,6 +99,7 @@ class KBTextBlockUpdate(BaseModel):
 
 class KBTextBlockVersionUpdate(BaseModel):
     version_id: uuid.UUID
+    is_active: Optional[bool] = None
     content: Optional[str] = None
     table_involved: Optional[bool] = None
     embedding_model_id: Optional[uuid.UUID] = None
