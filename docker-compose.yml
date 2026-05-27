@@ -46,12 +46,12 @@ services:
     image: langfuse/langfuse:2
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
       DATABASE_URL: postgresql://admin:dev123@postgres:5432/langfuse
       NEXTAUTH_SECRET: dev-langfuse-nextauth-secret-changeme
       SALT: dev-langfuse-salt-changeme
-      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_URL: http://localhost:3001
       TELEMETRY_ENABLED: "false"
     depends_on:
       - postgres

@@ -1,13 +1,13 @@
 model_list:
   - model_name: planner
     litellm_params:
-      model: claude-haiku-4-5-20251001
-      api_key: os.environ/LLM_API_KEY
+      model: gemini/gemini-2.0-flash
+      api_key: os.environ/GEMINI_API_KEY
 
   - model_name: reasoner
     litellm_params:
-      model: claude-sonnet-4-6
-      api_key: os.environ/LLM_API_KEY
+      model: gemini/gemini-2.0-flash
+      api_key: os.environ/GEMINI_API_KEY
 
   - model_name: embedder
     litellm_params:

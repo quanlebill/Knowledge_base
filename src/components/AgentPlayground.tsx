@@ -19,6 +19,8 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 
+const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8001';
+
 /* ─── Types ─────────────────────────────────────────────────── */
 
 interface TraceStep {
@@ -256,27 +258,56 @@ export default function AgentPlayground({ embedded = false }: { embedded?: boole
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const text = input.trim();
     if (!text || sending) return;
-    const now = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
-    setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', content: text, timestamp: now }]);
+    const now = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    const userMsg: Message = { id: Date.now().toString(), role: 'user', content: text, timestamp: now };
+    setMessages(prev => [...prev, userMsg]);
     setInput('');
     setSending(true);
 
-    setTimeout(() => {
-      setMessages(prev => [
-        ...prev,
-        {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: 'I am processing your question using the knowledge base. This is a mock response — connect to the backend to get real answers.',
-          timestamp: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
-        },
-      ]);
+    const placeholderId = (Date.now() + 1).toString();
+    const placeholder: Message = { id: placeholderId, role: 'assistant', content: '', timestamp: now };
+    setMessages(prev => [...prev, placeholder]);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/conversations/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: text,
+          agent_id: selectedAgent,
+          messages: messages.slice(-10).map(m => ({ role: m.role, content: m.content })),
+        }),
+      });
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let fullText = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        for (const line of chunk.split('\n')) {
+          if (!line.startsWith('data: ')) continue;
+          const data = line.slice(6);
+          if (data === '[DONE]' || data.startsWith('[ERROR]')) continue;
+          fullText += data;
+          setMessages(prev => prev.map(m =>
+            m.id === placeholderId ? { ...m, content: fullText } : m,
+          ));
+        }
+      }
+    } catch {
+      setMessages(prev => prev.map(m =>
+        m.id === placeholderId ? { ...m, content: 'Lỗi: không kết nối được backend.' } : m,
+      ));
+    } finally {
       setSending(false);
-    }, 1200);
+    }
   };
 
   const agentLabel = AGENTS.find(a => a.id === selectedAgent)?.label ?? 'Agent';
