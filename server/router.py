@@ -23,7 +23,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 import services.database_connector.postgres.db_client as pg
 import services.database_connector.qdrant.db_client as qd
 import services.database_connector.neo4j.db_client as neo
-from basemodel.API_response import ResponseModel, Error
+from services.database_connector.response_model import ResponseModel
 from basemodel.conflict import RequestResolveConflict
 from basemodel.data import RequestUpdateDocument, RequestDataUpload, RequestConfirmDataUpload
 from basemodel.knowledge import (
@@ -126,18 +126,14 @@ def require_permission(*perms: str):
 
     return _dep
 
-
 def OK(data: Any) -> ResponseModel:
     return ResponseModel(code=200, data=data)
-
 
 def CREATED(data: Any) -> ResponseModel:
     return ResponseModel(code=201, data=data)
 
-
 def ERR(code: int, msg: str) -> ResponseModel:
-    return ResponseModel(code=code, error=Error(message=msg, error_type="Error"))
-
+    return ResponseModel(code=code, error=msg)
 
 router = APIRouter()
 

@@ -6,7 +6,7 @@ from .enums import *
 
 
 class Document(BaseModel):
-    source_type: Literal[SourceType.DOCUMENT]
+    source_type: Literal[SourceType.DOC]
     doc_type: str
     author: str | None
     published_date: _dt | None
