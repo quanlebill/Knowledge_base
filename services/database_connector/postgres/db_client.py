@@ -1,3 +1,4 @@
+import asyncio
 import json
 import uuid
 from dataclasses import dataclass, field
@@ -54,6 +55,7 @@ from .input_schema.delete import (
 # ── Pool ──────────────────────────────────────────────────────────────────────
 
 _pool: asyncpg.Pool | None = None
+_pool_lock = asyncio.Lock()
 
 
 async def _init_conn(conn: asyncpg.Connection) -> None:
@@ -69,7 +71,9 @@ async def _init_conn(conn: asyncpg.Connection) -> None:
 async def pool() -> asyncpg.Pool:
     global _pool
     if _pool is None:
-        _pool = await asyncpg.create_pool(DBConfig.postgres_url(), setup=_init_conn)
+        async with _pool_lock:
+            if _pool is None:
+                _pool = await asyncpg.create_pool(DBConfig.postgres_url(), setup=_init_conn)
     return _pool
 
 
