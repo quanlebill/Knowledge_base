@@ -96,6 +96,9 @@ export const KnowledgeHubView = () => {
   const [neoRelLabels, setNeoRelLabels] = useState<Array<[number,number,string]>>(FALLBACK_REL_LABELS);
   const [neoSchema,    setNeoSchema]    = useState<Neo4jSchema | null>(null);
   const [neoLoading,   setNeoLoading]   = useState(false);
+  const [rawGraphNodes, setRawGraphNodes] = useState<GraphNode[]>([]);
+  const [rawGraphEdges, setRawGraphEdges] = useState<GraphEdge[]>([]);
+  const [graphFiltered, setGraphFiltered] = useState(false);
 
   /* â"€â"€ Fetch: Qdrant on mount â"€â"€ */
   useEffect(() => {
@@ -114,10 +117,12 @@ export const KnowledgeHubView = () => {
     ])
       .then(([graphData, schema]) => {
         if (graphData?.nodes?.length) {
-          const { layoutNodes, layoutEdges, layoutRelLabels } = computeGraphLayout(
-            graphData.nodes,
-            graphData.edges ?? [],
-          );
+          const nodes = graphData.nodes;
+          const edges = graphData.edges ?? [];
+          setRawGraphNodes(nodes);
+          setRawGraphEdges(edges);
+          setGraphFiltered(false);
+          const { layoutNodes, layoutEdges, layoutRelLabels } = computeGraphLayout(nodes, edges);
           setNeoNodes(layoutNodes);
           setNeoEdges(layoutEdges);
           setNeoRelLabels(layoutRelLabels);
@@ -1465,8 +1470,26 @@ export const KnowledgeHubView = () => {
                   setQueryRunning(true);
                   try {
                     await mockMutate('POST', '/api/knowledge/neo4j/query', { cypher: generated });
-                  } catch { /* ignore — result is display-only */ }
+                  } catch { /* ignore */ }
                   finally { setQueryRunning(false); }
+
+                  // Filter graph to the query path entities
+                  if (rawGraphNodes.length > 0) {
+                    const pathEntities = new Set([startNode, ...steps.map(s => s.nodeType)]);
+                    const filtered = rawGraphNodes.filter(n => pathEntities.has(n.name ?? ''));
+                    const filteredIds = new Set(filtered.map(n => n.id));
+                    const filteredEdges = rawGraphEdges.filter(
+                      e => filteredIds.has(e.from) && filteredIds.has(e.to),
+                    );
+                    const { layoutNodes, layoutEdges, layoutRelLabels } = computeGraphLayout(
+                      filtered.length ? filtered : rawGraphNodes,
+                      filtered.length ? filteredEdges : rawGraphEdges,
+                    );
+                    setNeoNodes(layoutNodes);
+                    setNeoEdges(layoutEdges);
+                    setNeoRelLabels(layoutRelLabels);
+                    setGraphFiltered(filtered.length > 0 && filtered.length < rawGraphNodes.length);
+                  }
                 }}
                 className="flex items-center gap-1.5 px-3 py-2 bg-[#B88719] text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-[#8A5A00] transition-all cursor-pointer">
                 {queryRunning
@@ -1556,10 +1579,25 @@ export const KnowledgeHubView = () => {
                 <button key={i} className="w-8 h-8 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 text-slate-400 text-sm flex items-center justify-center font-mono">{s}</button>
               ))}
             </div>
-            <div className="absolute top-5 right-5 z-10">
+            <div className="absolute top-5 right-5 z-10 flex items-center gap-2">
+              {graphFiltered && (
+                <button
+                  onClick={() => {
+                    const { layoutNodes, layoutEdges, layoutRelLabels } = computeGraphLayout(rawGraphNodes, rawGraphEdges);
+                    setNeoNodes(layoutNodes);
+                    setNeoEdges(layoutEdges);
+                    setNeoRelLabels(layoutRelLabels);
+                    setGraphFiltered(false);
+                    setQueryRan(false);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 border border-white/20 text-white/70 hover:bg-white/20 rounded-full text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer">
+                  <RefreshCw className="w-3 h-3" />
+                  Full Graph
+                </button>
+              )}
               <span className="flex items-center gap-1.5 px-3 py-1.5 bg-[#B88719]/10 border border-[#B88719]/20 text-[#B88719] rounded-full text-[9px] font-black uppercase tracking-widest">
                 <span className="w-1.5 h-1.5 bg-[#B88719] rounded-full animate-pulse" />
-                Force Layout Active
+                {graphFiltered ? 'Query Result' : 'Force Layout Active'}
               </span>
             </div>
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">

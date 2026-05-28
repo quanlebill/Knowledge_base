@@ -18,6 +18,10 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+import logging
+import os
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, Header, HTTPException
 
 import services.database_connector.postgres.db_client as pg
@@ -68,6 +72,28 @@ from services.parse_for_ui import (
     q_conflicts,
     q_conflict_detail,
 )
+
+
+# ── Logger ────────────────────────────────────────────────────────────────────
+
+_LOG_DIR = Path(os.getenv("LOG_DIR", "logs"))
+_LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+log = logging.getLogger("aeroflow.router")
+log.setLevel(logging.INFO)
+
+if not log.handlers:
+    _fmt = logging.Formatter(
+        fmt="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    _file_handler = logging.FileHandler(_LOG_DIR / "router.log")
+    _file_handler.setFormatter(_fmt)
+    _stream_handler = logging.StreamHandler()
+    _stream_handler.setFormatter(_fmt)
+    log.addHandler(_file_handler)
+    log.addHandler(_stream_handler)
+    log.propagate = False
 
 
 # ── JWT simulation ─────────────────────────────────────────────────────────────
@@ -144,17 +170,23 @@ router = APIRouter()
 
 @router.get("/api/fleet/stats", response_model=ResponseModel, tags=["Fleet"])
 async def get_fleet_stats(claims: JWTClaims = Depends(parse_jwt)):
+    log.info("GET /api/fleet/stats | tenant=%s", claims.tenant_id)
     try:
+        log.info("service=postgres, method=read, table=KBData | tenant=%s, tier=gold", claims.tenant_id)
         gold_docs = handle_response(await pg.read("KBData", {
             "tenant_id": claims.tenant_id,
             "current_tier": "gold",
             "limit": 1000,
         }))
+        log.info("service=postgres, method=read_join, query=q_qdrant_fleet_count | tenant=%s", claims.tenant_id)
         qdrant_rows = handle_response(await pg.read_join(q_qdrant_fleet_count(claims.tenant_id)))
+        log.info("service=postgres, method=read, table=KBNeo4jConnection | tenant=%s", claims.tenant_id)
         neo_conns = handle_response(await pg.read("KBNeo4jConnection", {"tenant_id": claims.tenant_id}))
+        log.info("service=postgres, method=read, table=KBConflictBatch | tenant=%s", claims.tenant_id)
         batches = handle_response(await pg.read("KBConflictBatch", {"tenant_id": claims.tenant_id, "limit": 500}))
         return OK(map_fleet_stats(gold_docs, qdrant_rows, neo_conns, batches))
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -165,10 +197,13 @@ async def get_fleet_stats(claims: JWTClaims = Depends(parse_jwt)):
 @router.get("/api/data/documents", response_model=ResponseModel, tags=["Data"])
 async def get_documents(claims: JWTClaims = Depends(parse_jwt)):
     """Return all documents for the tenant across all layers."""
+    log.info("GET /api/data/documents | tenant=%s", claims.tenant_id)
     try:
+        log.info("service=postgres, method=read, table=KBData | tenant=%s, limit=200", claims.tenant_id)
         rows = handle_response(await pg.read("KBData", {"tenant_id": claims.tenant_id, "limit": 200}))
         return OK([map_doc(r) for r in rows])
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -182,17 +217,20 @@ async def update_document(
         body: RequestUpdateDocument,
         claims: JWTClaims = Depends(parse_jwt),
 ):
+    log.info("PATCH /api/data/documents/%s | tenant=%s", doc_id, claims.tenant_id)
     try:
         update: dict[str, Any] = {"data_id": uuid.UUID(doc_id)}
         if body.layer:
             update["current_tier"] = body.layer.lower()
         if body.metadata:
             update["metadata"] = body.metadata
+        log.info("service=postgres, method=update, table=KBData | doc_id=%s", doc_id)
         handle_response(await pg.update("KBData", update))
         return OK({"doc_id": doc_id})
     except KeyError:
         return ERR(404, f"Document {doc_id} not found")
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -202,10 +240,13 @@ async def update_document(
     dependencies=[Depends(require_permission("delete_data"))],
 )
 async def delete_document(doc_id: str, claims: JWTClaims = Depends(parse_jwt)):
+    log.info("DELETE /api/data/documents/%s | tenant=%s", doc_id, claims.tenant_id)
     try:
+        log.info("service=postgres, method=delete, table=KBData | doc_id=%s", doc_id)
         handle_response(await pg.delete("KBData", {"data_id": uuid.UUID(doc_id)}))
         return OK({"doc_id": doc_id})
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -213,31 +254,37 @@ async def delete_document(doc_id: str, claims: JWTClaims = Depends(parse_jwt)):
 
 @router.get("/api/data/agents", response_model=ResponseModel, tags=["Data"])
 async def get_agents(claims: JWTClaims = Depends(parse_jwt)):
+    log.info("GET /api/data/agents | tenant=%s", claims.tenant_id)
     return OK([])
 
 
 @router.get("/api/data/traces", response_model=ResponseModel, tags=["Data"])
 async def get_traces(claims: JWTClaims = Depends(parse_jwt)):
+    log.info("GET /api/data/traces | tenant=%s", claims.tenant_id)
     return OK([])
 
 
 @router.get("/api/data/configs", response_model=ResponseModel, tags=["Data"])
 async def get_agent_configs(claims: JWTClaims = Depends(parse_jwt)):
+    log.info("GET /api/data/configs | tenant=%s", claims.tenant_id)
     return OK([])
 
 
 @router.get("/api/data/runs", response_model=ResponseModel, tags=["Data"])
 async def get_runs(claims: JWTClaims = Depends(parse_jwt)):
+    log.info("GET /api/data/runs | tenant=%s", claims.tenant_id)
     return OK([])
 
 
 @router.get("/api/data/deployments", response_model=ResponseModel, tags=["Data"])
 async def get_deployments(claims: JWTClaims = Depends(parse_jwt)):
+    log.info("GET /api/data/deployments | tenant=%s", claims.tenant_id)
     return OK([])
 
 
 @router.get("/api/data/environments", response_model=ResponseModel, tags=["Data"])
 async def get_environments(claims: JWTClaims = Depends(parse_jwt)):
+    log.info("GET /api/data/environments | tenant=%s", claims.tenant_id)
     return OK([])
 
 
@@ -247,7 +294,9 @@ async def get_environments(claims: JWTClaims = Depends(parse_jwt)):
 
 @router.get("/api/knowledge/documents", response_model=ResponseModel, tags=["Knowledge"])
 async def get_kg_documents(claims: JWTClaims = Depends(parse_jwt)):
+    log.info("GET /api/knowledge/documents | tenant=%s", claims.tenant_id)
     try:
+        log.info("service=postgres, method=read, table=KBData | tenant=%s, tier=gold, limit=200", claims.tenant_id)
         rows = handle_response(await pg.read("KBData", {
             "tenant_id": claims.tenant_id,
             "current_tier": "gold",
@@ -255,12 +304,15 @@ async def get_kg_documents(claims: JWTClaims = Depends(parse_jwt)):
         }))
         return OK([map_doc(r) for r in rows])
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
 @router.get("/api/knowledge/documents/{doc_id}", response_model=ResponseModel, tags=["Knowledge"])
 async def get_kg_document(doc_id: str, claims: JWTClaims = Depends(parse_jwt)):
+    log.info("GET /api/knowledge/documents/%s | tenant=%s", doc_id, claims.tenant_id)
     try:
+        log.info("service=postgres, method=read, table=KBData | doc_id=%s, tenant=%s", doc_id, claims.tenant_id)
         rows = handle_response(await pg.read("KBData", {
             "tenant_id": claims.tenant_id,
             "data_id": uuid.UUID(doc_id),
@@ -270,6 +322,7 @@ async def get_kg_document(doc_id: str, claims: JWTClaims = Depends(parse_jwt)):
             return ERR(404, f"Document {doc_id} not found")
         return OK(map_doc(rows[0]))
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -277,11 +330,14 @@ async def get_kg_document(doc_id: str, claims: JWTClaims = Depends(parse_jwt)):
 
 @router.get("/api/knowledge/documents/{doc_id}/chunks", response_model=ResponseModel, tags=["Knowledge"])
 async def get_chunks(doc_id: str, claims: JWTClaims = Depends(parse_jwt)):
+    log.info("GET /api/knowledge/documents/%s/chunks | tenant=%s", doc_id, claims.tenant_id)
     try:
+        log.info("service=postgres, method=read_join, query=q_chunks | doc_id=%s", doc_id)
         rows = handle_response(await pg.read_join(q_chunks(uuid.UUID(doc_id))))
 
         return OK(map_chunks(rows))
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -296,10 +352,13 @@ async def create_chunk_version(
         body: RequestCreateChunkVersion,
         claims: JWTClaims = Depends(parse_jwt),
 ):
+    log.info("POST /api/knowledge/documents/%s/chunks/%s/versions | tenant=%s", doc_id, chunk_id, claims.tenant_id)
     try:
         chunk_uuid = uuid.UUID(chunk_id)
+        log.info("service=postgres, method=read, table=KBTextBlockVersion | chunk_id=%s", chunk_id)
         existing = handle_response(await pg.read("KBTextBlockVersion", {"block_id": chunk_uuid}))
         next_num = max((v["version_number"] for v in existing), default=0) + 1
+        log.info("service=postgres, method=create, table=KBTextBlockVersion | chunk_id=%s, version=%s", chunk_id, next_num)
         res = handle_response(await pg.create("KBTextBlockVersion", {
             "block_id": chunk_uuid,
             "version_number": next_num,
@@ -308,6 +367,7 @@ async def create_chunk_version(
         }))
         return CREATED({"version_id": res.get("version_id"), "version_number": next_num})
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -322,8 +382,11 @@ async def activate_chunk_version(
         body: RequestActivateChunkVersion,
         claims: JWTClaims = Depends(parse_jwt),
 ):
+    log.info("PATCH /api/knowledge/documents/%s/chunks/%s/activate | tenant=%s, version=%s",
+             doc_id, chunk_id, claims.tenant_id, body.version_number)
     try:
         chunk_uuid = uuid.UUID(chunk_id)
+        log.info("service=postgres, method=read, table=KBTextBlockVersion | chunk_id=%s", chunk_id)
         versions = handle_response(await pg.read("KBTextBlockVersion", {"block_id": chunk_uuid}))
         target = next(
             (v for v in versions if str(v["version_number"]) == str(body.version_number)), None
@@ -332,6 +395,7 @@ async def activate_chunk_version(
             return ERR(404, f"Version {body.version_number} not found for chunk {chunk_id}")
 
         # Deactivate every currently-active version for this block
+        log.info("service=postgres, method=update, table=KBTextBlockVersion | chunk_id=%s, action=deactivate_active", chunk_id)
         for v in versions:
             if v.get("is_active"):
                 await pg.update("KBTextBlockVersion", {
@@ -339,12 +403,15 @@ async def activate_chunk_version(
                     "is_active": False,
                 })
 
+        log.info("service=postgres, method=update, table=KBTextBlockVersion | version_id=%s, action=activate",
+                 target["version_id"])
         handle_response(await pg.update("KBTextBlockVersion", {
             "version_id": target["version_id"],
             "is_active": True,
         }))
         return OK({"version_id": to_string(target["version_id"])})
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -359,16 +426,22 @@ async def delete_chunk_version(
         version_number: str,
         claims: JWTClaims = Depends(parse_jwt),
 ):
+    log.info("DELETE /api/knowledge/documents/%s/chunks/%s/versions/%s | tenant=%s",
+             doc_id, chunk_id, version_number, claims.tenant_id)
     try:
+        log.info("service=postgres, method=read, table=KBTextBlockVersion | chunk_id=%s", chunk_id)
         versions = handle_response(await pg.read("KBTextBlockVersion", {"block_id": uuid.UUID(chunk_id)}))
         target = next((v for v in versions if str(v["version_number"]) == version_number), None)
         if target is None:
             return ERR(404, f"Version {version_number} not found")
         vid = target["version_id"]
+        log.info("service=postgres, method=delete, table=KBTextTable | version_id=%s", vid)
         await pg.delete("KBTextTable", {"version_id": vid})          # no-op if no table row
+        log.info("service=postgres, method=delete, table=KBTextBlockVersion | version_id=%s", vid)
         handle_response(await pg.delete("KBTextBlockVersion", {"version_id": vid}))
         return OK({"version_id": to_string(vid)})
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -378,16 +451,22 @@ async def delete_chunk_version(
     dependencies=[Depends(require_permission("delete_data"))],
 )
 async def delete_chunk(doc_id: str, chunk_id: str, claims: JWTClaims = Depends(parse_jwt)):
+    log.info("DELETE /api/knowledge/documents/%s/chunks/%s | tenant=%s", doc_id, chunk_id, claims.tenant_id)
     try:
         chunk_uuid = uuid.UUID(chunk_id)
+        log.info("service=postgres, method=read, table=KBTextBlockVersion | chunk_id=%s", chunk_id)
         versions = handle_response(await pg.read("KBTextBlockVersion", {"block_id": chunk_uuid}))
+        log.info("service=postgres, method=delete, table=KBTextTable+KBTextBlockVersion | chunk_id=%s, versions=%d",
+                 chunk_id, len(versions))
         for v in versions:
             vid = v["version_id"]
             await pg.delete("KBTextTable", {"version_id": vid})      # no-op if no table row
             handle_response(await pg.delete("KBTextBlockVersion", {"version_id": vid}))
+        log.info("service=postgres, method=delete, table=KBTextBlock | chunk_id=%s", chunk_id)
         handle_response(await pg.delete("KBTextBlock", {"block_id": chunk_uuid}))
         return OK({"chunk_id": chunk_id})
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -399,11 +478,14 @@ async def get_tables(doc_id: str, claims: JWTClaims = Depends(parse_jwt)):
     JOIN KBTextBlock → KBTextBlockVersion → KBTextTable
     to return only active, table-bearing block versions.
     """
+    log.info("GET /api/knowledge/documents/%s/tables | tenant=%s", doc_id, claims.tenant_id)
     try:
+        log.info("service=postgres, method=read_join, query=q_tables | doc_id=%s", doc_id)
         rows = handle_response(await pg.read_join(q_tables(uuid.UUID(doc_id))))
 
         return OK(map_tables(rows))
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -418,7 +500,10 @@ async def update_table_row(
         body: RequestTableRowUpdate,
         claims: JWTClaims = Depends(parse_jwt),
 ):
+    log.info("PATCH /api/knowledge/documents/%s/tables/%s/rows/%d | tenant=%s, column=%s",
+             doc_id, table_id, row_index, claims.tenant_id, body.column)
     try:
+        log.info("service=postgres, method=read, table=KBTextTable | table_id=%s", table_id)
         records = handle_response(await pg.read("KBTextTable", {"version_id": uuid.UUID(table_id)}))
         if not records:
             return ERR(404, f"Table {table_id} not found")
@@ -440,9 +525,11 @@ async def update_table_row(
                 return ERR(400, f"Column {body.column!r} not found in table schema")
 
         data["rows"] = rows
+        log.info("service=postgres, method=update, table=KBTextTable | table_id=%s, row=%d", table_id, row_index)
         handle_response(await pg.update("KBTextTable", {"version_id": uuid.UUID(table_id), "data": data}))
         return OK({"row_index": row_index, "column": body.column, "value": body.value})
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -452,10 +539,13 @@ async def update_table_row(
     dependencies=[Depends(require_permission("delete_data"))],
 )
 async def delete_table(doc_id: str, table_id: str, claims: JWTClaims = Depends(parse_jwt)):
+    log.info("DELETE /api/knowledge/documents/%s/tables/%s | tenant=%s", doc_id, table_id, claims.tenant_id)
     try:
+        log.info("service=postgres, method=delete, table=KBTextTable | table_id=%s", table_id)
         handle_response(await pg.delete("KBTextTable", {"version_id": uuid.UUID(table_id)}))
         return OK({"table_id": table_id})
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -463,7 +553,9 @@ async def delete_table(doc_id: str, table_id: str, claims: JWTClaims = Depends(p
 
 @router.get("/api/knowledge/documents/{doc_id}/configs", response_model=ResponseModel, tags=["Knowledge"])
 async def get_doc_configs(doc_id: str, claims: JWTClaims = Depends(parse_jwt)):
+    log.info("GET /api/knowledge/documents/%s/configs | tenant=%s", doc_id, claims.tenant_id)
     try:
+        log.info("service=postgres, method=read, table=KBData | doc_id=%s, tenant=%s", doc_id, claims.tenant_id)
         doc_rows = handle_response(await pg.read("KBData", {
             "tenant_id": claims.tenant_id,
             "data_id": uuid.UUID(doc_id),
@@ -482,6 +574,7 @@ async def get_doc_configs(doc_id: str, claims: JWTClaims = Depends(parse_jwt)):
             return OK([])
         return await _get_warehouse_configs(uuid.UUID(str(warehouse_id)))
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -491,7 +584,9 @@ async def create_doc_config(
         body: RequestDocConfig,
         claims: JWTClaims = Depends(parse_jwt),
 ):
+    log.info("POST /api/knowledge/documents/%s/configs | tenant=%s", doc_id, claims.tenant_id)
     try:
+        log.info("service=postgres, method=read, table=KBData | doc_id=%s, tenant=%s", doc_id, claims.tenant_id)
         doc_rows = handle_response(await pg.read("KBData", {
             "tenant_id": claims.tenant_id,
             "data_id": uuid.UUID(doc_id),
@@ -510,6 +605,7 @@ async def create_doc_config(
             return ERR(400, "Document has no linked warehouse_id in metadata")
         return await _create_warehouse_config(uuid.UUID(str(warehouse_id)), body, claims)
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -518,13 +614,17 @@ async def create_doc_config(
     response_model=ResponseModel, tags=["Knowledge"],
 )
 async def activate_doc_config(doc_id: str, config_id: str, claims: JWTClaims = Depends(parse_jwt)):
+    log.info("PATCH /api/knowledge/documents/%s/configs/%s/activate | tenant=%s",
+             doc_id, config_id, claims.tenant_id)
     try:
+        log.info("service=postgres, method=update, table=KBWarehouse_Config | config_id=%s, action=activate", config_id)
         handle_response(await pg.update("KBWarehouse_Config", {
             "config_id": uuid.UUID(config_id),
             "is_active": True,
         }))
         return OK({"config_id": config_id})
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -537,6 +637,8 @@ async def _resolve_warehouse_id(tenant_id: uuid.UUID, candidate: uuid.UUID) -> u
     Falls back to the candidate itself when no mapping is found.
     """
     try:
+        log.info("service=postgres, method=read, table=KBData | tenant=%s, candidate_id=%s (resolve warehouse)",
+                 tenant_id, candidate)
         rows = handle_response(
             await pg.read("KBData", {"tenant_id": tenant_id, "data_id": candidate, "limit": 1}))
         if rows:
@@ -558,6 +660,7 @@ async def _resolve_warehouse_id(tenant_id: uuid.UUID, candidate: uuid.UUID) -> u
 
 async def _get_warehouse_configs(warehouse_id: uuid.UUID) -> ResponseModel:
     """Shared helper for both per-doc and per-warehouse config endpoints."""
+    log.info("service=postgres, method=read, table=KBWarehouse_Config | warehouse_id=%s", warehouse_id)
     rows = handle_response(await pg.read("KBWarehouse_Config", {"warehouse_id": warehouse_id}))
     return OK(map_warehouse_configs(rows))
 
@@ -571,6 +674,8 @@ async def _create_warehouse_config(
         (t.get("table_name") or t.get("id") or t) if isinstance(t, dict) else t
         for t in (body.tables or [])
     ]
+    log.info("service=postgres, method=create, table=KBWarehouse_Config | warehouse_id=%s, tables=%d",
+             warehouse_id, len(tables))
     res = handle_response(await pg.create("KBWarehouse_Config", {
         "warehouse_id": warehouse_id,
         "version_number": int(body.version or 1),
@@ -589,10 +694,12 @@ async def _create_warehouse_config(
     response_model=ResponseModel, tags=["Knowledge"],
 )
 async def get_warehouse_configs(warehouse_id: str, claims: JWTClaims = Depends(parse_jwt)):
+    log.info("GET /api/knowledge/warehouses/%s/configs | tenant=%s", warehouse_id, claims.tenant_id)
     try:
         resolved = await _resolve_warehouse_id(claims.tenant_id, uuid.UUID(warehouse_id))
         return await _get_warehouse_configs(resolved)
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -606,10 +713,12 @@ async def create_warehouse_config(
         body: RequestWarehouseConfigCreate,
         claims: JWTClaims = Depends(parse_jwt),
 ):
+    log.info("POST /api/knowledge/warehouses/%s/configs | tenant=%s", warehouse_id, claims.tenant_id)
     try:
         resolved = await _resolve_warehouse_id(claims.tenant_id, uuid.UUID(warehouse_id))
         return await _create_warehouse_config(resolved, body, claims)
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -621,14 +730,18 @@ async def create_warehouse_config(
 async def activate_warehouse_config(
         warehouse_id: str, config_id: str, claims: JWTClaims = Depends(parse_jwt)
 ):
+    log.info("PATCH /api/knowledge/warehouses/%s/configs/%s/activate | tenant=%s",
+             warehouse_id, config_id, claims.tenant_id)
     try:
         resolved = await _resolve_warehouse_id(claims.tenant_id, uuid.UUID(warehouse_id))
+        log.info("service=postgres, method=update, table=KBWarehouse_Config | config_id=%s, action=activate", config_id)
         handle_response(await pg.update("KBWarehouse_Config", {
             "config_id": uuid.UUID(config_id),
             "is_active": True,
         }))
         return OK({"config_id": config_id, "warehouse_id": str(resolved)})
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -640,10 +753,14 @@ async def activate_warehouse_config(
 async def delete_warehouse_config(
         warehouse_id: str, config_id: str, claims: JWTClaims = Depends(parse_jwt)
 ):
+    log.info("DELETE /api/knowledge/warehouses/%s/configs/%s | tenant=%s",
+             warehouse_id, config_id, claims.tenant_id)
     try:
+        log.info("service=postgres, method=delete, table=KBWarehouse_Config | config_id=%s", config_id)
         handle_response(await pg.delete("KBWarehouse_Config", {"config_id": uuid.UUID(config_id)}))
         return OK({"config_id": config_id})
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -656,9 +773,12 @@ async def delete_warehouse_config_table(
         warehouse_id: str, config_id: str, table_id: str,
         claims: JWTClaims = Depends(parse_jwt),
 ):
+    log.info("DELETE /api/knowledge/warehouses/%s/configs/%s/tables/%s | tenant=%s",
+             warehouse_id, config_id, table_id, claims.tenant_id)
     try:
         # Remove a specific table name from the config's selected_tables list
         resolved = await _resolve_warehouse_id(claims.tenant_id, uuid.UUID(warehouse_id))
+        log.info("service=postgres, method=read, table=KBWarehouse_Config | warehouse_id=%s", resolved)
         records = handle_response(await pg.read("KBWarehouse_Config", {
             "warehouse_id": resolved,
         }))
@@ -667,12 +787,15 @@ async def delete_warehouse_config_table(
             return ERR(404, f"Config {config_id} not found")
         cfg = cfg_row.get("config") or {}
         cfg["selected_tables"] = [t for t in cfg.get("selected_tables", []) if t != table_id]
+        log.info("service=postgres, method=update, table=KBWarehouse_Config | config_id=%s, removed_table=%s",
+                 config_id, table_id)
         handle_response(await pg.update("KBWarehouse_Config", {
             "config_id": uuid.UUID(config_id),
             "config": cfg,
         }))
         return OK({"config_id": config_id, "removed_table": table_id})
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -686,11 +809,14 @@ async def get_qdrant_collections(claims: JWTClaims = Depends(parse_jwt)):
     JOIN KBQdrantConnection → KBQdrantCollection → KBModel (LEFT)
     to return all collections with their embedding model name.
     """
+    log.info("GET /api/knowledge/qdrant/collections | tenant=%s", claims.tenant_id)
     try:
+        log.info("service=postgres, method=read_join, query=q_qdrant_collections | tenant=%s", claims.tenant_id)
         rows = handle_response(await pg.read_join(q_qdrant_collections(claims.tenant_id)))
 
         return OK(map_qdrant_collections(rows))
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -704,12 +830,17 @@ async def toggle_qdrant_collection(
         body: RequestToggleQdrantCollection,
         claims: JWTClaims = Depends(parse_jwt),
 ):
+    log.info("PATCH /api/knowledge/qdrant/collections/%s | tenant=%s, active=%s",
+             collection_id, claims.tenant_id, body.active)
     try:
+        log.info("service=postgres, method=update, table=KBQdrantCollection | collection_id=%s, active=%s",
+                 collection_id, body.active)
         handle_response(await pg.update("KBQdrantCollection", {
             "collection_id": uuid.UUID(collection_id),
             "is_active": body.active,
         }))
         # Re-fetch full row so the UI can replace its local state with the complete object
+        log.info("service=postgres, method=read_join, query=q_qdrant_collection_by_id | collection_id=%s", collection_id)
         rows = handle_response(await pg.read_join(
             q_qdrant_collection_by_id(claims.tenant_id, uuid.UUID(collection_id))
         ))
@@ -717,6 +848,7 @@ async def toggle_qdrant_collection(
             return ERR(404, f"Collection {collection_id} not found after update")
         return OK(map_qdrant_collection(rows[0]))
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -734,8 +866,11 @@ async def search_qdrant(
     Scroll the Qdrant collection and return points whose payload text
     contains the query string (case-insensitive, demo-mode search).
     """
+    log.info("POST /api/knowledge/qdrant/collections/%s/search | tenant=%s, query=%r",
+             collection_id, claims.tenant_id, (body.query or "")[:80])
     try:
         # Resolve collection name from Postgres registry
+        log.info("service=postgres, method=read_join, query=q_qdrant_collection_name | collection_id=%s", collection_id)
         rows = handle_response(await pg.read_join(
             q_qdrant_collection_name(claims.tenant_id, uuid.UUID(collection_id))
         ))
@@ -744,6 +879,7 @@ async def search_qdrant(
         collection_name = rows[0]["name"]
 
         q = (body.query or "").lower()
+        log.info("service=qdrant, method=scroll | collection=%s, query=%r", collection_name, q[:80])
         results = []
         offset = None
         while True:
@@ -764,6 +900,7 @@ async def search_qdrant(
 
         return OK(results)
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -778,49 +915,63 @@ async def get_neo4j_graph(claims: JWTClaims = Depends(parse_jwt)):
     Nodes come from KBNeo4jNode (Postgres registry) + their Neo4j properties.
     Edges come from KBNeo4jRelationship (Postgres registry).
     """
+    log.info("GET /api/knowledge/neo4j/graph | tenant=%s", claims.tenant_id)
     try:
         # Connection for this tenant
+        log.info("service=postgres, method=read, table=KBNeo4jConnection | tenant=%s", claims.tenant_id)
         conn_rows = handle_response(await pg.read("KBNeo4jConnection", {"tenant_id": claims.tenant_id}))
         if not conn_rows:
             return OK({"nodes": [], "edges": []})
         conn_id = conn_rows[0]["connection_id"]
 
+        log.info("service=postgres, method=read, table=KBNeo4jNode | connection_id=%s, limit=500", conn_id)
         node_rows = handle_response(await pg.read("KBNeo4jNode", {"connection_id": conn_id, "limit": 500}))
 
         # Edges — join KBNeo4jNode (FROM side) to KBNeo4jRelationship
+        log.info("service=postgres, method=read_join, query=q_neo4j_edges | connection_id=%s", conn_id)
         edge_rows = handle_response(await pg.read_join(q_neo4j_edges(conn_id)))
 
         return OK(map_neo4j_graph(node_rows, edge_rows))
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
 @router.get("/api/knowledge/neo4j/schema", response_model=ResponseModel, tags=["Neo4j"])
 async def get_neo4j_schema(claims: JWTClaims = Depends(parse_jwt)):
     """Return entity list and connection map for the query builder."""
+    log.info("GET /api/knowledge/neo4j/schema | tenant=%s", claims.tenant_id)
     try:
+        log.info("service=postgres, method=read, table=KBNeo4jConnection | tenant=%s", claims.tenant_id)
         conn_rows = handle_response(await pg.read("KBNeo4jConnection", {"tenant_id": claims.tenant_id}))
         if not conn_rows:
             return OK({"entities": [], "connections": {}})
         conn_id = conn_rows[0]["connection_id"]
 
+        log.info("service=postgres, method=read, table=KBNeo4jNode | connection_id=%s, limit=500", conn_id)
         node_rows = handle_response(await pg.read("KBNeo4jNode", {"connection_id": conn_id, "limit": 500}))
+        log.info("service=postgres, method=read_join, query=q_neo4j_schema_edges | connection_id=%s", conn_id)
         edge_rows = handle_response(await pg.read_join(q_neo4j_schema_edges(conn_id)))
 
         return OK(build_neo4j_schema(node_rows, edge_rows))
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
 @router.post("/api/knowledge/neo4j/query", response_model=ResponseModel, tags=["Neo4j"])
 async def query_neo4j(body: RequestNeo4jQuery, claims: JWTClaims = Depends(parse_jwt)):
     """Execute a read-only (MATCH) Cypher query scoped to the tenant's graph."""
+    log.info("POST /api/knowledge/neo4j/query | tenant=%s, cypher=%r",
+             claims.tenant_id, body.cypher[:80])
     try:
         if not body.cypher.strip().upper().startswith("MATCH"):
             return ERR(400, "Only MATCH queries are permitted")
+        log.info("service=neo4j, method=run_query | cypher=%r", body.cypher[:80])
         result = handle_response(await neo.run_query(body.cypher))
         return OK(result)
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -838,11 +989,14 @@ async def get_conflicts(claims: JWTClaims = Depends(parse_jwt)):
     awaiting → list of batches (each has conflicts[])
     resolved → list of batches (each has conflicts[])
     """
+    log.info("GET /api/knowledge/conflicts | tenant=%s", claims.tenant_id)
     try:
+        log.info("service=postgres, method=read_join, query=q_conflicts | tenant=%s", claims.tenant_id)
         rows = handle_response(await pg.read_join(q_conflicts(claims.tenant_id)))
 
         return OK(map_conflict_batches(rows))
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -852,7 +1006,10 @@ async def get_conflict_detail(conflict_id: str, claims: JWTClaims = Depends(pars
     JOIN KBConflictBatch → KBConflict (INNER) to return the full
     conflict detail including batch metadata.
     """
+    log.info("GET /api/knowledge/conflicts/%s | tenant=%s", conflict_id, claims.tenant_id)
     try:
+        log.info("service=postgres, method=read_join, query=q_conflict_detail | conflict_id=%s, tenant=%s",
+                 conflict_id, claims.tenant_id)
         rows = handle_response(await pg.read_join(
             q_conflict_detail(claims.tenant_id, uuid.UUID(conflict_id))
         ))
@@ -861,6 +1018,7 @@ async def get_conflict_detail(conflict_id: str, claims: JWTClaims = Depends(pars
             return ERR(404, f"Conflict {conflict_id} not found")
         return OK(map_conflict_detail(rows[0]))
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -874,6 +1032,8 @@ async def resolve_conflict(
         body: RequestResolveConflict,
         claims: JWTClaims = Depends(parse_jwt),
 ):
+    log.info("PATCH /api/knowledge/conflicts/%s | tenant=%s, method=%s",
+             conflict_id, claims.tenant_id, body.selected_resolution_method)
     try:
         is_merge = body.selected_resolution_method.lower() == "merge"
         new_status = "awaiting" if is_merge else "resolved"
@@ -882,6 +1042,8 @@ async def resolve_conflict(
             if hasattr(body.selected_resolution_method, "value")
             else str(body.selected_resolution_method)
         )
+        log.info("service=postgres, method=update, table=KBConflict | conflict_id=%s, status=%s",
+                 conflict_id, new_status)
         handle_response(await pg.update("KBConflict", {
             "conflict_id": uuid.UUID(conflict_id),
             "status": new_status,
@@ -897,6 +1059,7 @@ async def resolve_conflict(
             "resolution_instruction": body.resolution_instruction,
         })
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -906,10 +1069,13 @@ async def resolve_conflict(
 
 @router.get("/api/knowledge/policies/filtering", response_model=ResponseModel, tags=["Policies"])
 async def get_filter_policies(claims: JWTClaims = Depends(parse_jwt)):
+    log.info("GET /api/knowledge/policies/filtering | tenant=%s", claims.tenant_id)
     try:
+        log.info("service=postgres, method=read, table=KBFilterPolicy | tenant=%s, limit=100", claims.tenant_id)
         rows = handle_response(await pg.read("KBFilterPolicy", {"tenant_id": claims.tenant_id, "limit": 100}))
         return OK(map_filter_policies(rows))
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -922,7 +1088,10 @@ async def create_filter_policy(
         body: RequestCreateFilterPolicy,
         claims: JWTClaims = Depends(parse_jwt),
 ):
+    log.info("POST /api/knowledge/policies/filtering | tenant=%s, name=%r, type=%s",
+             claims.tenant_id, body.name, body.type)
     try:
+        log.info("service=postgres, method=create, table=KBFilterPolicy | tenant=%s, name=%r", claims.tenant_id, body.name)
         res = handle_response(await pg.create("KBFilterPolicy", {
             "tenant_id": claims.tenant_id,
             "policy_name": body.name,
@@ -933,6 +1102,7 @@ async def create_filter_policy(
         }))
         return CREATED({"policy_id": res.get("policy_id")})
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -941,13 +1111,16 @@ async def create_filter_policy(
     response_model=ResponseModel, tags=["Policies"],
 )
 async def get_filter_policy(policy_id: str, claims: JWTClaims = Depends(parse_jwt)):
+    log.info("GET /api/knowledge/policies/filtering/%s | tenant=%s", policy_id, claims.tenant_id)
     try:
+        log.info("service=postgres, method=read, table=KBFilterPolicy | tenant=%s, limit=100", claims.tenant_id)
         rows = handle_response(await pg.read("KBFilterPolicy", {"tenant_id": claims.tenant_id, "limit": 100}))
         match = next((r for r in rows if str(r["policy_id"]) == policy_id), None)
         if match is None:
             return ERR(404, f"Policy {policy_id} not found")
         return OK(map_filter_policy(match))
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -961,6 +1134,7 @@ async def update_filter_policy(
         body: RequestUpdateFilterPolicy,
         claims: JWTClaims = Depends(parse_jwt),
 ):
+    log.info("PUT /api/knowledge/policies/filtering/%s | tenant=%s", policy_id, claims.tenant_id)
     try:
         update: dict[str, Any] = {"policy_id": uuid.UUID(policy_id)}
         data = body.model_dump(exclude_none=True)
@@ -973,9 +1147,11 @@ async def update_filter_policy(
         if "content" in data:
             t = data.get("type", "natural_language")
             update["config"] = {"rules": policy_rules_to_list(t, data["content"]), "threshold": 0.8}
+        log.info("service=postgres, method=update, table=KBFilterPolicy | policy_id=%s", policy_id)
         handle_response(await pg.update("KBFilterPolicy", update))
         return OK({"policy_id": policy_id})
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -985,19 +1161,25 @@ async def update_filter_policy(
     dependencies=[Depends(require_permission("delete_filtering_policy"))],
 )
 async def delete_filter_policy(policy_id: str, claims: JWTClaims = Depends(parse_jwt)):
+    log.info("DELETE /api/knowledge/policies/filtering/%s | tenant=%s", policy_id, claims.tenant_id)
     try:
+        log.info("service=postgres, method=delete, table=KBFilterPolicy | policy_id=%s", policy_id)
         handle_response(await pg.delete("KBFilterPolicy", {"policy_id": uuid.UUID(policy_id)}))
         return OK({"policy_id": policy_id})
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
 @router.get("/api/knowledge/policies/extraction", response_model=ResponseModel, tags=["Policies"])
 async def get_extraction_policy(claims: JWTClaims = Depends(parse_jwt)):
+    log.info("GET /api/knowledge/policies/extraction | tenant=%s", claims.tenant_id)
     try:
+        log.info("service=postgres, method=read, table=KBExtractionPolicy | tenant=%s, limit=5", claims.tenant_id)
         rows = handle_response(await pg.read("KBExtractionPolicy", {"tenant_id": claims.tenant_id, "limit": 5}))
         return OK(map_extraction_policy(rows))
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -1010,16 +1192,20 @@ async def update_extraction_policy_custom(
         body: RequestExtractionCustom,
         claims: JWTClaims = Depends(parse_jwt),
 ):
+    log.info("PUT /api/knowledge/policies/extraction/custom | tenant=%s", claims.tenant_id)
     try:
+        log.info("service=postgres, method=read, table=KBExtractionPolicy | tenant=%s, limit=5", claims.tenant_id)
         rows = handle_response(await pg.read("KBExtractionPolicy", {"tenant_id": claims.tenant_id, "limit": 5}))
         if not rows:
             return ERR(404, "No extraction policy found for this tenant")
+        log.info("service=postgres, method=update, table=KBExtractionPolicy | policy_id=%s", rows[0]["policy_id"])
         handle_response(await pg.update("KBExtractionPolicy", {
             "policy_id": rows[0]["policy_id"],
             "custom_override": body.custom,
         }))
         return OK({"policy_id": to_string(rows[0]["policy_id"])})
     except Exception as e:
+        log.exception(str(e))
         return ERR(500, str(e))
 
 
@@ -1029,19 +1215,23 @@ async def update_extraction_policy_custom(
 
 @router.post("/api/knowledge/data_upload", response_model=ResponseModel, tags=["Data"])
 async def upload_data(body: RequestDataUpload, claims: JWTClaims = Depends(parse_jwt)):
+    log.info("POST /api/knowledge/data_upload | tenant=%s", claims.tenant_id)
     return ERR(501, "Not implemented")
 
 
 @router.post("/api/knowledge/confirm/{upload_id}", response_model=ResponseModel, tags=["Data"])
 async def confirm_upload(upload_id: uuid.UUID, body: RequestConfirmDataUpload, claims: JWTClaims = Depends(parse_jwt)):
+    log.info("POST /api/knowledge/confirm/%s | tenant=%s", upload_id, claims.tenant_id)
     return ERR(501, "Not implemented")
 
 
 @router.post("/api/knowledge/connect", response_model=ResponseModel, tags=["Warehouse"])
 async def connect_warehouse(body: RequestConnectWarehouse, claims: JWTClaims = Depends(parse_jwt)):
+    log.info("POST /api/knowledge/connect | tenant=%s", claims.tenant_id)
     return ERR(501, "Not implemented")
 
 
 @router.post("/api/knowledge/select_table/{connection_id}", response_model=ResponseModel, tags=["Warehouse"])
 async def select_tables(connection_id: uuid.UUID, body: RequestSelectTable, claims: JWTClaims = Depends(parse_jwt)):
+    log.info("POST /api/knowledge/select_table/%s | tenant=%s", connection_id, claims.tenant_id)
     return ERR(501, "Not implemented")
