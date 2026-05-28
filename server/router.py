@@ -43,10 +43,23 @@ from basemodel.policy import RequestCreateFilterPolicy, RequestExtractionCustom,
 from basemodel.warehouse import RequestConnectWarehouse, RequestSelectTable
 from services.parse_for_ui import (
     to_string, handle_response, parse_jsonb,
+    map_fleet_stats,
     map_doc,
-    map_conflict_type, map_severity,
-    policy_fmt_to_type, policy_type_to_fmt, policy_rules_to_str, policy_rules_to_list,
+    map_chunks,
+    map_tables,
+    map_warehouse_configs,
+    map_qdrant_collection,
+    map_qdrant_collections,
+    map_qdrant_point,
+    map_neo4j_graph,
     build_neo4j_schema,
+    map_conflict_type, map_severity,
+    map_conflict_batches,
+    map_conflict_detail,
+    policy_fmt_to_type, policy_type_to_fmt, policy_rules_to_str, policy_rules_to_list,
+    map_filter_policy,
+    map_filter_policies,
+    map_extraction_policy,
 )
 
 
@@ -129,18 +142,11 @@ router = APIRouter()
 @router.get("/api/fleet/stats", response_model=ResponseModel, tags=["Fleet"])
 async def get_fleet_stats(claims: JWTClaims = Depends(parse_jwt)):
     try:
-        # Gold document counts by source_type
         gold_docs = handle_response(await pg.read("KBData", {
             "tenant_id": claims.tenant_id,
             "current_tier": "gold",
             "limit": 1000,
         }))
-        counts: dict[str, int] = {}
-        for d in gold_docs:
-            st = d.get("source_type", "doc")
-            counts[st] = counts.get(st, 0) + 1
-
-        # Qdrant collection count — join Connection → Collection
         qdrant_rows = handle_response(await pg.read_join({
             "joins_table": ["KBQdrantConnection", "KBQdrantCollection"],
             "join_on": [{
@@ -156,28 +162,9 @@ async def get_fleet_stats(claims: JWTClaims = Depends(parse_jwt)):
             ],
             "limit": 200,
         }))
-
-        # Neo4j totals
         neo_conns = handle_response(await pg.read("KBNeo4jConnection", {"tenant_id": claims.tenant_id}))
-        total_nodes = sum(r.get("total_node", 0) for r in neo_conns)
-        total_edges = sum(r.get("total_edge", 0) for r in neo_conns)
-
-        # Unresolved conflict batches
         batches = handle_response(await pg.read("KBConflictBatch", {"tenant_id": claims.tenant_id, "limit": 500}))
-        unresolved = sum(1 for b in batches if b.get("status") in ("pending", "awaiting"))
-
-        return OK({
-            "content": {
-                "documents": counts.get("doc", 0),
-                "web": counts.get("web", 0),
-                "media": counts.get("image", 0) + counts.get("video", 0),
-                "warehouses": counts.get("warehouse", 0),
-            },
-            "qdrant_collections": len(qdrant_rows),
-            "neo4j_nodes": total_nodes,
-            "neo4j_relationships": total_edges,
-            "unresolved_conflict_batches": unresolved,
-        })
+        return OK(map_fleet_stats(gold_docs, qdrant_rows, neo_conns, batches))
     except Exception as e:
         return ERR(500, str(e))
 
@@ -328,40 +315,7 @@ async def get_chunks(doc_id: str, claims: JWTClaims = Depends(parse_jwt)):
             "limit": 500,
         }))
 
-        blocks: dict[str, dict] = {}
-        for r in rows:
-            bid = to_string(r["block_id"])
-            if bid not in blocks:
-                blocks[bid] = {
-                    "id": bid,
-                    "title": f"Chunk {r['block_index'] + 1}",
-                    "text": "",
-                    "versions": [],
-                }
-            if r.get("version_id") is None:
-                continue
-            _raw_payload = r.get("payload")
-            if isinstance(_raw_payload, str):
-                try:
-                    payload = json.loads(_raw_payload)
-                except Exception:
-                    payload = {}
-            else:
-                payload = _raw_payload or {}
-            version = {
-                "version_number": to_string(r["version_number"]),
-                "create_at": to_string(r.get("created_at", "")),
-                "status": "active" if r.get("is_active") else "inactive",
-                "embedding_models": to_string(r.get("embedding_model_id", "")),
-                "entities": payload.get("entities", []),
-                "intent": ", ".join(payload.get("intents", [])),
-                "text": r.get("content") or "",
-            }
-            blocks[bid]["versions"].append(version)
-            if r.get("is_active"):
-                blocks[bid]["text"] = r.get("content") or ""
-
-        return OK(list(blocks.values()))
+        return OK(map_chunks(rows))
     except Exception as e:
         return ERR(500, str(e))
 
@@ -502,39 +456,7 @@ async def get_tables(doc_id: str, claims: JWTClaims = Depends(parse_jwt)):
             "limit": 100,
         }))
 
-        def _parse_data(r) -> dict:
-            raw = r.get("data")
-            if isinstance(raw, str):
-                try:
-                    return json.loads(raw)
-                except Exception:
-                    return {}
-            return raw or {}
-
-        def _normalize(r) -> dict:
-            data = _parse_data(r)
-            raw_cols = data.get("columns", [])
-            raw_rows = data.get("rows", [])
-            # Columns: lift plain strings → {name, type, nullable}
-            if raw_cols and isinstance(raw_cols[0], str):
-                columns = [{"name": c, "type": "TEXT", "nullable": True} for c in raw_cols]
-            else:
-                columns = raw_cols
-            # Rows: lift arrays → {colName: value} dicts
-            col_names = [c if isinstance(c, str) else c.get("name", "") for c in raw_cols]
-            if raw_rows and isinstance(raw_rows[0], list):
-                rows = [dict(zip(col_names, row)) for row in raw_rows]
-            else:
-                rows = raw_rows
-            return {
-                "id": to_string(r["id"]),
-                "name": r.get("table_name") or "",
-                "description": r.get("description") or "",
-                "columns": columns,
-                "rows": rows,
-            }
-
-        return OK([_normalize(r) for r in rows])
+        return OK(map_tables(rows))
     except Exception as e:
         return ERR(500, str(e))
 
@@ -691,21 +613,7 @@ async def _resolve_warehouse_id(tenant_id: uuid.UUID, candidate: uuid.UUID) -> u
 async def _get_warehouse_configs(warehouse_id: uuid.UUID) -> ResponseModel:
     """Shared helper for both per-doc and per-warehouse config endpoints."""
     rows = handle_response(await pg.read("KBWarehouse_Config", {"warehouse_id": warehouse_id}))
-    result = []
-    for r in rows:
-        cfg = r.get("config") or {}
-        result.append({
-            "id": to_string(r["config_id"]),
-            "version": r.get("version_number"),
-            "active": bool(r.get("is_active", False)),
-            "host": cfg.get("host"),
-            "database": cfg.get("database"),
-            "selected_tables": cfg.get("selected_tables", []),
-            "sync_schedule": cfg.get("sync_schedule"),
-            "schema_filter": cfg.get("schema_filter", []),
-            "created_at": to_string(r.get("created_at", "")),
-        })
-    return OK(result)
+    return OK(map_warehouse_configs(rows))
 
 
 async def _create_warehouse_config(
@@ -863,19 +771,7 @@ async def get_qdrant_collections(claims: JWTClaims = Depends(parse_jwt)):
             "limit": 100,
         }))
 
-        return OK([
-            {
-                "id": to_string(r["id"]),
-                "name": r.get("name"),
-                "active": bool(r.get("active", False)),
-                "points": r.get("points", 0),
-                "dimensions": r.get("dimensions") or 0,
-                "distance": r.get("distance", "cosine"),
-                "indexed": 100 if r.get("active") else 0,
-                "embedding_model": r.get("embedding_model"),
-            }
-            for r in rows
-        ])
+        return OK(map_qdrant_collections(rows))
     except Exception as e:
         return ERR(500, str(e))
 
@@ -927,17 +823,7 @@ async def toggle_qdrant_collection(
         }))
         if not rows:
             return ERR(404, f"Collection {collection_id} not found after update")
-        r = rows[0]
-        return OK({
-            "id": to_string(r["id"]),
-            "name": r.get("name"),
-            "active": bool(r.get("active", False)),
-            "points": r.get("points", 0),
-            "dimensions": r.get("dimensions") or 0,
-            "distance": r.get("distance", "cosine"),
-            "indexed": 100 if r.get("active") else 0,
-            "embedding_model": r.get("embedding_model"),
-        })
+        return OK(map_qdrant_collection(rows[0]))
     except Exception as e:
         return ERR(500, str(e))
 
@@ -992,13 +878,7 @@ async def search_qdrant(
             for point in batch:
                 payload = point.payload or {}
                 if not q or q in " ".join(str(v) for v in payload.values()).lower():
-                    results.append({
-                        "point_id": to_string(point.id),
-                        "score": 1.0,
-                        "summary": payload.get("summary", ""),
-                        "entities": payload.get("entities", []),
-                        "intent": payload.get("intents", []),
-                    })
+                    results.append(map_qdrant_point(point))
             if next_offset is None:
                 break
             offset = next_offset
@@ -1026,9 +906,7 @@ async def get_neo4j_graph(claims: JWTClaims = Depends(parse_jwt)):
             return OK({"nodes": [], "edges": []})
         conn_id = conn_rows[0]["connection_id"]
 
-        # Nodes from Postgres registry
         node_rows = handle_response(await pg.read("KBNeo4jNode", {"connection_id": conn_id, "limit": 500}))
-        node_id_set = {to_string(n["node_id"]) for n in node_rows}
 
         # Edges — join KBNeo4jNode (FROM side) to KBNeo4jRelationship
         edge_rows = handle_response(await pg.read_join({
@@ -1050,26 +928,7 @@ async def get_neo4j_graph(claims: JWTClaims = Depends(parse_jwt)):
             "limit": 1000,
         }))
 
-        return OK({
-            "nodes": [
-                {
-                    "id": to_string(n["node_id"]),
-                    "name": n.get("node_name"),
-                    "description": n.get("node_description"),
-                }
-                for n in node_rows
-            ],
-            "edges": [
-                {
-                    "from": to_string(e["from_id"]),
-                    "to": to_string(e["to_id"]),
-                    "description": e.get("description"),
-                    "score": e.get("score"),
-                }
-                for e in edge_rows
-                if to_string(e.get("to_id")) in node_id_set  # guard: to-node belongs to tenant
-            ],
-        })
+        return OK(map_neo4j_graph(node_rows, edge_rows))
     except Exception as e:
         return ERR(500, str(e))
 
@@ -1167,52 +1026,7 @@ async def get_conflicts(claims: JWTClaims = Depends(parse_jwt)):
             "limit": 500,
         }))
 
-        # Group by batch; each conflict carries its own status
-        batches: dict[str, dict] = {}
-        for r in rows:
-            bid = to_string(r["batch_id"])
-            if bid not in batches:
-                batches[bid] = {
-                    "batch_id": bid,
-                    "batch_name": r.get("batch_title"),
-                    "extracted_date": to_string(r.get("batch_created_at", ""))[:10],
-                    "conflicts": [],
-                }
-            if r.get("conflict_id") is None:
-                continue
-            batches[bid]["conflicts"].append({
-                "conflict_id": to_string(r["conflict_id"]),
-                "conflict_type": map_conflict_type(r.get("conflict_type") or ""),
-                "severity": map_severity(r.get("severity") or ""),
-                "detected_at": to_string(r.get("detected_at", "")),
-                "_status": r.get("conflict_status") or "pending",
-            })
-
-        pending_batches: list[dict] = []
-        awaiting_summaries: list[dict] = []
-        resolved_summaries: list[dict] = []
-
-        def _strip(c: dict) -> dict:
-            return {k: v for k, v in c.items() if k != "_status"}
-
-        for b in batches.values():
-            pending_in_batch = [c for c in b["conflicts"] if c["_status"] == "pending"]
-            awaiting = [c for c in b["conflicts"] if c["_status"] == "awaiting"]
-            resolved = [c for c in b["conflicts"] if c["_status"] == "resolved"]
-
-            # Batch appears in pending only if it still has pending conflicts
-            if pending_in_batch:
-                pending_batches.append({
-                    "batch_id": b["batch_id"],
-                    "batch_name": b["batch_name"],
-                    "extracted_date": b["extracted_date"],
-                    "number_pending_conflict": len(pending_in_batch),
-                    "conflicts": [_strip(c) for c in pending_in_batch],
-                })
-            awaiting_summaries.extend(_strip(c) for c in awaiting)
-            resolved_summaries.extend(_strip(c) for c in resolved)
-
-        return OK({"pending": pending_batches, "awaiting": awaiting_summaries, "resolved": resolved_summaries})
+        return OK(map_conflict_batches(rows))
     except Exception as e:
         return ERR(500, str(e))
 
@@ -1244,6 +1058,8 @@ async def get_conflict_detail(conflict_id: str, claims: JWTClaims = Depends(pars
                 {"table_name": "KBConflict", "column_name": "incoming_snapshot", "alias": "incoming_snapshot"},
                 {"table_name": "KBConflict", "column_name": "resolution_instruction",
                  "alias": "resolution_instruction"},
+                {"table_name": "KBConflict", "column_name": "selected_resolution_method",
+                 "alias": "selected_resolution_method"},
                 {"table_name": "KBConflict", "column_name": "resolved_at", "alias": "resolved_at"},
                 {"table_name": "KBConflict", "column_name": "resolved_by", "alias": "resolved_by"},
             ],
@@ -1256,40 +1072,7 @@ async def get_conflict_detail(conflict_id: str, claims: JWTClaims = Depends(pars
 
         if not rows:
             return ERR(404, f"Conflict {conflict_id} not found")
-
-        def _snap(raw) -> dict:
-            if raw is None:
-                return {}
-            if isinstance(raw, str):
-                try:
-                    val = json.loads(raw)
-                    # doubly-encoded: stored as JSON string inside JSONB
-                    if isinstance(val, str):
-                        val = json.loads(val)
-                    return val if isinstance(val, dict) else {}
-                except Exception:
-                    return {}
-            return raw if isinstance(raw, dict) else {}
-
-        r = rows[0]
-        expl = r.get("detailed_explanation") or ""
-        return OK({
-            "conflict_id": to_string(r["conflict_id"]),
-            "conflict_type": map_conflict_type(r.get("conflict_type") or ""),
-            "where_happens": expl[:60],
-            "severity": map_severity(r.get("severity") or ""),
-            "detected_at": to_string(r.get("detected_at", "")),
-            "status": r.get("status"),
-            "batch_id": to_string(r["batch_id"]),
-            "detailed_explanation": expl,
-            "existing_snapshot": _snap(r.get("existing_snapshot")),
-            "incoming_snapshot": _snap(r.get("incoming_snapshot")),
-            "affected_location": "",
-            "resolution_instruction": r.get("resolution_instruction") or "",
-            "selected_resolution_method": r.get("selected_resolution_method"),
-            "resolved_at": to_string(r.get("resolved_at")) if r.get("resolved_at") else None,
-            "resolved_by": to_string(r.get("resolved_by")) if r.get("resolved_by") else None,
-        })
+        return OK(map_conflict_detail(rows[0]))
     except Exception as e:
         return ERR(500, str(e))
 
@@ -1338,18 +1121,7 @@ async def resolve_conflict(
 async def get_filter_policies(claims: JWTClaims = Depends(parse_jwt)):
     try:
         rows = handle_response(await pg.read("KBFilterPolicy", {"tenant_id": claims.tenant_id, "limit": 100}))
-        return OK([
-            {
-                "id": to_string(r["policy_id"]),
-                "name": r.get("policy_name"),
-                "type": policy_fmt_to_type(r.get("configformat") or ""),
-                "content": policy_rules_to_str(r.get("configformat") or "",(r.get("config") or {}).get("rules", [])),
-                "added_by": to_string(r.get("created_by", "")) or "platform-admin",
-                "added_when": str(r.get("created_at", ""))[:10],
-                "active": bool(r.get("is_active", False)),
-            }
-            for r in rows
-        ])
+        return OK(map_filter_policies(rows))
     except Exception as e:
         return ERR(500, str(e))
 
@@ -1387,17 +1159,7 @@ async def get_filter_policy(policy_id: str, claims: JWTClaims = Depends(parse_jw
         match = next((r for r in rows if str(r["policy_id"]) == policy_id), None)
         if match is None:
             return ERR(404, f"Policy {policy_id} not found")
-        cfg = match.get("config") or {}
-        fmt = match.get("configformat") or ""
-        return OK({
-            "id": to_string(match["policy_id"]),
-            "name": match.get("policy_name"),
-            "type": policy_fmt_to_type(fmt),
-            "content": policy_rules_to_str(fmt, cfg.get("rules", [])),
-            "added_by": to_string(match.get("created_by", "")) or "platform-admin",
-            "added_when": str(match.get("created_at", ""))[:10],
-            "active": bool(match.get("is_active", False)),
-        })
+        return OK(map_filter_policy(match))
     except Exception as e:
         return ERR(500, str(e))
 
@@ -1447,8 +1209,7 @@ async def delete_filter_policy(policy_id: str, claims: JWTClaims = Depends(parse
 async def get_extraction_policy(claims: JWTClaims = Depends(parse_jwt)):
     try:
         rows = handle_response(await pg.read("KBExtractionPolicy", {"tenant_id": claims.tenant_id, "limit": 5}))
-        custom = (rows[0].get("custom_override") or "") if rows else ""
-        return OK({"base": "", "custom": custom})
+        return OK(map_extraction_policy(rows))
     except Exception as e:
         return ERR(500, str(e))
 
