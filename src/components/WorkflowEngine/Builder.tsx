@@ -37,7 +37,7 @@ export type TemplateId = 'blank' | 'rag' | 'multi-agent' | 'hitl';
 
 type FlowNodeType =
   | 'trigger' | 'planner' | 'kb_search' | 'mcp_tool'
-  | 'rrf_ranking' | 'reranker' | 'reasoner' | 'output'
+  | 'rrf_ranking' | 'reranker' | 'responder' | 'output'
   | 'human_approval' | 'condition' | 'db_query'
   | 'send_notification' | 'loop';
 
@@ -69,7 +69,7 @@ const NODE_STYLE: Record<string, { typeLabel: string; Icon: any; color: string }
   mcp_tool:          { typeLabel: 'MCP Tool',       Icon: Wrench,      color: '#F59E0B' },
   rrf_ranking:       { typeLabel: 'RRF Ranking',    Icon: Layers,      color: '#8B5CF6' },
   reranker:          { typeLabel: 'Reranker',       Icon: Filter,      color: '#8B5CF6' },
-  reasoner:          { typeLabel: 'Reasoner',       Icon: Cpu,         color: '#3B82F6' },
+  responder:         { typeLabel: 'Responder',      Icon: Cpu,         color: '#3B82F6' },
   output:            { typeLabel: 'Output',         Icon: Activity,    color: '#6B7280' },
   human_approval:    { typeLabel: 'Human Approval', Icon: ShieldCheck, color: '#D9B86C' },
   condition:         { typeLabel: 'Condition',      Icon: GitBranch,   color: '#6B7280' },
@@ -309,7 +309,7 @@ const mkNode = (
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const PLANNER_MODEL  = 'Qwen3-9B (hardcoded)' as const;
-const REASONER_MODEL = 'Qwen3-35B (local)' as const;
+const RESPONDER_MODEL = 'Qwen3-35B (local)' as const;
 const RRF_K_DEFAULT  = 60 as const;
 
 // ─── Workflow → React Flow transform ─────────────────────────────────────────
@@ -349,7 +349,7 @@ const TEMPLATE_FLOWS: Record<TemplateId, { nodes: Node<FlowNodeData>[]; edges: E
       mkNode('kb_search',   'kb_search',   'KB Search',   360, 220, { kbEndpoint: 'http://knowledge-space/api/kb/', kbName: 'kb_a05_violations' }),
       mkNode('rrf_ranking', 'rrf_ranking', 'RRF Ranking', 360, 330),
       mkNode('reranker',    'reranker',    'Reranker',    360, 440, { rerankerModel: 'BGE-Reranker-v2-m3', topN: 5 }),
-      mkNode('reasoner',    'reasoner',    'Reasoner',    360, 550, { systemPromptName: 'prompt_default', temperature: 0.2, maxTokens: 1000 }),
+      mkNode('responder',   'responder',   'Responder',   360, 550, { systemPromptName: 'prompt_default', temperature: 0.2, maxTokens: 1000 }),
       mkNode('output',      'output',      'Response',    360, 660),
     ],
     edges: [
@@ -357,8 +357,8 @@ const TEMPLATE_FLOWS: Record<TemplateId, { nodes: Node<FlowNodeData>[]; edges: E
       solidEdge('e2', 'planner',     'kb_search',   '#3B82F666'),
       solidEdge('e3', 'kb_search',   'rrf_ranking', '#10B98166'),
       solidEdge('e4', 'rrf_ranking', 'reranker',    '#8B5CF666'),
-      solidEdge('e5', 'reranker',    'reasoner',    '#8B5CF666'),
-      solidEdge('e6', 'reasoner',    'output',      '#3B82F666'),
+      solidEdge('e5', 'reranker',    'responder',   '#8B5CF666'),
+      solidEdge('e6', 'responder',   'output',      '#3B82F666'),
     ],
   },
 
@@ -370,7 +370,7 @@ const TEMPLATE_FLOWS: Record<TemplateId, { nodes: Node<FlowNodeData>[]; edges: E
       mkNode('mcp_tool',    'mcp_tool',    'MCP Tool',    560, 240, { mcpServerUrl: 'http://mcp.tenant.gov.vn/sse', allowedTools: ['tra_cuu_phat_nguoi', 'query_dashboard'] }),
       mkNode('rrf_ranking', 'rrf_ranking', 'RRF Ranking', 360, 380),
       mkNode('reranker',    'reranker',    'Reranker',    360, 490, { rerankerModel: 'BGE-Reranker-v2-m3', topN: 5 }),
-      mkNode('reasoner',    'reasoner',    'Reasoner',    360, 600, { systemPromptName: 'prompt_default', temperature: 0.2, maxTokens: 1000 }),
+      mkNode('responder',   'responder',   'Responder',   360, 600, { systemPromptName: 'prompt_default', temperature: 0.2, maxTokens: 1000 }),
       mkNode('output',      'output',      'Response',    360, 710),
     ],
     edges: [
@@ -380,8 +380,8 @@ const TEMPLATE_FLOWS: Record<TemplateId, { nodes: Node<FlowNodeData>[]; edges: E
       solidEdge   ('e4', 'kb_search',   'rrf_ranking', '#10B98166'),
       solidEdge   ('e5', 'mcp_tool',    'rrf_ranking', '#F59E0B66'),
       solidEdge   ('e6', 'rrf_ranking', 'reranker',    '#8B5CF666'),
-      solidEdge   ('e7', 'reranker',    'reasoner',    '#8B5CF666'),
-      solidEdge   ('e8', 'reasoner',    'output',      '#3B82F666'),
+      solidEdge   ('e7', 'reranker',    'responder',   '#8B5CF666'),
+      solidEdge   ('e8', 'responder',   'output',      '#3B82F666'),
     ],
   },
 
@@ -393,7 +393,7 @@ const TEMPLATE_FLOWS: Record<TemplateId, { nodes: Node<FlowNodeData>[]; edges: E
       mkNode('mcp_tool',       'mcp_tool',       'MCP Tool',     560, 240, { mcpServerUrl: 'http://mcp.tenant.gov.vn/sse', allowedTools: ['tra_cuu_phat_nguoi', 'query_dashboard'] }),
       mkNode('rrf_ranking',    'rrf_ranking',    'RRF Ranking',  360, 380),
       mkNode('reranker',       'reranker',       'Reranker',     360, 490, { rerankerModel: 'BGE-Reranker-v2-m3', topN: 5 }),
-      mkNode('reasoner',       'reasoner',       'Reasoner',     360, 600, { systemPromptName: 'prompt_default', temperature: 0.2, maxTokens: 1000 }),
+      mkNode('responder',      'responder',      'Responder',    360, 600, { systemPromptName: 'prompt_default', temperature: 0.2, maxTokens: 1000 }),
       mkNode('human_approval', 'human_approval', 'Human Review', 360, 710, { approverRole: 'MANAGER' }),
       mkNode('output',         'output',         'Response',     360, 820),
     ],
@@ -404,8 +404,8 @@ const TEMPLATE_FLOWS: Record<TemplateId, { nodes: Node<FlowNodeData>[]; edges: E
       solidEdge   ('e4', 'kb_search',      'rrf_ranking',    '#10B98166'),
       solidEdge   ('e5', 'mcp_tool',       'rrf_ranking',    '#F59E0B66'),
       solidEdge   ('e6', 'rrf_ranking',    'reranker',       '#8B5CF666'),
-      solidEdge   ('e7', 'reranker',       'reasoner',       '#8B5CF666'),
-      solidEdge   ('e8', 'reasoner',       'human_approval', '#3B82F666'),
+      solidEdge   ('e7', 'reranker',       'responder',      '#8B5CF666'),
+      solidEdge   ('e8', 'responder',      'human_approval', '#3B82F666'),
       solidEdge   ('e9', 'human_approval', 'output',         '#D9B86C66'),
     ],
   },
@@ -592,9 +592,9 @@ const ConfigPanel = ({ node, onClose, onUpdate }: ConfigPanelProps) => {
           </>
         )}
 
-        {d.nodeType === 'reasoner' && (
+        {d.nodeType === 'responder' && (
           <>
-            <Field label="Model"><Readonly value={REASONER_MODEL} /></Field>
+            <Field label="Model"><Readonly value={RESPONDER_MODEL} /></Field>
             <Field label="System Prompt">
               <Sel value={(d.systemPromptName as string) || 'prompt_default'} options={['prompt_default', 'prompt_phat_nguoi_v2', 'prompt_dashboard']} onChange={v => upd('systemPromptName', v)} />
             </Field>
@@ -639,7 +639,7 @@ const ALL_LIBRARY_NODES: Array<{
   { nodeType: 'mcp_tool',          label: 'MCP Tool',          color: '#F59E0B', Icon: Wrench,      allowMultiple: true  },
   { nodeType: 'rrf_ranking',       label: 'RRF Ranking',       color: '#8B5CF6', Icon: Layers,      allowMultiple: false },
   { nodeType: 'reranker',          label: 'Reranker',          color: '#8B5CF6', Icon: Filter,      allowMultiple: false },
-  { nodeType: 'reasoner',          label: 'Reasoner',          color: '#3B82F6', Icon: Cpu,         allowMultiple: false },
+  { nodeType: 'responder',         label: 'Responder',         color: '#3B82F6', Icon: Cpu,         allowMultiple: false },
   { nodeType: 'output',            label: 'Output',            color: '#6B7280', Icon: Activity,    allowMultiple: false },
   { nodeType: 'human_approval',    label: 'Human Approval',    color: '#D9B86C', Icon: ShieldCheck, allowMultiple: false },
   { nodeType: 'condition',         label: 'Condition',         color: '#6B7280', Icon: GitBranch,   allowMultiple: true  },

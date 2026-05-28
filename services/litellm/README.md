@@ -1,6 +1,6 @@
 # LiteLLM Gateway
 
-LLM proxy gateway. Aliases `planner` và `reasoner` map sang Claude API hiện tại.
+LLM proxy gateway. Aliases `planner` và `responder` map sang Claude API hiện tại.
 Khi có GPU: đổi `model:` trong `config.yaml` sang vLLM endpoint, không sửa code.
 
 ## Khởi động
@@ -18,11 +18,11 @@ litellm --config config.yaml --port 4000
 # Health check
 curl http://localhost:4000/health
 
-# Test reasoner
+# Test responder
 curl -X POST http://localhost:4000/chat/completions \
   -H "Authorization: Bearer sk-dev" \
   -H "Content-Type: application/json" \
-  -d '{"model":"reasoner","messages":[{"role":"user","content":"hello"}]}'
+  -d '{"model":"responder","messages":[{"role":"user","content":"hello"}]}'
 ```
 
 ## Swap sang vLLM (khi có GPU)

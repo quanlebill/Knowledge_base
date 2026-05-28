@@ -23,12 +23,12 @@ interface LogEntry {
 const MOCK_LOGS: LogEntry[] = [
   {
     id: 'log-001', timestamp: '2026-05-22 11:42:18.203',
-    level: 'ERROR', service: 'reasoner', eventType: 'INFERENCE_FAILED',
+    level: 'ERROR', service: 'responder', eventType: 'INFERENCE_FAILED',
     message: 'Model timeout after 30000ms — request aborted',
     detail: 'Request ID: req-7d2a9f · Model: Qwen3.6-27B · Token budget: 4096 · Session: conv-3c9d',
     stackTrace: `TimeoutError: Inference timed out after 30000ms
-  at InferenceEngine.run (/app/reasoner/engine.ts:142:18)
-  at async ReasonerService.handle (/app/reasoner/service.ts:87:12)
+  at InferenceEngine.run (/app/responder/engine.ts:142:18)
+  at async ResponderService.handle (/app/responder/service.ts:87:12)
   at async RequestHandler.process (/app/gateway/handler.ts:54:8)`,
     traceId: 'trace-4bc2', durationMs: 30001,
   },
@@ -43,7 +43,7 @@ const MOCK_LOGS: LogEntry[] = [
     id: 'log-003', timestamp: '2026-05-22 11:40:02.445',
     level: 'INFO', service: 'planner-service', eventType: 'PLAN_GENERATED',
     message: 'Execution plan created: 4 steps',
-    detail: 'Steps: [kb_search, rerank, reasoner, output] · Estimated tokens: 1200 · Trace: trace-2e8d',
+    detail: 'Steps: [kb_search, rerank, responder, output] · Estimated tokens: 1200 · Trace: trace-2e8d',
     traceId: 'trace-2e8d', durationMs: 312,
   },
   {
@@ -61,7 +61,7 @@ const MOCK_LOGS: LogEntry[] = [
   },
   {
     id: 'log-006', timestamp: '2026-05-22 11:35:28.771',
-    level: 'INFO', service: 'reasoner', eventType: 'INFERENCE_COMPLETE',
+    level: 'INFO', service: 'responder', eventType: 'INFERENCE_COMPLETE',
     message: 'Response generated in 1540ms (812 tokens)',
     detail: 'Model: Qwen3-4B · Input: 620tk · Output: 192tk · KV cache hit: true',
     traceId: 'trace-9f3c', durationMs: 1540,
@@ -86,7 +86,7 @@ const MOCK_LOGS: LogEntry[] = [
   },
   {
     id: 'log-009', timestamp: '2026-05-22 11:30:14.556',
-    level: 'WARN', service: 'reasoner', eventType: 'CONTEXT_OVERFLOW',
+    level: 'WARN', service: 'responder', eventType: 'CONTEXT_OVERFLOW',
     message: 'Context window 92% full — truncating older turns',
     detail: 'Model: Qwen3.6-27B · Context: 14746/16000 tokens · Turns dropped: 2',
   },
@@ -136,7 +136,7 @@ const MOCK_LOGS: LogEntry[] = [
   },
 ];
 
-const SERVICES = ['All services', 'planner-service', 'kb-search', 'mcp-gateway', 'reasoner', 'api-gateway'];
+const SERVICES = ['All services', 'planner-service', 'kb-search', 'mcp-gateway', 'responder', 'api-gateway'];
 const LEVELS: Array<'all' | LogLevel> = ['all', 'INFO', 'WARN', 'ERROR'];
 
 /* ─── Helpers ─────────────────────────────────────────────── */

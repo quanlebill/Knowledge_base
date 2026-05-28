@@ -104,7 +104,7 @@ const TEMPLATE_LIBRARY: Array<{
   isPopular?: boolean;
 }> = [
   { builderTemplate: 'blank',        name: 'Blank Canvas',             desc: 'Bắt đầu từ canvas trống — chỉ có Trigger node.',                       nodeCount: 1,  Icon: LayoutGrid, color: '#64748b', category: 'AUTOMATION' },
-  { builderTemplate: 'multi-agent',  name: 'Full RAG Agent',           desc: 'KB Search + Reranker + Reasoner — flow chuẩn cho hỏi đáp tài liệu.',    nodeCount: 8,  Icon: Bot,        color: '#3b82f6', category: 'RAG',        isPopular: true },
+  { builderTemplate: 'multi-agent',  name: 'Full RAG Agent',           desc: 'KB Search + Reranker + Responder — flow chuẩn cho hỏi đáp tài liệu.',    nodeCount: 8,  Icon: Bot,        color: '#3b82f6', category: 'RAG',        isPopular: true },
   { builderTemplate: 'hitl',         name: 'Human-in-the-Loop',        desc: 'Cần người review và phê duyệt trước khi trả kết quả.',                   nodeCount: 9,  Icon: ShieldCheck, color: '#f97316', category: 'HITL',       isPopular: true },
   { builderTemplate: 'multi-agent',  name: 'GraphRAG Pipeline',        desc: 'Kết hợp vector search và knowledge graph để trả lời phức tạp.',          nodeCount: 12, Icon: Activity,   color: '#10b981', category: 'KNOWLEDGE',  isPopular: true },
   { builderTemplate: 'multi-agent',  name: 'Multi-Agent Triage',       desc: 'Planner phân loại câu hỏi và điều phối sang agent chuyên biệt.',         nodeCount: 10, Icon: Bot,        color: '#8b5cf6', category: 'MULTI_AGENT' },

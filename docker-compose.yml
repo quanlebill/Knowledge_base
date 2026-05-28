@@ -53,6 +53,12 @@ services:
       SALT: dev-langfuse-salt-changeme
       NEXTAUTH_URL: http://localhost:3001
       TELEMETRY_ENABLED: "false"
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_EMAIL:-admin@example.com}
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_PASSWORD:-Admin@12345678}
+      LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_NAME:-Admin}
+      LANGFUSE_INIT_ORG_NAME: ${LANGFUSE_INIT_ORG:-GTEL}
+      LANGFUSE_INIT_PROJECT_NAME: ${LANGFUSE_INIT_PROJECT:-data-agent}
+      AUTH_DISABLE_SIGNUP: "false"
     depends_on:
       - postgres
 

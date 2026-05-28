@@ -2,7 +2,7 @@ from langgraph.graph import StateGraph, START, END
 from state import AgentState
 from nodes.guardrail import guardrail_input_node, guardrail_output_node
 from nodes.model_harness.planner import planner_node
-from nodes.model_harness.reasoner import reasoner_node
+from nodes.model_harness.responder import responder_node
 from nodes.model_harness.rrf_ranking import rrf_ranking_node
 from nodes.model_harness.reranker import reranker_node
 from nodes.sandbox.kb_search import kb_search_node
@@ -29,12 +29,12 @@ def build_graph():
     builder = StateGraph(AgentState)
 
     builder.add_node("guardrail_input",  guardrail_input_node)
-    builder.add_node("planner",          planner_node)
+    builder.add_node("planner",           planner_node)
     builder.add_node("kb_search",        kb_search_node)
     builder.add_node("mcp",              mcp_node)
     builder.add_node("rrf_ranking",      rrf_ranking_node)
     builder.add_node("reranker",         reranker_node)
-    builder.add_node("reasoner",         reasoner_node)
+    builder.add_node("responder",      responder_node)
     builder.add_node("guardrail_output", guardrail_output_node)
 
     builder.add_edge(START, "guardrail_input")
@@ -47,8 +47,8 @@ def build_graph():
     builder.add_edge("kb_search",        "rrf_ranking")
     builder.add_edge("mcp",              "rrf_ranking")
     builder.add_edge("rrf_ranking",      "reranker")
-    builder.add_edge("reranker",         "reasoner")
-    builder.add_edge("reasoner",         "guardrail_output")
+    builder.add_edge("reranker",         "responder")
+    builder.add_edge("responder",      "guardrail_output")
     builder.add_edge("guardrail_output", END)
 
     return builder.compile()

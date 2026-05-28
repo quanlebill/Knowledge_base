@@ -65,7 +65,7 @@ const MOCK_TRACE: TraceStep[] = [
     latencyMs: 312,
     tokens: 284,
     input: 'User query: "What are the penalty regulations for late tender submissions?"',
-    output: 'Plan: [1] Search KB for tender penalty regulations [2] Rerank results [3] Generate answer via Reasoner',
+    output: 'Plan: [1] Search KB for tender penalty regulations [2] Rerank results [3] Generate answer via Responder',
   },
   {
     id: 'kb-search',
@@ -88,8 +88,8 @@ const MOCK_TRACE: TraceStep[] = [
     output: 'Top 3 chunks selected (cross-encoder scores: 0.93, 0.87, 0.81)',
   },
   {
-    id: 'reasoner',
-    node: 'Reasoner',
+    id: 'responder',
+    node: 'Responder',
     icon: <Brain size={14} />,
     status: 'success',
     latencyMs: 1140,
@@ -104,7 +104,7 @@ const MOCK_TRACE: TraceStep[] = [
     status: 'success',
     latencyMs: 12,
     tokens: 0,
-    input: 'Reasoner response',
+    input: 'Responder response',
     output: 'Formatted response sent to user.',
   },
 ];

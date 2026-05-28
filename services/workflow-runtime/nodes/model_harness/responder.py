@@ -11,7 +11,7 @@ _LITELLM_BASE = os.environ.get("LITELLM_BASE_URL", "http://localhost:4000")
 _LITELLM_KEY = os.environ.get("LITELLM_API_KEY", "sk-dev")
 
 
-def reasoner_node(state: AgentState) -> dict:
+def responder_node(state: AgentState) -> dict:
     cfg = state["config"]
     system_prompt = cfg["system_prompt"]
 
@@ -27,7 +27,7 @@ def reasoner_node(state: AgentState) -> dict:
 
     t0 = time.monotonic()
     response = litellm.completion(
-        model="openai/reasoner",
+        model="openai/responder",
         api_base=_LITELLM_BASE,
         api_key=_LITELLM_KEY,
         messages=messages,
@@ -50,7 +50,7 @@ def reasoner_node(state: AgentState) -> dict:
 
     print()
     latency_ms = int((time.monotonic() - t0) * 1000)
-    logger.info("reasoner | latency=%dms prompt_tokens=%d completion_tokens=%d",
+    logger.info("responder | latency=%dms prompt_tokens=%d completion_tokens=%d",
                 latency_ms, prompt_tokens, completion_tokens)
 
     return {"response": full_text}

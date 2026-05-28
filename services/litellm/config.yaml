@@ -4,21 +4,22 @@ model_list:
       model: gemini/gemini-2.0-flash
       api_key: os.environ/GEMINI_API_KEY
 
-  - model_name: reasoner
+  - model_name: responder
     litellm_params:
       model: gemini/gemini-2.0-flash
       api_key: os.environ/GEMINI_API_KEY
 
   - model_name: embedder
     litellm_params:
-      model: text-embedding-3-small
+      model: openai/text-embedding-3-small
       api_key: os.environ/OPENAI_API_KEY
 
 general_settings:
-  master_key: sk-dev
+  master_key: os.environ/LITELLM_MASTER_KEY
 
 litellm_settings:
   cache: true
   cache_params:
     type: redis
-    redis_url: os.environ/REDIS_URL
+    redis_host: os.environ/REDIS_HOST
+    redis_port: os.environ/REDIS_PORT

@@ -6,7 +6,7 @@ NODE_REGISTRY = {
         "schema": {},
     },
     "planner": {
-        "display": "Planner",
+        "display": "Router",
         "category": "default",
         "locked": False,
         "schema": {
@@ -50,8 +50,8 @@ NODE_REGISTRY = {
             "top_n": {"type": "number", "default": 5},
         },
     },
-    "reasoner": {
-        "display": "Reasoner",
+    "responder": {
+        "display": "Synthesizer",
         "category": "default",
         "locked": False,
         "schema": {

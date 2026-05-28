@@ -7,7 +7,7 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO llm_providers (id, name, model_id, type, is_default, is_active)
 VALUES
   ('00000000-0000-0000-0000-000000000010', 'Claude Haiku',  'planner',  'chat', false, true),
-  ('00000000-0000-0000-0000-000000000011', 'Claude Sonnet', 'reasoner', 'chat', true,  true)
+  ('00000000-0000-0000-0000-000000000011', 'Claude Sonnet', 'responder', 'chat', true,  true)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO system_prompts (id, tenant_id, name, content, version)
@@ -47,7 +47,7 @@ VALUES (
 )
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO agent_versions (id, agent_id, version, status, workflow_version_id, reasoner_model_id, system_prompt_id)
+INSERT INTO agent_versions (id, agent_id, version, status, workflow_version_id, responder_model_id, system_prompt_id)
 VALUES (
   '00000000-0000-0000-0000-000000000040',
   '00000000-0000-0000-0000-000000000030',

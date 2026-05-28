@@ -57,8 +57,8 @@ def get_node_registry():
 # --- Dropdown sources (mock data until Phase F DB is ready) ---
 
 _LLM_PROVIDERS = [
-    {"id": "llm-planner",  "name": "Claude Haiku",  "model_id": "planner",  "type": "chat", "is_default": False},
-    {"id": "llm-reasoner", "name": "Claude Sonnet", "model_id": "reasoner", "type": "chat", "is_default": True},
+    {"id": "llm-planner",      "name": "Claude Haiku",  "model_id": "planner",      "type": "chat", "is_default": False},
+    {"id": "llm-responder", "name": "Claude Sonnet", "model_id": "responder", "type": "chat", "is_default": True},
 ]
 
 _SYSTEM_PROMPTS = [
@@ -134,8 +134,8 @@ async def run_conversation(req: RunRequest, request: Request):
                     guardrail_triggered = g.get("guardrail_triggered", False)
                     guardrail_msg = g.get("guardrail_message", "")
 
-                if "reasoner" in chunk:
-                    token = chunk["reasoner"].get("response", "")
+                if "responder" in chunk:
+                    token = chunk["responder"].get("response", "")
                     if token:
                         full_response.append(token)
                         # Stream real-time only when output guardrail is not active
@@ -167,7 +167,7 @@ async def run_conversation(req: RunRequest, request: Request):
                     await save_trace(
                         message_id=asst_msg_id,
                         trace_index=0,
-                        tool_name="reasoner",
+                        tool_name="responder",
                         input={"query": req.query},
                         output={"response": assistant_text, "guardrail_triggered": guardrail_triggered},
                         latency_ms=latency,

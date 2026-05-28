@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS agent_versions (
   version integer NOT NULL,
   status varchar NOT NULL DEFAULT 'draft',
   workflow_version_id uuid,  -- nullable until Phase I
-  reasoner_model_id uuid REFERENCES llm_providers(id),
+  responder_model_id uuid REFERENCES llm_providers(id),
   llm_config jsonb DEFAULT '{"temperature":0.2,"max_tokens":1000,"stream":true}',
   system_prompt_id uuid REFERENCES system_prompts(id),
   guardrail_id uuid REFERENCES guardrails(id),
