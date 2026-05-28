@@ -257,7 +257,7 @@ TABLE_REGISTRY: dict[str, TableConfig] = {
 
 # ── CRUD ──────────────────────────────────────────────────────────────────────
 
-async def create(table_name: str, data: dict) -> ResponseModel:
+async def create(table_name: str, data: dict) -> ResponseModel[dict[str, str]]:
     cfg = TABLE_REGISTRY.get(table_name)
     if cfg is None:
         return Error(code=400, error=f"Unknown table: {table_name}")
@@ -311,7 +311,7 @@ async def create(table_name: str, data: dict) -> ResponseModel:
     return Success(data={col: str(row[col]) for col in cfg.pk if row.get(col) is not None})
 
 
-async def read(table_name: str, filters: dict) -> ResponseModel:
+async def read(table_name: str, filters: dict) -> ResponseModel[list[dict]]:
     cfg = TABLE_REGISTRY.get(table_name)
     if cfg is None:
         return Error(code=400, error=f"Unknown table: {table_name}")
@@ -354,7 +354,7 @@ async def read(table_name: str, filters: dict) -> ResponseModel:
     return Success(data=_rows(rows))
 
 
-async def update(table_name: str, data: dict) -> ResponseModel:
+async def update(table_name: str, data: dict) -> ResponseModel[None]:
     cfg = TABLE_REGISTRY.get(table_name)
     if cfg is None:
         return Error(code=400, error=f"Unknown table: {table_name}")
@@ -392,7 +392,7 @@ async def update(table_name: str, data: dict) -> ResponseModel:
     return Success()
 
 
-async def delete(table_name: str, data: dict) -> ResponseModel:
+async def delete(table_name: str, data: dict) -> ResponseModel[None]:
     cfg = TABLE_REGISTRY.get(table_name)
     if cfg is None:
         return Error(code=400, error=f"Unknown table: {table_name}")
@@ -417,9 +417,8 @@ async def delete(table_name: str, data: dict) -> ResponseModel:
     return Success()
 
 
-# ── Join read ─────────────────────────────────────────────────────────────────
 
-async def read_join(request: dict) -> ResponseModel:
+async def read_join(request: dict) -> ResponseModel[list[dict]]:
     try:
         validated = ReadJoinRequest.model_validate(request)
     except ValidationError as e:
@@ -432,14 +431,12 @@ async def read_join(request: dict) -> ResponseModel:
 
     base_table = validated.joins_table[0]
 
-    # ── SELECT clause ─────────────────────────────────────────────────────────
     select_parts: list[str] = []
     for col in validated.selected_columns:
         qualified = f"{col.table_name}.{col.column_name}"
         label = col.alias or f"{col.table_name}__{col.column_name}"
         select_parts.append(f'{qualified} AS "{label}"')
 
-    # ── JOIN clauses ──────────────────────────────────────────────────────────
     join_parts: list[str] = []
     for i, join_table in enumerate(validated.joins_table[1:]):
         on = validated.join_on[i]
@@ -448,7 +445,6 @@ async def read_join(request: dict) -> ResponseModel:
             f"ON {on.left_table}.{on.left_column} = {on.right_table}.{on.right_column}"
         )
 
-    # ── WHERE clause ──────────────────────────────────────────────────────────
     params: list[Any] = []
     where_parts: list[str] = []
     for f in validated.filters:
@@ -457,7 +453,6 @@ async def read_join(request: dict) -> ResponseModel:
 
     where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
 
-    # ── ORDER BY / LIMIT / OFFSET ─────────────────────────────────────────────
     order_clause = f"ORDER BY {validated.order_by}" if validated.order_by else ""
 
     lo_start = len(params) + 1

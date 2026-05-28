@@ -1,14 +1,20 @@
+from __future__ import annotations
+
+from typing import TypeVar, Generic
 from pydantic import BaseModel
-from typing import Optional, Any
+
+T = TypeVar("T")
 
 
-class ResponseModel(BaseModel):
+class ResponseModel(BaseModel, Generic[T]):
     code: int = 200
-    data: Any | None = None
+    data: T | None = None
     error: str | None = None
 
-def Success(data = None) -> ResponseModel:
+
+def Success(data: T = None) -> ResponseModel[T]:
     return ResponseModel(data=data, error=None)
 
-def Error(code, error) -> ResponseModel:
-    return ResponseModel(code = code, error=error)
+
+def Error(code: int, error: str) -> ResponseModel[None]:
+    return ResponseModel(code=code, error=error)

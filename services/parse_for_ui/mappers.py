@@ -6,7 +6,41 @@ return the result. No shape-building lives in the router.
 """
 
 import json
-from .common import to_string, parse_jsonb
+from typing import Any
+
+from .schema.response import (
+    FleetStats, FleetContent,
+    DocResponse, DocumentMetadata,
+    ChunkResponse, ChunkVersion,
+    TableResponse, TableColumn,
+    WarehouseConfigResponse,
+    QdrantCollectionResponse, QdrantPointResponse,
+    Neo4jGraphResponse, Neo4jNode, Neo4jEdge, Neo4jSchemaResponse,
+    ConflictBucketsResponse, ConflictSummary, PendingConflictBatch, ConflictDetailResponse,
+    FilterPolicyResponse, ExtractionPolicyResponse,
+)
+
+
+# ── Shared utilities ──────────────────────────────────────────────────────────
+
+def to_string(v) -> str:
+    return str(v) if v is not None else ""
+
+
+def parse_jsonb(v) -> dict:
+    if isinstance(v, str):
+        try:
+            return json.loads(v)
+        except Exception:
+            return {}
+    return v or {}
+
+
+def handle_response(res) -> Any:
+    if res.code >= 400:
+        raise ValueError(res.error or f"DB error {res.code}")
+    return res.data if res.data is not None else []
+
 
 # ── Lookup tables ─────────────────────────────────────────────────────────────
 
@@ -28,7 +62,7 @@ _POLICY_TYPE_TO_FMT = {v: k for k, v in _POLICY_FMT_TO_TYPE.items()}
 
 # ── Fleet ─────────────────────────────────────────────────────────────────────
 
-def map_fleet_stats(gold_docs: list, qdrant_rows: list, neo_conns: list, batches: list) -> dict:
+def map_fleet_stats(gold_docs: list, qdrant_rows: list, neo_conns: list, batches: list) -> FleetStats:
     counts: dict[str, int] = {}
     for d in gold_docs:
         st = d.get("source_type", "doc")
@@ -38,23 +72,23 @@ def map_fleet_stats(gold_docs: list, qdrant_rows: list, neo_conns: list, batches
     total_edges = sum(r.get("total_edge", 0) for r in neo_conns)
     unresolved = sum(1 for b in batches if b.get("status") in ("pending", "awaiting"))
 
-    return {
-        "content": {
-            "documents": counts.get("doc", 0),
-            "web":       counts.get("web", 0),
-            "media":     counts.get("image", 0) + counts.get("video", 0),
-            "warehouses": counts.get("warehouse", 0),
-        },
-        "qdrant_collections":         len(qdrant_rows),
-        "neo4j_nodes":                total_nodes,
-        "neo4j_relationships":        total_edges,
-        "unresolved_conflict_batches": unresolved,
-    }
+    return FleetStats(
+        content=FleetContent(
+            documents=counts.get("doc", 0),
+            web=counts.get("web", 0),
+            media=counts.get("image", 0) + counts.get("video", 0),
+            warehouses=counts.get("warehouse", 0),
+        ),
+        qdrant_collections=len(qdrant_rows),
+        neo4j_nodes=total_nodes,
+        neo4j_relationships=total_edges,
+        unresolved_conflict_batches=unresolved,
+    )
 
 
 # ── Documents ─────────────────────────────────────────────────────────────────
 
-def map_doc(row: dict) -> dict:
+def map_doc(row: dict) -> DocResponse:
     meta = parse_jsonb(row.get("metadata"))
 
     st  = row.get("source_type", "doc")
@@ -66,73 +100,72 @@ def map_doc(row: dict) -> dict:
         "Image"                   if st == "image"             else
         f"Video/{ext}"            if st == "video"     and ext else
         "Video"                   if st == "video"             else
-        f"Warehouse/{meta.get('warehouseType', '')}" if st == "warehouse" else
+        f"Warehouse/{meta.get('warehouse_type', '')}" if st == "warehouse" else
         st
     )
     tier = (row.get("current_tier") or "bronze").lower()
-    return {
-        "id":          to_string(row["data_id"]),
-        "name":        row.get("name", ""),
-        "layer":       tier.upper(),
-        "status":      {"gold": "PUBLISHED", "silver": "EMBEDDING"}.get(tier, "RAW"),
-        "version":     "v1.0",
-        "author":      meta.get("author") or to_string(row.get("added_by")),
-        "lastUpdated": to_string(row.get("added_on", "")),
-        "metadata": {
-            "type":          doc_type,
-            "language":      row.get("language"),
-            "accessRole":    meta.get("access_role") or meta.get("accessRole"),
-            "url":           meta.get("url"),
-            "author":        meta.get("author"),
-            "publishedDate": meta.get("published_date") or meta.get("publishedDate"),
-            "warehouseType": meta.get("warehouseType") or meta.get("warehouse_type"),
-            "width":         meta.get("width"),
-            "height":        meta.get("height"),
-            "colorSpace":    meta.get("color_space") or meta.get("colorSpace"),
-            "fileSize":      meta.get("file_size") or meta.get("fileSize"),
-            "totalFrame":    meta.get("total_frame") or meta.get("totalFrame"),
-        },
-    }
+
+    return DocResponse(
+        id=to_string(row["data_id"]),
+        name=row.get("name", ""),
+        layer=tier.upper(),
+        status={"gold": "PUBLISHED", "silver": "EMBEDDING"}.get(tier, "RAW"),
+        version="v1.0",
+        author=meta.get("author") or to_string(row.get("added_by")),
+        last_updated=to_string(row.get("added_on", "")),
+        metadata=DocumentMetadata(
+            type=doc_type,
+            language=row.get("language"),
+            access_role=meta.get("access_role"),
+            url=meta.get("url"),
+            author=meta.get("author"),
+            published_date=meta.get("published_date"),
+            warehouse_type=meta.get("warehouse_type"),
+            width=meta.get("width"),
+            height=meta.get("height"),
+            color_space=meta.get("color_space"),
+            file_size=meta.get("file_size"),
+            total_frame=meta.get("total_frame"),
+        ),
+    )
 
 
 # ── Chunks ────────────────────────────────────────────────────────────────────
 
-def map_chunks(rows: list) -> list:
+def map_chunks(rows: list) -> list[ChunkResponse]:
     blocks: dict[str, dict] = {}
     for r in rows:
         bid = to_string(r["block_id"])
         if bid not in blocks:
-            blocks[bid] = {
-                "id":       bid,
-                "title":    f"Chunk {r['block_index'] + 1}",
-                "text":     "",
-                "versions": [],
-            }
+            blocks[bid] = {"id": bid, "title": f"Chunk {r['block_index'] + 1}", "text": "", "versions": []}
         if r.get("version_id") is None:
             continue
         payload = parse_jsonb(r.get("payload"))
-        version = {
-            "version_number":  to_string(r["version_number"]),
-            "create_at":       to_string(r.get("created_at", "")),
-            "status":          "active" if r.get("is_active") else "inactive",
-            "embedding_models": to_string(r.get("embedding_model_id", "")),
-            "entities":        payload.get("entities", []),
-            "intent":          ", ".join(payload.get("intents", [])),
-            "text":            r.get("content") or "",
-        }
-        blocks[bid]["versions"].append(version)
+        blocks[bid]["versions"].append(ChunkVersion(
+            version_number=to_string(r["version_number"]),
+            create_at=to_string(r.get("created_at", "")),
+            status="active" if r.get("is_active") else "inactive",
+            embedding_models=to_string(r.get("embedding_model_id", "")),
+            entities=payload.get("entities", []),
+            intent=", ".join(payload.get("intents", [])),
+            text=r.get("content") or "",
+        ))
         if r.get("is_active"):
             blocks[bid]["text"] = r.get("content") or ""
-    return list(blocks.values())
+
+    return [
+        ChunkResponse(id=b["id"], title=b["title"], text=b["text"], versions=b["versions"])
+        for b in blocks.values()
+    ]
 
 
 # ── Tables ────────────────────────────────────────────────────────────────────
 
-def map_table(r: dict) -> dict:
+def map_table(r: dict) -> TableResponse:
     data = parse_jsonb(r.get("data"))
     raw_cols = data.get("columns", [])
     raw_rows = data.get("rows", [])
-    columns = (
+    col_dicts = (
         [{"name": c, "type": "TEXT", "nullable": True} for c in raw_cols]
         if raw_cols and isinstance(raw_cols[0], str)
         else raw_cols
@@ -143,97 +176,97 @@ def map_table(r: dict) -> dict:
         if raw_rows and isinstance(raw_rows[0], list)
         else raw_rows
     )
-    return {
-        "id":          to_string(r["id"]),
-        "name":        r.get("table_name") or "",
-        "description": r.get("description") or "",
-        "columns":     columns,
-        "rows":        rows,
-    }
+    return TableResponse(
+        id=to_string(r["id"]),
+        name=r.get("table_name") or "",
+        description=r.get("description") or "",
+        columns=[TableColumn(**c) for c in col_dicts],
+        rows=rows,
+    )
 
 
-def map_tables(rows: list) -> list:
+def map_tables(rows: list) -> list[TableResponse]:
     return [map_table(r) for r in rows]
 
 
 # ── Warehouse configs ─────────────────────────────────────────────────────────
 
-def map_warehouse_config(r: dict) -> dict:
+def map_warehouse_config(r: dict) -> WarehouseConfigResponse:
     cfg = r.get("config") or {}
-    return {
-        "id":              to_string(r["config_id"]),
-        "version":         r.get("version_number"),
-        "active":          bool(r.get("is_active", False)),
-        "host":            cfg.get("host"),
-        "database":        cfg.get("database"),
-        "selected_tables": cfg.get("selected_tables", []),
-        "sync_schedule":   cfg.get("sync_schedule"),
-        "schema_filter":   cfg.get("schema_filter", []),
-        "created_at":      to_string(r.get("created_at", "")),
-    }
+    return WarehouseConfigResponse(
+        id=to_string(r["config_id"]),
+        version=r.get("version_number"),
+        active=bool(r.get("is_active", False)),
+        host=cfg.get("host"),
+        database=cfg.get("database"),
+        selected_tables=cfg.get("selected_tables", []),
+        sync_schedule=cfg.get("sync_schedule"),
+        schema_filter=cfg.get("schema_filter", []),
+        created_at=to_string(r.get("created_at", "")),
+    )
 
 
-def map_warehouse_configs(rows: list) -> list:
+def map_warehouse_configs(rows: list) -> list[WarehouseConfigResponse]:
     return [map_warehouse_config(r) for r in rows]
 
 
 # ── Qdrant ────────────────────────────────────────────────────────────────────
 
-def map_qdrant_collection(r: dict) -> dict:
-    return {
-        "id":             to_string(r["id"]),
-        "name":           r.get("name"),
-        "active":         bool(r.get("active", False)),
-        "points":         r.get("points", 0),
-        "dimensions":     r.get("dimensions") or 0,
-        "distance":       r.get("distance", "cosine"),
-        "indexed":        100 if r.get("active") else 0,
-        "embedding_model": r.get("embedding_model"),
-    }
+def map_qdrant_collection(r: dict) -> QdrantCollectionResponse:
+    return QdrantCollectionResponse(
+        id=to_string(r["id"]),
+        name=r.get("name"),
+        active=bool(r.get("active", False)),
+        points=r.get("points", 0),
+        dimensions=r.get("dimensions") or 0,
+        distance=r.get("distance", "cosine"),
+        indexed=100 if r.get("active") else 0,
+        embedding_model=r.get("embedding_model"),
+    )
 
 
-def map_qdrant_collections(rows: list) -> list:
+def map_qdrant_collections(rows: list) -> list[QdrantCollectionResponse]:
     return [map_qdrant_collection(r) for r in rows]
 
 
-def map_qdrant_point(point) -> dict:
+def map_qdrant_point(point) -> QdrantPointResponse:
     payload = point.payload or {}
-    return {
-        "point_id": to_string(point.id),
-        "score":    1.0,
-        "summary":  payload.get("summary", ""),
-        "entities": payload.get("entities", []),
-        "intent":   payload.get("intents", []),
-    }
+    return QdrantPointResponse(
+        point_id=to_string(point.id),
+        score=1.0,
+        summary=payload.get("summary", ""),
+        entities=payload.get("entities", []),
+        intent=payload.get("intents", []),
+    )
 
 
 # ── Neo4j ─────────────────────────────────────────────────────────────────────
 
-def map_neo4j_graph(node_rows: list, edge_rows: list) -> dict:
+def map_neo4j_graph(node_rows: list, edge_rows: list) -> Neo4jGraphResponse:
     node_id_set = {to_string(n["node_id"]) for n in node_rows}
-    return {
-        "nodes": [
-            {
-                "id":          to_string(n["node_id"]),
-                "name":        n.get("node_name"),
-                "description": n.get("node_description"),
-            }
+    return Neo4jGraphResponse(
+        nodes=[
+            Neo4jNode(
+                id=to_string(n["node_id"]),
+                name=n.get("node_name"),
+                description=n.get("node_description"),
+            )
             for n in node_rows
         ],
-        "edges": [
-            {
+        edges=[
+            Neo4jEdge.model_validate({
                 "from":        to_string(e["from_id"]),
                 "to":          to_string(e["to_id"]),
                 "description": e.get("description"),
                 "score":       e.get("score"),
-            }
+            })
             for e in edge_rows
             if to_string(e.get("to_id")) in node_id_set
         ],
-    }
+    )
 
 
-def build_neo4j_schema(node_rows: list, edge_rows: list) -> dict:
+def build_neo4j_schema(node_rows: list, edge_rows: list) -> Neo4jSchemaResponse:
     id_to_name = {str(r["node_id"]): r.get("node_name", "") for r in node_rows}
     entities   = [r.get("node_name", "") for r in node_rows if r.get("node_name")]
 
@@ -247,7 +280,7 @@ def build_neo4j_schema(node_rows: list, edge_rows: list) -> dict:
         if to_name not in targets:
             targets.append(to_name)
 
-    return {"entities": entities, "connections": connections}
+    return Neo4jSchemaResponse(entities=entities, connections=connections)
 
 
 # ── Conflicts ─────────────────────────────────────────────────────────────────
@@ -260,7 +293,7 @@ def map_severity(v: str) -> str:
     return _SEVERITY_DISPLAY.get(v, v)
 
 
-def map_conflict_batches(rows: list) -> dict:
+def map_conflict_batches(rows: list) -> ConflictBucketsResponse:
     batches: dict[str, dict] = {}
     for r in rows:
         bid = to_string(r["batch_id"])
@@ -281,12 +314,9 @@ def map_conflict_batches(rows: list) -> dict:
             "_status":       r.get("conflict_status") or "pending",
         })
 
-    pending_batches: list[dict] = []
-    awaiting:        list[dict] = []
-    resolved:        list[dict] = []
-
-    def _strip(c: dict) -> dict:
-        return {k: v for k, v in c.items() if k != "_status"}
+    pending_batches: list[PendingConflictBatch] = []
+    awaiting: list[ConflictSummary] = []
+    resolved: list[ConflictSummary] = []
 
     for b in batches.values():
         pending_in_batch = [c for c in b["conflicts"] if c["_status"] == "pending"]
@@ -294,17 +324,17 @@ def map_conflict_batches(rows: list) -> dict:
         re = [c for c in b["conflicts"] if c["_status"] == "resolved"]
 
         if pending_in_batch:
-            pending_batches.append({
-                "batch_id":               b["batch_id"],
-                "batch_name":             b["batch_name"],
-                "extracted_date":         b["extracted_date"],
-                "number_pending_conflict": len(pending_in_batch),
-                "conflicts":              [_strip(c) for c in pending_in_batch],
-            })
-        awaiting.extend(_strip(c) for c in aw)
-        resolved.extend(_strip(c) for c in re)
+            pending_batches.append(PendingConflictBatch(
+                batch_id=b["batch_id"],
+                batch_name=b["batch_name"],
+                extracted_date=b["extracted_date"],
+                number_pending_conflict=len(pending_in_batch),
+                conflicts=[ConflictSummary(**{k: v for k, v in c.items() if k != "_status"}) for c in pending_in_batch],
+            ))
+        awaiting.extend(ConflictSummary(**{k: v for k, v in c.items() if k != "_status"}) for c in aw)
+        resolved.extend(ConflictSummary(**{k: v for k, v in c.items() if k != "_status"}) for c in re)
 
-    return {"pending": pending_batches, "awaiting": awaiting, "resolved": resolved}
+    return ConflictBucketsResponse(pending=pending_batches, awaiting=awaiting, resolved=resolved)
 
 
 def _parse_snapshot(raw) -> dict:
@@ -321,25 +351,25 @@ def _parse_snapshot(raw) -> dict:
     return raw if isinstance(raw, dict) else {}
 
 
-def map_conflict_detail(r: dict) -> dict:
+def map_conflict_detail(r: dict) -> ConflictDetailResponse:
     expl = r.get("detailed_explanation") or ""
-    return {
-        "conflict_id":               to_string(r["conflict_id"]),
-        "conflict_type":             map_conflict_type(r.get("conflict_type") or ""),
-        "where_happens":             expl[:60],
-        "severity":                  map_severity(r.get("severity") or ""),
-        "detected_at":               to_string(r.get("detected_at", "")),
-        "status":                    r.get("status"),
-        "batch_id":                  to_string(r["batch_id"]),
-        "detailed_explanation":      expl,
-        "existing_snapshot":         _parse_snapshot(r.get("existing_snapshot")),
-        "incoming_snapshot":         _parse_snapshot(r.get("incoming_snapshot")),
-        "affected_location":         "",
-        "resolution_instruction":    r.get("resolution_instruction") or "",
-        "selected_resolution_method": r.get("selected_resolution_method"),
-        "resolved_at":               to_string(r.get("resolved_at")) if r.get("resolved_at") else None,
-        "resolved_by":               to_string(r.get("resolved_by")) if r.get("resolved_by") else None,
-    }
+    return ConflictDetailResponse(
+        conflict_id=to_string(r["conflict_id"]),
+        conflict_type=map_conflict_type(r.get("conflict_type") or ""),
+        where_happens=expl[:60],
+        severity=map_severity(r.get("severity") or ""),
+        detected_at=to_string(r.get("detected_at", "")),
+        status=r.get("status"),
+        batch_id=to_string(r["batch_id"]),
+        detailed_explanation=expl,
+        existing_snapshot=_parse_snapshot(r.get("existing_snapshot")),
+        incoming_snapshot=_parse_snapshot(r.get("incoming_snapshot")),
+        affected_location="",
+        resolution_instruction=r.get("resolution_instruction") or "",
+        selected_resolution_method=r.get("selected_resolution_method"),
+        resolved_at=to_string(r.get("resolved_at")) if r.get("resolved_at") else None,
+        resolved_by=to_string(r.get("resolved_by")) if r.get("resolved_by") else None,
+    )
 
 
 # ── Policies ──────────────────────────────────────────────────────────────────
@@ -367,24 +397,24 @@ def policy_rules_to_list(policy_type: str, content: str) -> list:
     return [content]
 
 
-def map_filter_policy(r: dict) -> dict:
+def map_filter_policy(r: dict) -> FilterPolicyResponse:
     fmt = r.get("configformat") or ""
     cfg = r.get("config") or {}
-    return {
-        "id":         to_string(r["policy_id"]),
-        "name":       r.get("policy_name"),
-        "type":       policy_fmt_to_type(fmt),
-        "content":    policy_rules_to_str(fmt, cfg.get("rules", [])),
-        "added_by":   to_string(r.get("created_by", "")) or "platform-admin",
-        "added_when": str(r.get("created_at", ""))[:10],
-        "active":     bool(r.get("is_active", False)),
-    }
+    return FilterPolicyResponse(
+        id=to_string(r["policy_id"]),
+        name=r.get("policy_name"),
+        type=policy_fmt_to_type(fmt),
+        content=policy_rules_to_str(fmt, cfg.get("rules", [])),
+        added_by=to_string(r.get("created_by", "")) or "platform-admin",
+        added_when=str(r.get("created_at", ""))[:10],
+        active=bool(r.get("is_active", False)),
+    )
 
 
-def map_filter_policies(rows: list) -> list:
+def map_filter_policies(rows: list) -> list[FilterPolicyResponse]:
     return [map_filter_policy(r) for r in rows]
 
 
-def map_extraction_policy(rows: list) -> dict:
+def map_extraction_policy(rows: list) -> ExtractionPolicyResponse:
     custom = (rows[0].get("custom_override") or "") if rows else ""
-    return {"base": "", "custom": custom}
+    return ExtractionPolicyResponse(base="", custom=custom)

@@ -6,30 +6,37 @@ from .enums import *
 
 
 class Document(BaseModel):
-    source_type: Literal["doc"]
+    source_type: Literal[SourceType.DOCUMENT]
     doc_type: str
     author: str | None
     published_date: _dt | None
+    file_size: int | None
 
 class Image(BaseModel):
-    source_type: Literal["image"]
-    video_type: str
+    source_type: Literal[SourceType.IMAGE]
+    image_type: str
     height: int
     width: int
     color_space: str | None
+    file_size: int | None
 
 class Video(BaseModel):
-    source_type: Literal["video"]
+    source_type: Literal[SourceType.VIDEO]
     video_type: str
     height: int
     width: int
     codec: str | None
     total_frame: int
+    file_size: int | None
 
 class Web(BaseModel):
-    source_type: Literal["web"]
+    source_type: Literal[SourceType.WEB]
     url: str
     web_name: str
+
+class Warehouse(BaseModel):
+    source_type: Literal[SourceType.WAREHOUSE]
+    warehouse_type: str | None
 
 MetadataType = Annotated[
     Union[
@@ -37,6 +44,7 @@ MetadataType = Annotated[
         Image,
         Video,
         Web,
+        Warehouse,
     ],
     Field(discriminator = "source_type")
 ]
