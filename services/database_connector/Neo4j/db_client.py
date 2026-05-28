@@ -81,6 +81,25 @@ async def add_relationship(item: dict) -> ResponseModel:
     return Success(data={"type": record["type"]})
 
 
+_WRITE_KEYWORDS = re.compile(
+    r'\b(DELETE|DETACH|CREATE|MERGE|SET|REMOVE|DROP|LOAD\s+CSV|CALL\s+apoc\.)\b',
+    re.IGNORECASE,
+)
+
+
+async def run_query(cypher: str, params: dict | None = None) -> ResponseModel:
+    normalized = cypher.strip()
+    if not normalized.upper().startswith("MATCH"):
+        return Error(code=400, error="Only MATCH queries are permitted")
+    match = _WRITE_KEYWORDS.search(normalized)
+    if match:
+        return Error(code=400, error=f"Forbidden keyword in query: {match.group().upper()}")
+    async with driver.session() as session:
+        result = await session.run(normalized, **(params or {}))
+        data = await result.data()
+    return Success(data=data)
+
+
 async def graph_expand(item: dict) -> ResponseModel:
     try:
         validated = GraphExpandRequest.model_validate(item)
