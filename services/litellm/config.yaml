@@ -18,6 +18,9 @@ general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
 
 litellm_settings:
+  request_timeout: 600
+  set_verbose: false
+  json_logs: true
   cache: true
   cache_params:
     type: redis

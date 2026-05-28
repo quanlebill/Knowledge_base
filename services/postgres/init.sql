@@ -1,2 +1,3 @@
 CREATE DATABASE langfuse;
 CREATE DATABASE litellm;
+CREATE DATABASE flow_builder;

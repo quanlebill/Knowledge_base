@@ -12,3 +12,5 @@ coverage/
 !.env.example
 docs/
 CLAUDE.md
+.claude/settings.json
+.claude/settings.local.json

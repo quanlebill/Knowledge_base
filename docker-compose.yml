@@ -10,7 +10,12 @@ services:
       POSTGRES_PASSWORD: dev123
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./services/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./services/postgres/init.sql:/docker-entrypoint-initdb.d/01_databases.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d dataagent"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   mongodb:
     image: mongo:7
@@ -39,8 +44,10 @@ services:
       DATABASE_URL: postgresql://admin:dev123@postgres:5432/litellm
     command: ["--config", "/app/config.yaml", "--port", "4000"]
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
 
   langfuse:
     image: langfuse/langfuse:2
@@ -60,7 +67,8 @@ services:
       LANGFUSE_INIT_PROJECT_NAME: ${LANGFUSE_INIT_PROJECT:-data-agent}
       AUTH_DISABLE_SIGNUP: "false"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
   workflow-runtime:
     build: ./services/workflow-runtime
@@ -75,10 +83,14 @@ services:
       LITELLM_BASE_URL: http://litellm:4000
       LANGFUSE_HOST: http://langfuse:3000
     depends_on:
-      - postgres
-      - mongodb
-      - redis
-      - litellm
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_started
+      redis:
+        condition: service_started
+      litellm:
+        condition: service_started
 
 volumes:
   postgres_data:

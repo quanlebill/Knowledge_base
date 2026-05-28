@@ -1,0 +1,11 @@
+CREATE INDEX IF NOT EXISTS idx_agent_memories_deleted_at
+    ON agent_memories (deleted_at)
+    WHERE deleted_at IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_agent_memories_expires_at
+    ON agent_memories (expires_at)
+    WHERE expires_at IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_agent_memories_tenant_agent
+    ON agent_memories (tenant_id, agent_id)
+    WHERE deleted_at IS NULL;
