@@ -95,3 +95,7 @@ services:
 volumes:
   postgres_data:
   mongo_data:
+
+networks:
+  default:
+    name: data-agent-network

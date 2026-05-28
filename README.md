@@ -19,16 +19,18 @@ cp .env.example .env
 **Local** — máy cá nhân:
 
 ```bash
+docker-compose -f docker-compose.yml -f docker-compose.local.yml down
 docker-compose -f docker-compose.yml -f docker-compose.local.yml up -d
 ```
 
 **Dev server** — server dev chung của team:
 
 ```bash
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml down
 docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 ```
 
-> Cả 2 đều chạy migrate + seed tự động. Có thể chạy lại mọi lần — seed dùng `ON CONFLICT DO NOTHING`, không bị duplicate.
+> `down` trước `up` để tránh lỗi network orphan khi Docker Desktop restart. Migrate + seed chạy tự động mỗi lần. Seed dùng `ON CONFLICT DO NOTHING` — không bị duplicate.
 
 ## Services
 
