@@ -15,12 +15,13 @@ def reranker_node(state: AgentState) -> dict:
     if not rrf_results:
         return {"reranked_chunks": []}
 
-    top_n = state["config"].get("reranker_top_n", 5)
+    rrf_results = [item for item in rrf_results if item.get("content")]
     documents = [item["content"] for item in rrf_results]
+    top_n = min(state["config"].get("reranker_top_n", 5), len(documents))
 
     try:
         response = litellm.rerank(
-            model="openai/embedder",
+            model=state["config"].get("reranker_model", "reranker"),
             api_base=_LITELLM_BASE,
             api_key=_LITELLM_KEY,
             query=state["query"],
@@ -28,7 +29,10 @@ def reranker_node(state: AgentState) -> dict:
             top_n=top_n,
         )
         reranked = sorted(response.results, key=lambda x: x.relevance_score, reverse=True)
-        top_chunks = [rrf_results[r.index] for r in reranked]
+        top_chunks = [
+            {**rrf_results[r.index], "rerank_score": r.relevance_score, "rerank_rank": rank}
+            for rank, r in enumerate(reranked)
+        ]
         logger.info("reranker | reranked %d → top %d", len(rrf_results), len(top_chunks))
         return {"reranked_chunks": top_chunks}
     except Exception as e:
