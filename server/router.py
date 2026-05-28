@@ -23,9 +23,6 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 import services.database_connector.postgres.db_client as pg
 import services.database_connector.qdrant.db_client as qd
 import services.database_connector.neo4j.db_client as neo
-from services.database_connector.db_config import DBConfig
-from neo4j import AsyncGraphDatabase
-
 from basemodel.API_response import ResponseModel, Error
 from basemodel.conflict import RequestResolveConflict
 from basemodel.data import RequestUpdateDocument, RequestDataUpload, RequestConfirmDataUpload
@@ -971,17 +968,8 @@ async def query_neo4j(body: RequestNeo4jQuery, claims: JWTClaims = Depends(parse
     try:
         if not body.cypher.strip().upper().startswith("MATCH"):
             return ERR(400, "Only MATCH queries are permitted")
-        driver = AsyncGraphDatabase.driver(
-            DBConfig.NEO4J_URI,
-            auth=(DBConfig.NEO4J_USER, DBConfig.NEO4J_PASSWORD),
-        )
-        try:
-            async with driver.session() as session:
-                result = await session.run(body.cypher)
-                data = await result.data()
-        finally:
-            await driver.close()
-        return OK(data)
+        result = handle_response(await neo.run_query(body.cypher))
+        return OK(result)
     except Exception as e:
         return ERR(500, str(e))
 
