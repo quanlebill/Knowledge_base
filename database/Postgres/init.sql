@@ -183,7 +183,7 @@ CREATE INDEX IF NOT EXISTS idx_textblock_owner ON KBTextBlock (owner_id, block_i
 
 CREATE TABLE IF NOT EXISTS KBTextBlockVersion (
     version_id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    block_id           UUID NOT NULL REFERENCES KBTextBlock(block_id),
+    block_id           UUID NOT NULL REFERENCES KBTextBlock(block_id) ON DELETE CASCADE,
     version_number     INT NOT NULL,
     content            TEXT,
     created_at         TIMESTAMPTZ,
@@ -198,7 +198,7 @@ CREATE INDEX IF NOT EXISTS idx_textblockversion_active ON KBTextBlockVersion (bl
 -- ── KBTextTable ───────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS KBTextTable (
-    version_id  UUID PRIMARY KEY REFERENCES KBTextBlockVersion(version_id),
+    version_id  UUID PRIMARY KEY REFERENCES KBTextBlockVersion(version_id) ON DELETE CASCADE,
     table_name  VARCHAR(50),
     description TEXT,
     data        JSONB

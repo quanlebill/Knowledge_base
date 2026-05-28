@@ -396,8 +396,10 @@ async def delete_chunk_version(
         target = next((v for v in versions if str(v["version_number"]) == version_number), None)
         if target is None:
             return ERR(404, f"Version {version_number} not found")
-        handle_response(await pg.delete("KBTextBlockVersion", {"version_id": target["version_id"]}))
-        return OK({"version_id": to_string(target["version_id"])})
+        vid = target["version_id"]
+        await pg.delete("KBTextTable", {"version_id": vid})          # no-op if no table row
+        handle_response(await pg.delete("KBTextBlockVersion", {"version_id": vid}))
+        return OK({"version_id": to_string(vid)})
     except Exception as e:
         return ERR(500, str(e))
 
@@ -409,7 +411,13 @@ async def delete_chunk_version(
 )
 async def delete_chunk(doc_id: str, chunk_id: str, claims: JWTClaims = Depends(parse_jwt)):
     try:
-        handle_response(await pg.delete("KBTextBlock", {"block_id": uuid.UUID(chunk_id)}))
+        chunk_uuid = uuid.UUID(chunk_id)
+        versions = handle_response(await pg.read("KBTextBlockVersion", {"block_id": chunk_uuid}))
+        for v in versions:
+            vid = v["version_id"]
+            await pg.delete("KBTextTable", {"version_id": vid})      # no-op if no table row
+            handle_response(await pg.delete("KBTextBlockVersion", {"version_id": vid}))
+        handle_response(await pg.delete("KBTextBlock", {"block_id": chunk_uuid}))
         return OK({"chunk_id": chunk_id})
     except Exception as e:
         return ERR(500, str(e))
