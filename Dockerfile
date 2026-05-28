@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc \
 COPY pyproject.toml ./
 COPY services/ ./services/
 COPY server/ ./server/
+COPY testing/ ./testing/
 
 RUN pip install --no-cache-dir -e . \
     && pip install --no-cache-dir -r server/requirements.txt

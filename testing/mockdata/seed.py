@@ -186,7 +186,7 @@ async def seed_documents() -> dict:
         "abstract":    "High-resolution onboarding flowcard for new hires.",
         "metadata": {
             "source_type": "image",
-            "video_type":  "PNG",
+            "image_type":  "PNG",
             "height":      3508,
             "width":       2480,
             "color_space": "sRGB",
@@ -285,9 +285,8 @@ async def seed_documents() -> dict:
         "added_by":    ADDED_BY,
         "abstract":    "Snowflake analytics data warehouse with sales and finance schemas.",
         "metadata": {
-            "source_type": "web",
-            "url":         "snowflake://analytics.globalcorp.snowflakecomputing.com",
-            "web_name":    "Snowflake Analytics DW",
+            "source_type":    "warehouse",
+            "warehouse_type": "Snowflake",
         },
     }), "KBData: Snowflake_Analytics_DW (gold/warehouse)")
     ids["warehouse"] = res["data_id"]
@@ -341,10 +340,9 @@ async def seed_warehouse(doc_ids: dict) -> dict:
     ok(await pg.update("KBData", {
         "data_id":  doc_ids["warehouse"],
         "metadata": {
-            "source_type":  "web",
-            "url":          "snowflake://analytics.globalcorp.snowflakecomputing.com",
-            "web_name":     "Snowflake Analytics DW",
-            "warehouse_id": wh_id,
+            "source_type":    "warehouse",
+            "warehouse_type": "Snowflake",
+            "warehouse_id":   wh_id,
         },
     }), "KBData: inject warehouse_id into warehouse doc metadata")
 

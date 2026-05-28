@@ -14,9 +14,9 @@ Enterprise Knowledge Operations Center for RAG orchestration. Manages document i
 |---|---|
 | Frontend | React 19 + TypeScript + Vite (port 3000) |
 | Backend | FastAPI + Python 3.13 (port 8000) |
-| Database | PostgreSQL 16 (port 5433) |
-| Vector DB | Qdrant (port 6335) |
-| Graph DB | Neo4j (port 7475) |
+| Database | PostgreSQL 16 (internal only) |
+| Vector DB | Qdrant (internal only) |
+| Graph DB | Neo4j (internal only) |
 
 ---
 
@@ -37,7 +37,7 @@ This starts 5 containers: `frontend`, `backend`, `postgres`, `qdrant`, `neo4j`.
 On first run the database is empty. Seed it with sample data:
 
 ```bash
-docker exec aeroflow-backend python testing/mockdata/seed.py
+docker exec aeroflow-backend bash -c "cd /app && python testing/mockdata/seed.py"
 ```
 
 > Run this once. Re-running will duplicate data — reset the volume first if needed (see below).
@@ -57,8 +57,8 @@ http://localhost:3000
 | Frontend | http://localhost:3000 |
 | Backend API | http://localhost:8000 |
 | API Docs (Swagger) | http://localhost:8000/docs |
-| Neo4j Browser | http://localhost:7475 |
-| Qdrant Dashboard | http://localhost:6335/dashboard |
+
+> PostgreSQL, Qdrant, and Neo4j are internal to the Docker network and not accessible from the host.
 
 ---
 
@@ -85,7 +85,7 @@ docker compose down -v
 
 # Start fresh and re-seed
 docker compose up -d
-docker exec aeroflow-backend python testing/mockdata/seed.py
+docker exec aeroflow-backend bash -c "cd /app && python testing/mockdata/seed.py"
 ```
 
 ---

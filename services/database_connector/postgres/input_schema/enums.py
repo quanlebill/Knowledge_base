@@ -5,7 +5,7 @@ class Language(Enum):
     EN = "english"
     VN = "vietnamese"
 
-class SourceType(Enum):
+class SourceType(str, Enum):
     DOC = "doc"
     WEB = "web"
     IMAGE = "image"

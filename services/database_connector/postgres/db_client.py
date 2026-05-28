@@ -91,6 +91,7 @@ def _json(value: Any) -> str | None:
     return json.dumps(value, default=str)
 
 
+
 def _rows(records) -> list[dict]:
     return [dict(r) for r in records]
 
@@ -268,6 +269,11 @@ async def create(table_name: str, data: dict) -> ResponseModel[dict[str, str]]:
         return Error(code=422, error=str(e))
 
     row: dict[str, Any] = validated.model_dump()
+    if cfg.json_fields:
+        row_json = validated.model_dump(mode='json')
+        for f in cfg.json_fields:
+            if f in row:
+                row[f] = row_json[f]
 
     if cfg.pk_strategy == "uuid":
         for col in cfg.pk:
@@ -365,6 +371,11 @@ async def update(table_name: str, data: dict) -> ResponseModel[None]:
         return Error(code=422, error=str(e))
 
     all_fields = validated.model_dump(exclude_none=True)
+    if cfg.json_fields:
+        all_fields_json = validated.model_dump(mode='json', exclude_none=True)
+        for f in cfg.json_fields:
+            if f in all_fields:
+                all_fields[f] = all_fields_json[f]
 
     pk_values = {k: all_fields.pop(k) for k in cfg.pk if k in all_fields}
     if len(pk_values) != len(cfg.pk):
