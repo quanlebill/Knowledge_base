@@ -23,6 +23,18 @@ from .mappers import (
     map_filter_policies,
     map_extraction_policy,
 )
+from .queries import (
+    q_qdrant_fleet_count,
+    q_chunks,
+    q_tables,
+    q_qdrant_collections,
+    q_qdrant_collection_by_id,
+    q_qdrant_collection_name,
+    q_neo4j_edges,
+    q_neo4j_schema_edges,
+    q_conflicts,
+    q_conflict_detail,
+)
 
 __all__ = [
     "to_string",
@@ -50,4 +62,14 @@ __all__ = [
     "map_filter_policy",
     "map_filter_policies",
     "map_extraction_policy",
+    "q_qdrant_fleet_count",
+    "q_chunks",
+    "q_tables",
+    "q_qdrant_collections",
+    "q_qdrant_collection_by_id",
+    "q_qdrant_collection_name",
+    "q_neo4j_edges",
+    "q_neo4j_schema_edges",
+    "q_conflicts",
+    "q_conflict_detail",
 ]
