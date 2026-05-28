@@ -55,7 +55,7 @@ from .input_schema.delete import (
 # ── Pool ──────────────────────────────────────────────────────────────────────
 
 _pool: asyncpg.Pool | None = None
-_pool_lock = asyncio.Lock()
+_pool_lock: asyncio.Lock | None = None
 
 
 async def _init_conn(conn: asyncpg.Connection) -> None:
@@ -69,7 +69,9 @@ async def _init_conn(conn: asyncpg.Connection) -> None:
 
 
 async def pool() -> asyncpg.Pool:
-    global _pool
+    global _pool, _pool_lock
+    if _pool_lock is None:
+        _pool_lock = asyncio.Lock()
     if _pool is None:
         async with _pool_lock:
             if _pool is None:
