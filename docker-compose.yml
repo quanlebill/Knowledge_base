@@ -2,7 +2,6 @@ name: aeroflow
 
 services:
 
-  # ── Frontend (React + nginx) ─────────────────────────────────────────────────
   frontend:
     build:
       context: .
@@ -18,7 +17,6 @@ services:
       - aeroflow-net
     restart: unless-stopped
 
-  # ── Backend (FastAPI) ────────────────────────────────────────────────────────
   backend:
     build:
       context: .
@@ -49,13 +47,12 @@ services:
       - aeroflow-net
     restart: unless-stopped
 
-  # ── PostgreSQL ───────────────────────────────────────────────────────────────
   postgres:
     build:
       context: ./database/Postgres
     container_name: aeroflow-postgres
-    ports:
-      - "5433:5432"
+    expose:
+      - "5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-aeroflow}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
@@ -66,34 +63,32 @@ services:
       - aeroflow-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aeroflow}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aeroflow} -d ${POSTGRES_DB:-aeroflow_kb}"]
       interval: 15s
       timeout: 10s
       retries: 5
       start_period: 10s
 
-  # ── Qdrant ───────────────────────────────────────────────────────────────────
   qdrant:
     build:
       context: ./database/Qdrant
     container_name: aeroflow-qdrant
-    ports:
-      - "6335:6333"
-      - "6336:6334"
+    expose:
+      - "6333"
+      - "6334"
     volumes:
       - qdrant_data:/qdrant/storage
     networks:
       - aeroflow-net
     restart: unless-stopped
 
-  # ── Neo4j ────────────────────────────────────────────────────────────────────
   neo4j:
     build:
       context: ./database/Neo4j
     container_name: aeroflow-neo4j
-    ports:
-      - "7475:7474"
-      - "7688:7687"
+    expose:
+      - "7474"
+      - "7687"
     environment:
       NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-password}
     volumes:
