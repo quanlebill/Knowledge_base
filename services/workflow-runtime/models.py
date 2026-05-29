@@ -17,6 +17,14 @@ class Member(Base):
     is_active     = Column(Boolean, default=True)
 
 
+class Agent(Base):
+    __tablename__ = "agents"
+    id        = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
+    is_active = Column(Boolean, default=True)
+    deleted_at = Column(String)
+
+
 class Conversation(Base):
     __tablename__    = "conversations"
     id               = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -38,6 +46,29 @@ class Message(Base):
     metadata_       = Column("metadata", JSONB, default=dict)
     tokens_used     = Column(Integer)
     latency_ms      = Column(Integer)
+
+
+class AgentMemory(Base):
+    __tablename__ = "agent_memories"
+    id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id   = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
+    agent_id    = Column(UUID(as_uuid=True), nullable=False)
+    scope       = Column(String, nullable=False, default="global")
+    user_ref    = Column(String)
+    memory_type = Column(String, nullable=False)
+    content     = Column(String, nullable=False)
+    importance  = Column(Integer, default=0)
+    expires_at  = Column(String)
+    deleted_at  = Column(String)
+
+
+class MemoryPolicy(Base):
+    __tablename__ = "memory_policy"
+    id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    agent_id    = Column(UUID(as_uuid=True), nullable=False)
+    action_type = Column(String, nullable=False)
+    condition   = Column(JSONB, default=dict)
+    enabled     = Column(Boolean, default=True)
 
 
 class AgentTrace(Base):

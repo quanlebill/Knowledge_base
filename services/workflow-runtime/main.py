@@ -1,7 +1,11 @@
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
 
+import os
 import time
+import logging
+
+logger = logging.getLogger(__name__)
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,7 +17,7 @@ from graph import build_graph
 from config_loader import load_agent_config
 from observability import get_langfuse_handler
 from node_registry import NODE_REGISTRY
-from db import init_db, close_db, create_conversation, save_message, save_trace
+from db import init_db, close_db, create_conversation, save_message, save_trace, validate_agent_tenant
 from memory_middleware import retrieve_memories, apply_memory_policy, _DEV_AGENT_ID, _DEV_TENANT_ID
 
 @asynccontextmanager
@@ -26,9 +30,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="workflow-runtime", version="0.1.0", lifespan=lifespan)
 
+_CORS_ORIGINS = [
+    o.strip()
+    for o in os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
+    if o.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_origins=_CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -97,14 +107,26 @@ async def run_conversation(req: RunRequest, request: Request):
     agent_id = cfg.get("agent_id", _DEV_AGENT_ID)
     tenant_id = request.headers.get("X-Tenant-ID", _DEV_TENANT_ID)
 
+    if not await validate_agent_tenant(agent_id, tenant_id):
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=403, content={"detail": "Agent not found or access denied"})
+
     # RETRIEVE memory trước khi build state
     memory_context = []
     if cfg.get("memory_enabled"):
-        memory_context = await retrieve_memories(agent_id, req.query)
+        memory_context = await retrieve_memories(
+            tenant_id=tenant_id,
+            agent_id=agent_id,
+            user_ref=user_ref,
+            query=req.query,
+        )
 
     user_ref = request.headers.get("X-User-ID", "anonymous")
     conv_id = req.conversation_id or await create_conversation(
-        tenant_id=tenant_id, user_ref=user_ref
+        agent_version_id=cfg.get("agent_version_id", None),
+        user_ref=user_ref,
+        channel=request.headers.get("X-Channel", "web"),
+        tenant_id=tenant_id,
     )
 
     state = {
@@ -139,21 +161,24 @@ async def run_conversation(req: RunRequest, request: Request):
         guardrail_reason = None
         t0 = time.monotonic()
         try:
-            async for chunk in _graph.astream(state, config={"callbacks": callbacks}):
-                for node in ("guardrail_input", "guardrail_output"):
-                    if node in chunk:
-                        g = chunk[node]
-                        if g.get("guardrail_triggered"):
-                            guardrail_triggered = True
-                            guardrail_msg    = g.get("guardrail_message", "")
-                            guardrail_stage  = g.get("guardrail_stage")
-                            guardrail_reason = g.get("guardrail_reason")
+            async for event in _graph.astream_events(state, version="v2", config={"callbacks": callbacks}):
+                kind = event["event"]
+                node = event.get("metadata", {}).get("langgraph_node", "")
 
-                if "responder" in chunk:
-                    token = chunk["responder"].get("response", "")
+                # Guardrail detection — catch state updates from both guardrail nodes
+                if kind == "on_chain_end" and node in ("guardrail_input", "guardrail_output"):
+                    output = event["data"].get("output", {})
+                    if output.get("guardrail_triggered"):
+                        guardrail_triggered = True
+                        guardrail_msg    = output.get("guardrail_message", "")
+                        guardrail_stage  = output.get("guardrail_stage")
+                        guardrail_reason = output.get("guardrail_reason")
+
+                # Real token-by-token streaming từ responder (không stream planner tokens)
+                elif kind == "on_chat_model_stream" and node == "responder":
+                    token = event["data"]["chunk"].content or ""
                     if token:
                         full_response.append(token)
-                        # Stream real-time only when output guardrail is not active
                         if not has_output_guardrail:
                             yield f"data: {token}\n\n"
 
@@ -161,7 +186,6 @@ async def run_conversation(req: RunRequest, request: Request):
             if guardrail_triggered:
                 yield f"data: {guardrail_msg}\n\n"
             elif has_output_guardrail:
-                # Output guardrail checked and passed — send buffered response now
                 combined = "".join(full_response)
                 if combined:
                     yield f"data: {combined}\n\n"
@@ -169,7 +193,8 @@ async def run_conversation(req: RunRequest, request: Request):
             yield "data: [DONE]\n\n"
 
         except Exception as e:
-            yield f"data: [ERROR] {str(e)}\n\n"
+            logger.exception("event_stream error: %s", e)
+            yield "data: [ERROR] Đã xảy ra lỗi, vui lòng thử lại.\n\n"
         finally:
             latency = int((time.monotonic() - t0) * 1000)
             assistant_text = guardrail_msg if guardrail_triggered else "".join(full_response)

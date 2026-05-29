@@ -84,7 +84,7 @@ def _sanitize_trace(data: dict) -> dict:
             result[k] = v
     return result
 
-from models import Conversation, Message, AgentTrace, Member
+from models import Conversation, Message, AgentTrace, Member, Agent
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +118,27 @@ async def close_db():
         _engine = None
         _session_factory = None
         logger.info("db engine closed")
+
+
+async def validate_agent_tenant(agent_id: str, tenant_id: str) -> bool:
+    """Return True if agent_id belongs to tenant_id and is active."""
+    session_ctx = get_session()
+    if not session_ctx:
+        return True  # DB disabled — dev bypass
+    async with session_ctx as session:
+        result = await session.execute(
+            select(Agent.id)
+            .where(Agent.id == UUID(agent_id))
+            .where(Agent.tenant_id == UUID(tenant_id))
+            .where(Agent.is_active.is_(True))
+            .where(Agent.deleted_at.is_(None))
+        )
+        return result.first() is not None
+
+
+def get_session():
+    """Return an async session context manager, or None if DB is not initialised."""
+    return _session_factory() if _session_factory else None
 
 
 async def _has_role(
