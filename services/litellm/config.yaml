@@ -9,6 +9,11 @@ model_list:
       model: gemini/gemini-2.0-flash
       api_key: os.environ/GEMINI_API_KEY
 
+  - model_name: guardrail
+    litellm_params:
+      model: gemini/gemini-2.0-flash
+      api_key: os.environ/GEMINI_API_KEY
+
   - model_name: embedder
     litellm_params:
       model: openai/text-embedding-3-small

@@ -28,6 +28,11 @@ DEV_CONFIG = {
     "mcp_endpoints": [],
     "guardrail_input_patterns": ["fuck", "kill", "bomb", "hack", "tấn công"],
     "guardrail_output_patterns": ["mật khẩu", "password", "secret", "token"],
+    "guardrail_llm_enabled": True,
+    "guardrail_model": "guardrail",
+    "guardrail_max_tokens": 64,
+    "guardrail_timeout": 5,
+    "guardrail_allowed_topics": [],
     "guardrail_id": None,
     "agent_id": "00000000-0000-0000-0000-000000000030",
 }
