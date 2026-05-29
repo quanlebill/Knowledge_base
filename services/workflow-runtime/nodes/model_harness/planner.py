@@ -13,6 +13,7 @@ class _ToolCall(BaseModel):
     reason: str
     confidence: float
     tool_name: str | None = None
+    arguments: dict = {}
     parallel: bool = True
     depends_on: list[int] = []
 

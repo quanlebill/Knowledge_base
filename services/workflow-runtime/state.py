@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from typing_extensions import TypedDict
 
 
@@ -8,7 +8,9 @@ class AgentState(TypedDict):
     memory_context: List[dict]
     tool_calls: List[dict]
     kb_chunks: List[dict]
+    kb_error: Optional[str]
     mcp_results: List[dict]
+    mcp_errors: List[dict]
     rrf_results: List[dict]
     reranked_chunks: List[dict]
     response: str

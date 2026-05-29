@@ -32,7 +32,6 @@ def guardrail_input_node(state: AgentState) -> dict:
 
 
 def guardrail_output_node(state: AgentState) -> dict:
-    # Input guardrail already blocked — nothing to check
     if state.get("guardrail_triggered"):
         return {}
 
