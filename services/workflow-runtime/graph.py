@@ -25,6 +25,11 @@ def route_after_planner(state: AgentState) -> list[str]:
     return destinations or ["kb_search"]
 
 
+def join_retrieval_node(state: AgentState) -> dict:
+    """Sync point — waits for all scheduled retrieval branches before ranking."""
+    return {}
+
+
 def build_graph():
     builder = StateGraph(AgentState)
 
@@ -32,9 +37,10 @@ def build_graph():
     builder.add_node("planner",           planner_node)
     builder.add_node("kb_search",        kb_search_node)
     builder.add_node("mcp",              mcp_node)
+    builder.add_node("join_retrieval",   join_retrieval_node)
     builder.add_node("rrf_ranking",      rrf_ranking_node)
     builder.add_node("reranker",         reranker_node)
-    builder.add_node("responder",      responder_node)
+    builder.add_node("responder",        responder_node)
     builder.add_node("guardrail_output", guardrail_output_node)
 
     builder.add_edge(START, "guardrail_input")
@@ -44,11 +50,12 @@ def build_graph():
         {"planner": "planner", "guardrail_output": "guardrail_output"},
     )
     builder.add_conditional_edges("planner", route_after_planner, ["kb_search", "mcp"])
-    builder.add_edge("kb_search",        "rrf_ranking")
-    builder.add_edge("mcp",              "rrf_ranking")
+    builder.add_edge("kb_search",        "join_retrieval")
+    builder.add_edge("mcp",              "join_retrieval")
+    builder.add_edge("join_retrieval",   "rrf_ranking")
     builder.add_edge("rrf_ranking",      "reranker")
     builder.add_edge("reranker",         "responder")
-    builder.add_edge("responder",      "guardrail_output")
+    builder.add_edge("responder",        "guardrail_output")
     builder.add_edge("guardrail_output", END)
 
     return builder.compile()

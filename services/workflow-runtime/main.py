@@ -2,6 +2,7 @@ from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
 
 import time
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -12,10 +13,18 @@ from graph import build_graph
 from config_loader import load_agent_config
 from observability import get_langfuse_handler
 from node_registry import NODE_REGISTRY
-from db import init_db, create_conversation, save_message, save_trace
+from db import init_db, close_db, create_conversation, save_message, save_trace
 from memory_middleware import retrieve_memories, apply_memory_policy, _DEV_AGENT_ID, _DEV_TENANT_ID
 
-app = FastAPI(title="workflow-runtime", version="0.1.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_db()
+    _graph  # ensure graph is built before first request
+    yield
+    await close_db()
+
+
+app = FastAPI(title="workflow-runtime", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -25,11 +34,6 @@ app.add_middleware(
 )
 
 _graph = build_graph()
-
-
-@app.on_event("startup")
-async def startup():
-    await init_db()
 
 
 class Message(BaseModel):
@@ -98,7 +102,10 @@ async def run_conversation(req: RunRequest, request: Request):
     if cfg.get("memory_enabled"):
         memory_context = await retrieve_memories(agent_id, req.query)
 
-    conv_id = req.conversation_id or await create_conversation()
+    user_ref = request.headers.get("X-User-ID", "anonymous")
+    conv_id = req.conversation_id or await create_conversation(
+        tenant_id=tenant_id, user_ref=user_ref
+    )
 
     state = {
         "query": req.query,

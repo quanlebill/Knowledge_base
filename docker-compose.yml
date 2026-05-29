@@ -78,6 +78,7 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql://admin:dev123@postgres:5432/dataagent
+      RUNTIME_DB_URL: postgresql+asyncpg://runtime_writer:${RUNTIME_DB_PASSWORD:-runtime_dev_pw}@postgres:5432/dataagent
       MONGODB_URL: mongodb://mongodb:27017/dataagent
       REDIS_URL: redis://redis:6379
       LITELLM_BASE_URL: http://litellm:4000
