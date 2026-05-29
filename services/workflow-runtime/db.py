@@ -43,14 +43,15 @@ async def save_message(
     content: str,
     tokens: int = 0,
     latency_ms: int = 0,
+    metadata: Optional[dict] = None,
 ) -> Optional[str]:
     if not _pool:
         return None
     row = await _pool.fetchrow(
-        """INSERT INTO messages (conversation_id, role, content, tokens_used, latency_ms)
-           VALUES ($1, $2, $3::jsonb, $4, $5) RETURNING id""",
+        """INSERT INTO messages (conversation_id, role, content, tokens_used, latency_ms, metadata)
+           VALUES ($1, $2, $3::jsonb, $4, $5, $6::jsonb) RETURNING id""",
         conversation_id, role, json.dumps({"text": content}),
-        tokens, latency_ms,
+        tokens, latency_ms, json.dumps(metadata or {}),
     )
     return str(row["id"]) if row else None
 

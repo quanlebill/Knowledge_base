@@ -112,6 +112,8 @@ async def run_conversation(req: RunRequest, request: Request):
         "response": "",
         "guardrail_triggered": False,
         "guardrail_message": "",
+        "guardrail_stage": None,
+        "guardrail_reason": None,
         "config": cfg,
     }
 
@@ -126,13 +128,19 @@ async def run_conversation(req: RunRequest, request: Request):
         full_response: list[str] = []
         guardrail_triggered = False
         guardrail_msg = ""
+        guardrail_stage = None
+        guardrail_reason = None
         t0 = time.monotonic()
         try:
             async for chunk in _graph.astream(state, config={"callbacks": callbacks}):
-                if "guardrail_output" in chunk:
-                    g = chunk["guardrail_output"]
-                    guardrail_triggered = g.get("guardrail_triggered", False)
-                    guardrail_msg = g.get("guardrail_message", "")
+                for node in ("guardrail_input", "guardrail_output"):
+                    if node in chunk:
+                        g = chunk[node]
+                        if g.get("guardrail_triggered"):
+                            guardrail_triggered = True
+                            guardrail_msg    = g.get("guardrail_message", "")
+                            guardrail_stage  = g.get("guardrail_stage")
+                            guardrail_reason = g.get("guardrail_reason")
 
                 if "responder" in chunk:
                     token = chunk["responder"].get("response", "")
@@ -161,7 +169,14 @@ async def run_conversation(req: RunRequest, request: Request):
             if conv_id:
                 await save_message(conv_id, "user", req.query)
                 asst_msg_id = await save_message(
-                    conv_id, "assistant", assistant_text, latency_ms=latency
+                    conv_id, "assistant", assistant_text, latency_ms=latency,
+                    metadata={
+                        "guardrail": {
+                            "triggered": guardrail_triggered,
+                            "stage":     guardrail_stage,
+                            "reason":    guardrail_reason,
+                        }
+                    },
                 )
                 if asst_msg_id:
                     await save_trace(
