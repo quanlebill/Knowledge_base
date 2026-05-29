@@ -15,16 +15,37 @@
   "maxFailureWaitSeconds": 900,
   "maxDeltaTimeSeconds": 43200,
   "eventsEnabled": true,
-  "eventsListeners": ["jboss-logging", "aeroflow-kafka"],
+  "eventsListeners": [
+    "jboss-logging",
+    "aeroflow-kafka"
+  ],
   "enabledEventTypes": [
-    "LOGIN", "LOGIN_ERROR", "LOGOUT", "LOGOUT_ERROR",
-    "REGISTER", "REGISTER_ERROR", "TOKEN_EXCHANGE", "REFRESH_TOKEN",
-    "REFRESH_TOKEN_ERROR", "CLIENT_LOGIN", "CLIENT_LOGIN_ERROR",
-    "CODE_TO_TOKEN", "CODE_TO_TOKEN_ERROR", "UPDATE_PASSWORD",
-    "UPDATE_PASSWORD_ERROR", "UPDATE_TOTP", "REMOVE_TOTP",
-    "GRANT_CONSENT", "REVOKE_GRANT", "SEND_RESET_PASSWORD",
-    "SEND_VERIFY_EMAIL", "VERIFY_EMAIL", "IMPERSONATE",
-    "RESET_PASSWORD", "RESET_PASSWORD_ERROR", "IDENTITY_PROVIDER_LOGIN",
+    "LOGIN",
+    "LOGIN_ERROR",
+    "LOGOUT",
+    "LOGOUT_ERROR",
+    "REGISTER",
+    "REGISTER_ERROR",
+    "TOKEN_EXCHANGE",
+    "REFRESH_TOKEN",
+    "REFRESH_TOKEN_ERROR",
+    "CLIENT_LOGIN",
+    "CLIENT_LOGIN_ERROR",
+    "CODE_TO_TOKEN",
+    "CODE_TO_TOKEN_ERROR",
+    "UPDATE_PASSWORD",
+    "UPDATE_PASSWORD_ERROR",
+    "UPDATE_TOTP",
+    "REMOVE_TOTP",
+    "GRANT_CONSENT",
+    "REVOKE_GRANT",
+    "SEND_RESET_PASSWORD",
+    "SEND_VERIFY_EMAIL",
+    "VERIFY_EMAIL",
+    "IMPERSONATE",
+    "RESET_PASSWORD",
+    "RESET_PASSWORD_ERROR",
+    "IDENTITY_PROVIDER_LOGIN",
     "IDENTITY_PROVIDER_LOGIN_ERROR"
   ],
   "adminEventsEnabled": true,
@@ -54,7 +75,37 @@
         "post.logout.redirect.uris": "http://localhost:5173/*##http://localhost:3000/*",
         "backchannel.logout.url": "",
         "backchannel.logout.session.required": "true"
-      }
+      },
+      "protocolMappers": [
+        {
+          "name": "tenant_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "tenant_id",
+            "claim.name": "tenant_id",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "role_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "role_id",
+            "claim.name": "role_id",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
     },
     {
       "clientId": "aeroflow-backend",
@@ -80,9 +131,18 @@
   ],
   "roles": {
     "realm": [
-      { "name": "platform-admin",   "description": "Full platform sovereignty" },
-      { "name": "ai-engineer",      "description": "AI runtime and deployment access" },
-      { "name": "executive-viewer", "description": "Read-only executive view" }
+      {
+        "name": "platform-admin",
+        "description": "Full platform sovereignty"
+      },
+      {
+        "name": "ai-engineer",
+        "description": "AI runtime and deployment access"
+      },
+      {
+        "name": "executive-viewer",
+        "description": "Read-only executive view"
+      }
     ]
   },
   "users": [
@@ -92,11 +152,30 @@
       "enabled": true,
       "emailVerified": true,
       "credentials": [
-        { "type": "password", "value": "Admin@1234", "temporary": false }
+        {
+          "type": "password",
+          "value": "Admin@123456",
+          "temporary": false
+        }
       ],
-      "realmRoles": ["platform-admin"],
+      "realmRoles": [
+        "platform-admin"
+      ],
       "clientRoles": {
-        "realm-management": ["view-users", "query-users", "query-groups"]
+        "realm-management": [
+          "view-users",
+          "query-users",
+          "query-groups",
+          "view-events"
+        ]
+      },
+      "attributes": {
+        "tenant_id": [
+          "a0000000-0000-0000-0000-000000000001"
+        ],
+        "role_id": [
+          "platform-admin"
+        ]
       }
     },
     {
@@ -105,9 +184,23 @@
       "enabled": true,
       "emailVerified": true,
       "credentials": [
-        { "type": "password", "value": "Engineer@1234", "temporary": false }
+        {
+          "type": "password",
+          "value": "Engineer@1234",
+          "temporary": false
+        }
       ],
-      "realmRoles": ["ai-engineer"]
+      "realmRoles": [
+        "ai-engineer"
+      ],
+      "attributes": {
+        "tenant_id": [
+          "a0000000-0000-0000-0000-000000000001"
+        ],
+        "role_id": [
+          "ai-engineer"
+        ]
+      }
     },
     {
       "username": "executive-viewer",
@@ -115,9 +208,95 @@
       "enabled": true,
       "emailVerified": true,
       "credentials": [
-        { "type": "password", "value": "Viewer@1234", "temporary": false }
+        {
+          "type": "password",
+          "value": "Viewer@123456",
+          "temporary": false
+        }
       ],
-      "realmRoles": ["executive-viewer"]
+      "realmRoles": [
+        "executive-viewer"
+      ],
+      "attributes": {
+        "tenant_id": [
+          "a0000000-0000-0000-0000-000000000001"
+        ],
+        "role_id": [
+          "executive-viewer"
+        ]
+      }
+    },
+    {
+      "username": "helios-admin",
+      "email": "helios-admin@helios.corp",
+      "firstName": "Admin",
+      "lastName": "Helios",
+      "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "H3lios@Admin01!",
+          "temporary": false
+        }
+      ],
+      "attributes": {
+        "tenant_id": [
+          "b0000000-0000-0000-0000-000000000002"
+        ],
+        "role_id": [
+          "platform-admin"
+        ]
+      }
+    },
+    {
+      "username": "helios-engineer",
+      "email": "helios-engineer@helios.corp",
+      "firstName": "Engineer",
+      "lastName": "Helios",
+      "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "H3lios@Eng001!",
+          "temporary": false
+        }
+      ],
+      "attributes": {
+        "tenant_id": [
+          "b0000000-0000-0000-0000-000000000002"
+        ],
+        "role_id": [
+          "ai-engineer"
+        ]
+      }
+    },
+    {
+      "username": "helios-viewer",
+      "email": "helios-viewer@helios.corp",
+      "firstName": "Viewer",
+      "lastName": "Helios",
+      "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "H3lios@View01!",
+          "temporary": false
+        }
+      ],
+      "attributes": {
+        "tenant_id": [
+          "b0000000-0000-0000-0000-000000000002"
+        ],
+        "role_id": [
+          "executive-viewer"
+        ]
+      }
     }
   ],
   "requiredActions": [
@@ -126,7 +305,7 @@
       "name": "Configure OTP",
       "providerId": "CONFIGURE_TOTP",
       "enabled": true,
-      "defaultAction": false
+      "defaultAction": true
     },
     {
       "alias": "webauthn-register",
@@ -144,7 +323,10 @@
     }
   ],
   "webAuthnPolicyRpEntityName": "aeroflow",
-  "webAuthnPolicySignatureAlgorithms": ["ES256", "RS256"],
+  "webAuthnPolicySignatureAlgorithms": [
+    "ES256",
+    "RS256"
+  ],
   "webAuthnPolicyRpId": "",
   "webAuthnPolicyAttestationConveyancePreference": "not specified",
   "webAuthnPolicyAuthenticatorAttachment": "not specified",
@@ -214,37 +396,64 @@
       "name": "azure-ad-email-mapper",
       "identityProviderAlias": "azure-ad",
       "identityProviderMapper": "oidc-user-attribute-idp-mapper",
-      "config": { "syncMode": "INHERIT", "user.attribute": "email", "claim": "email" }
+      "config": {
+        "syncMode": "INHERIT",
+        "user.attribute": "email",
+        "claim": "email"
+      }
     },
     {
       "name": "azure-ad-ai-engineer-role",
       "identityProviderAlias": "azure-ad",
       "identityProviderMapper": "oidc-role-idp-mapper",
-      "config": { "syncMode": "INHERIT", "role": "ai-engineer", "claim": "roles", "claim.value": "AeroFlow.AIEngineer" }
+      "config": {
+        "syncMode": "INHERIT",
+        "role": "ai-engineer",
+        "claim": "roles",
+        "claim.value": "AeroFlow.AIEngineer"
+      }
     },
     {
       "name": "azure-ad-platform-admin-role",
       "identityProviderAlias": "azure-ad",
       "identityProviderMapper": "oidc-role-idp-mapper",
-      "config": { "syncMode": "INHERIT", "role": "platform-admin", "claim": "roles", "claim.value": "AeroFlow.Admin" }
+      "config": {
+        "syncMode": "INHERIT",
+        "role": "platform-admin",
+        "claim": "roles",
+        "claim.value": "AeroFlow.Admin"
+      }
     },
     {
       "name": "google-email-mapper",
       "identityProviderAlias": "google",
       "identityProviderMapper": "oidc-user-attribute-idp-mapper",
-      "config": { "syncMode": "INHERIT", "user.attribute": "email", "claim": "email" }
+      "config": {
+        "syncMode": "INHERIT",
+        "user.attribute": "email",
+        "claim": "email"
+      }
     },
     {
       "name": "okta-email-mapper",
       "identityProviderAlias": "okta",
       "identityProviderMapper": "oidc-user-attribute-idp-mapper",
-      "config": { "syncMode": "INHERIT", "user.attribute": "email", "claim": "email" }
+      "config": {
+        "syncMode": "INHERIT",
+        "user.attribute": "email",
+        "claim": "email"
+      }
     },
     {
       "name": "okta-groups-to-role",
       "identityProviderAlias": "okta",
       "identityProviderMapper": "oidc-role-idp-mapper",
-      "config": { "syncMode": "INHERIT", "role": "ai-engineer", "claim": "groups", "claim.value": "aeroflow-engineers" }
+      "config": {
+        "syncMode": "INHERIT",
+        "role": "ai-engineer",
+        "claim": "groups",
+        "claim.value": "aeroflow-engineers"
+      }
     }
   ],
   "attributes": {
@@ -254,5 +463,116 @@
   },
   "browserSecurityHeaders": {
     "contentSecurityPolicy": "frame-src 'self'; frame-ancestors 'self'; object-src 'none';"
+  },
+  "userProfileConfig": {
+    "attributes": [
+      {
+        "name": "username",
+        "displayName": "${username}",
+        "validations": {
+          "length": {
+            "min": 3,
+            "max": 255
+          },
+          "username-prohibited-characters": {},
+          "up-username-not-idn-homograph": {}
+        },
+        "permissions": {
+          "view": [
+            "admin",
+            "user"
+          ],
+          "edit": [
+            "admin",
+            "user"
+          ]
+        }
+      },
+      {
+        "name": "email",
+        "displayName": "${email}",
+        "validations": {
+          "email": {},
+          "length": {
+            "max": 255
+          }
+        },
+        "permissions": {
+          "view": [
+            "admin",
+            "user"
+          ],
+          "edit": [
+            "admin",
+            "user"
+          ]
+        }
+      },
+      {
+        "name": "firstName",
+        "displayName": "${firstName}",
+        "validations": {
+          "length": {
+            "max": 255
+          },
+          "person-name-prohibited-characters": {}
+        },
+        "permissions": {
+          "view": [
+            "admin",
+            "user"
+          ],
+          "edit": [
+            "admin",
+            "user"
+          ]
+        }
+      },
+      {
+        "name": "lastName",
+        "displayName": "${lastName}",
+        "validations": {
+          "length": {
+            "max": 255
+          },
+          "person-name-prohibited-characters": {}
+        },
+        "permissions": {
+          "view": [
+            "admin",
+            "user"
+          ],
+          "edit": [
+            "admin",
+            "user"
+          ]
+        }
+      },
+      {
+        "name": "tenant_id",
+        "displayName": "Tenant ID",
+        "permissions": {
+          "view": [
+            "admin"
+          ],
+          "edit": [
+            "admin"
+          ]
+        }
+      },
+      {
+        "name": "role_id",
+        "displayName": "Role ID",
+        "permissions": {
+          "view": [
+            "admin"
+          ],
+          "edit": [
+            "admin"
+          ]
+        }
+      }
+    ],
+    "unmanagedAttributePolicy": "ENABLED"
   }
 }

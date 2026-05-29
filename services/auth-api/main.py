@@ -579,7 +579,7 @@ _ALGO_TO_TRANSIT: dict[str, str] = {
     "RSA-4096":    "rsa-4096",
     "RSA-2048":    "rsa-2048",
     "EC-P256":     "ecdsa-p256",
-    "HMAC-SHA256": "hmac",
+    "HMAC-SHA256": "aes256-gcm96",  # OpenBao Transit: hmac ops use aes256-gcm96 key type
     "AES-256":     "aes256-gcm96",
     "ChaCha20":    "chacha20-poly1305",
 }

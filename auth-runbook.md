@@ -10,6 +10,11 @@
 - [Phần 3 — OpenBao Secrets Vault](#phần-3--openbao-secrets-vault)
   - [O6 — Transit Engine (RSA/HSM Signing)](#o6--transit-engine-rsahsm-signing)
   - [O7 — Governance Controls (Panic Mode, Auto-Rotation, PII Log)](#o7--governance-controls)
+- [Phần 4 — Multi-Tenant Management](#phần-4--multi-tenant-management)
+  - [MT1 — Tạo Tenant Mới](#mt1--tạo-tenant-mới)
+  - [MT2 — Verify Tenant Isolation](#mt2--verify-tenant-isolation)
+  - [MT3 — Tenant Users Credentials](#mt3--tenant-users-credentials)
+  - [MT4 — Isolation Mechanism Summary](#mt4--isolation-mechanism-summary)
 - [Phần 2 — Release Management](#phần-2--release-management)
   - [R1. Khởi động Release Stack](#r1--khởi-động-release-stack)
   - [R2. URLs & Credentials Release](#r2--urls--credentials-release)
@@ -2518,3 +2523,182 @@ Chỉ có AI provider keys được tự động bootstrap vào `secret/data/ten
 | `tenants/ai-keys/AZURE_OPENAI_KEY` | `placeholder-replace-me` | Thay bằng real key trong prod |
 
 > **Lưu ý:** Infra credentials (Postgres, Keycloak, Kafka, MinIO) KHÔNG lưu trong OpenBao — chúng đọc thẳng từ docker-compose env vars. Chỉ AI provider API keys mới cần vault vì chúng thuộc về các external service.
+
+---
+
+# Phần 4 — Multi-Tenant Management
+
+## Kiến trúc Multi-Tenant
+
+```
+Keycloak JWT
+  └─ claim: tenant_id = "a0000000-..." hoặc "b0000000-..."
+  └─ claim: role_id   = "platform-admin" | "ai-engineer" | "executive-viewer"
+
+Kong (aeroflow-jwks plugin)
+  └─ đọc JWT → inject header X-Tenant-Id, X-User-Id, X-User-Roles
+  └─ KHÔNG cho phép client tự set các header này
+
+auth-api (FastAPI)
+  └─ đọc X-Tenant-Id từ header (tin tưởng vì chỉ Kong gửi)
+  └─ ALL SQL queries đều có WHERE tenant_id = x_tenant_id
+  └─ Cross-tenant access → 404 Not Found (không tiết lộ tồn tại)
+
+OpenBao
+  └─ KV v2 path: tenants/{tenant_id}/{key_name}
+  └─ Transit key name: {tenant_id[:8]}-{key_name_lower}  (prefix enforce isolation)
+```
+
+**Tenant seeding:**
+| UUID | Name | slug | Plan | Region |
+|------|------|------|------|--------|
+| `a0000000-0000-0000-0000-000000000001` | AeroFlow Dev | aeroflow-dev | Enterprise | Asia-SE1 |
+| `b0000000-0000-0000-0000-000000000002` | Helios Corp  | helios-corp  | Pro        | EU-West1  |
+
+## MT1 — Tạo Tenant Mới
+
+### Bước 1: Insert vào PostgreSQL
+
+```sql
+INSERT INTO tenants (id, name, slug, plan_id, data_residency)
+VALUES (
+  gen_random_uuid(),      -- hoặc UUID cố định để dễ debug
+  'Tenant Name',
+  'tenant-slug',
+  2,                      -- plan_id: 1=Free, 2=Pro, 3=Enterprise
+  'Asia-SE1'
+) ON CONFLICT (slug) DO NOTHING;
+```
+
+Hoặc dùng docker exec:
+```bash
+docker exec aeroflow-postgres psql -U aeroflow -d aeroflow -c \
+  "INSERT INTO tenants (id, name, slug, plan_id, data_residency)
+   VALUES ('c0000000-0000-0000-0000-000000000003','New Corp','new-corp',1,'US-East1')
+   ON CONFLICT (slug) DO NOTHING;"
+```
+
+### Bước 2: Tạo users trong Keycloak
+
+```python
+# infra/scripts/provision_tenant.py (example)
+import requests, json
+
+KEYCLOAK = 'http://localhost:8080'
+TENANT_ID = 'c0000000-0000-0000-0000-000000000003'
+
+admin_token = requests.post(f'{KEYCLOAK}/realms/master/protocol/openid-connect/token',
+    data={'grant_type':'password','client_id':'admin-cli','username':'admin','password':'admin'}
+).json()['access_token']
+headers = {'Authorization': f'Bearer {admin_token}', 'Content-Type': 'application/json'}
+
+# Tạo user
+uid = None
+resp = requests.post(f'{KEYCLOAK}/admin/realms/aeroflow/users', headers=headers, json={
+    'username': 'newcorp-admin',
+    'email': 'admin@newcorp.io',
+    'enabled': True,
+    'emailVerified': True,
+    'requiredActions': [],
+    'credentials': [{'type': 'password', 'value': 'N3wCorp@Admin01!', 'temporary': False}],
+})
+uid = resp.headers.get('Location', '').split('/')[-1]
+
+# Set tenant_id và role_id attributes
+user = requests.get(f'{KEYCLOAK}/admin/realms/aeroflow/users/{uid}', headers=headers).json()
+user['attributes'] = {'tenant_id': [TENANT_ID], 'role_id': ['platform-admin']}
+requests.put(f'{KEYCLOAK}/admin/realms/aeroflow/users/{uid}', headers=headers, json=user)
+```
+
+**Note:** realm-export.json cần `unmanagedAttributePolicy: ENABLED` (đã set). Trên fresh install, setting này được load từ `userProfileConfig` trong realm-export.
+
+### Bước 3: Seed data cho tenant mới (qua API)
+
+```bash
+# Lấy token cho tenant mới
+NEW_TOKEN=$(curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
+  -d 'grant_type=password&client_id=aeroflow-frontend&username=newcorp-admin&password=N3wCorp@Admin01!' \
+  | jq -r .access_token)
+
+H="-H 'Authorization: Bearer $NEW_TOKEN' -H 'Content-Type: application/json'"
+
+# Tạo signing key (Transit)
+curl -s -X POST http://localhost:8000/api/auth/secrets \
+  -H "Authorization: Bearer $NEW_TOKEN" -H "Content-Type: application/json" \
+  -d '{"key_name":"MAIN_SIGNING_KEY","key_type":"SIGNING_KEY","algorithm":"RSA-2048","realm":"JWT-INFRA"}' \
+  | jq '{id, key_name, key_type}'
+
+# Tạo API key
+curl -s -X POST http://localhost:8000/api/auth/api-keys \
+  -H "Authorization: Bearer $NEW_TOKEN" -H "Content-Type: application/json" \
+  -d '{"name":"Dashboard Key","scope":"read_only","expires_days":365}' \
+  | jq '{id, name, key_prefix, raw_key}'
+```
+
+## MT2 — Verify Tenant Isolation
+
+```bash
+# Chạy full isolation test suite
+python infra/scripts/test_tenant_isolation.py
+
+# Kết quả mong đợi:
+# 23 PASSED  |  0 FAILED  |  23 TOTAL
+```
+
+### Test thủ công (curl)
+
+```bash
+T1_TOKEN=$(curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
+  -d 'grant_type=password&client_id=aeroflow-frontend&username=platform-admin&password=Admin123456!' \
+  | jq -r .access_token)
+
+T2_TOKEN=$(curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
+  -d 'grant_type=password&client_id=aeroflow-frontend&username=helios-admin&password=H3lios@Admin01!' \
+  | jq -r .access_token)
+
+# T1 secrets (chỉ thấy AeroFlow data)
+curl -s -H "Authorization: Bearer $T1_TOKEN" http://localhost:8000/api/auth/secrets | jq 'length'
+
+# T2 secrets (chỉ thấy Helios data)
+curl -s -H "Authorization: Bearer $T2_TOKEN" http://localhost:8000/api/auth/secrets | jq '[.[] | .key_name]'
+
+# T1 user cố access T2 secret bằng UUID → phải 404
+T2_SECRET_ID=$(curl -s -H "Authorization: Bearer $T2_TOKEN" http://localhost:8000/api/auth/secrets \
+  | jq -r '.[0].id')
+curl -s -w "HTTP:%{http_code}" -H "Authorization: Bearer $T1_TOKEN" \
+  "http://localhost:8000/api/auth/secrets/$T2_SECRET_ID/reveal"
+# → HTTP:404
+
+# T2 user cố sign với T1 signing key → phải 404
+T1_SIGN_ID=$(curl -s -H "Authorization: Bearer $T1_TOKEN" http://localhost:8000/api/auth/secrets \
+  | jq -r '[.[] | select(.key_type=="SIGNING_KEY" and .is_active)] | .[0].id')
+curl -s -w "HTTP:%{http_code}" -X POST -H "Authorization: Bearer $T2_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"data":"aGVsbG8="}' \
+  "http://localhost:8000/api/auth/secrets/$T1_SIGN_ID/sign"
+# → HTTP:404
+```
+
+## MT3 — Tenant Users (Credentials)
+
+| Tenant | Username | Password | Role |
+|--------|----------|----------|------|
+| AeroFlow Dev | `platform-admin` | `Admin123456!` | PLATFORM_ADMIN |
+| AeroFlow Dev | `ai-engineer` | *(reset via Keycloak admin)* | AI_ENGINEER |
+| AeroFlow Dev | `executive-viewer` | *(reset via Keycloak admin)* | EXECUTIVE_VIEWER |
+| Helios Corp | `helios-admin` | `H3lios@Admin01!` | PLATFORM_ADMIN |
+| Helios Corp | `helios-engineer` | `H3lios@Eng001!` | AI_ENGINEER |
+| Helios Corp | `helios-viewer` | `H3lios@View01!` | EXECUTIVE_VIEWER |
+
+## MT4 — Isolation Mechanism Summary
+
+| Layer | Mechanism | Details |
+|-------|-----------|---------|
+| Keycloak | User attribute `tenant_id` | Set by admin, embedded in JWT |
+| Kong | Header injection | `X-Tenant-Id` from JWT claim; client-set headers cleared |
+| PostgreSQL | Row-level filter | `WHERE tenant_id = x_tenant_id` on every query |
+| OpenBao KV v2 | Path prefix | `tenants/{tenant_id}/{key_name}` |
+| OpenBao Transit | Key name prefix | `{tenant_id[:8]}-{key_name}` (63-char limit) |
+| HSM status | List filter | Filters Transit keys by `{tenant_id[:8]}-` prefix |
+| Audit log | tenant_id column | All events scoped to tenant |
+| Response | 404 on cross-access | Secrets not found (not 403) — prevents ID enumeration |
