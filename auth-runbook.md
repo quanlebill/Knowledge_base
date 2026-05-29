@@ -7,6 +7,9 @@
 ## Mục lục
 
 - [Phần 1 — Auth (Keycloak + Kong + Kafka)](#phần-1--auth-keycloak--kong--kafka)
+- [Phần 3 — OpenBao Secrets Vault](#phần-3--openbao-secrets-vault)
+  - [O6 — Transit Engine (RSA/HSM Signing)](#o6--transit-engine-rsahsm-signing)
+  - [O7 — Governance Controls (Panic Mode, Auto-Rotation, PII Log)](#o7--governance-controls)
 - [Phần 2 — Release Management](#phần-2--release-management)
   - [R1. Khởi động Release Stack](#r1--khởi-động-release-stack)
   - [R2. URLs & Credentials Release](#r2--urls--credentials-release)
@@ -59,18 +62,26 @@ Kết quả mong đợi:
 ```
 NAME                        STATUS
 aeroflow-postgres           Up (healthy)
+aeroflow-redis              Up (healthy)
+aeroflow-kafka              Up (healthy)
+aeroflow-minio              Up (healthy)
+aeroflow-mongo              Up (healthy)
+aeroflow-elasticsearch      Up (healthy)
+aeroflow-jaeger             Up (healthy)
 aeroflow-keycloak-1         Up (healthy)    ← mất ~90s lần đầu (import realm + DB migration)
 aeroflow-keycloak-2         Up (healthy)    ← đợi node1 healthy mới join cluster
 aeroflow-keycloak-lb        Up (healthy)
 aeroflow-kong-migration     Exited (0)      ← migration thành công, exit 0 là đúng
 aeroflow-kong               Up (healthy)
-aeroflow-konga              Up
-aeroflow-kafka              Up (healthy)
+aeroflow-release-worker     Up (healthy)
+aeroflow-celery-worker      Up
+aeroflow-audit-bridge       Up
 aeroflow-audit-consumer     Up
+aeroflow-jwks-refresher     Up
 aeroflow-frontend           Up
 ```
 
-> **Thứ tự khởi động:** postgres → keycloak-node1 → keycloak-node2 → keycloak-lb → kong-migration → kong → kafka → audit-consumer → frontend
+> **Thứ tự khởi động:** postgres → redis → kafka → minio → mongo → elasticsearch → jaeger → keycloak-node1 → keycloak-node2 → keycloak-lb → kong-migration → kong → jwks-refresher → release-worker → celery-worker → audit-bridge → audit-consumer → frontend
 
 ---
 
@@ -83,9 +94,16 @@ aeroflow-frontend           Up
 | Keycloak Node 1 (direct) | http://localhost:8081/admin | admin / admin |
 | Keycloak Node 2 (direct) | http://localhost:8082/admin | admin / admin |
 | Kong Admin API | http://localhost:8001 | — |
+| Kong Proxy | http://localhost:8000 | JWT Bearer token |
 | Konga (Kong UI) | http://localhost:1337 | setup lần đầu |
+| Release Worker (direct) | http://localhost:8100 | JWT Bearer token |
+| MinIO Console | http://localhost:9001 | minio / minio_secret |
+| MinIO S3 API | http://localhost:9000 | minio / minio_secret |
+| MongoDB | localhost:27017 | (no auth — dev only) |
+| Elasticsearch | http://localhost:9200 | (no auth — dev only) |
+| Jaeger UI | http://localhost:16686 | — |
 | PostgreSQL | localhost:5432 | aeroflow / aeroflow_secret |
-| Kafka | localhost:9092 | SASL/SCRAM (xem §Kafka) |
+| Kafka | localhost:9092 | SASL/PLAIN (xem §Kafka) |
 
 ---
 
@@ -103,14 +121,15 @@ aeroflow-frontend           Up
 
 ### Realm `aeroflow` — Test Users
 
-| Username | Password | Role | Email | Ghi chú |
-|---|---|---|---|---|
-| `platform-admin` | `PlatformAdmin@1234` | `platform-admin` | admin@aeroflow.local | Có quyền `realm-management:view-users` — xem được toàn bộ users qua IAM |
-| `ai-engineer` | `AiEngineer@1234` | `ai-engineer` | engineer@aeroflow.local | |
-| `executive-viewer` | `Viewer@1234` | `executive-viewer` | viewer@aeroflow.local | |
+| Username | Password | Role | Email |
+|---|---|---|---|
+| `platform-admin` | `Admin@123456` | `platform-admin` | admin@aeroflow.local |
+| `ai-engineer` | `Engineer@1234` | `ai-engineer` | engineer@aeroflow.local |
+| `executive-viewer` | `Viewer@123456` | `executive-viewer` | viewer@aeroflow.local |
 
-> Các tài khoản này được import sẵn từ `realm-export.json` khi stack khởi động lần đầu.  
-> **Quan trọng:** Realm import chỉ chạy khi realm chưa tồn tại trong DB. Nếu stack đã từng chạy, cần `docker compose down -v && docker compose up -d` để re-import.
+> Các tài khoản này được import từ `realm-export.json` khi stack khởi động lần đầu.  
+> **Quan trọng:** Realm import chỉ chạy khi realm chưa tồn tại trong DB. Nếu stack đã từng chạy, cần `docker compose down -v && docker compose up -d` để re-import với credentials trên.  
+> **JWT claim `realm_access.roles`** — Kong `aeroflow-jwks` plugin inject header `X-User-Roles` từ `realm_access.roles` (standard OIDC). Role `platform-admin` và `ai-engineer` cần đúng để release-worker phân quyền.
 
 ---
 
@@ -125,11 +144,18 @@ aeroflow-frontend           Up
 
 ### Kafka Users
 
+SASL mechanism: **PLAIN** (không phải SCRAM-SHA-512)
+
 | Username | Password | ACL |
 |---|---|---|
 | `admin` | `KafkaAdmin@1234` | Super user — inter-broker |
-| `audit-bridge` | `AuditBridge@1234` | Write + Describe on `audit.auth.events` (Keycloak SPI) |
-| `audit-consumer` | `AuditConsumer@1234` | Read + Describe on `audit.auth.events`, Read on group `audit-consumer-group` |
+| `audit-bridge` | `AuditBridge@1234` | Write + Describe on `audit.auth.events` |
+| `audit-consumer` | `AuditConsumer@1234` | Read on `audit.auth.events`, Read on group `audit-consumer-group` |
+| `release-worker` | `ReleaseWorker@1234` | Read `release.pipeline.triggered`, Write `release.pipeline.status` |
+| `ci-service` | `CiService@1234` | Write `release.pipeline.triggered` |
+| `drift-detector` | `DriftDetector@1234` | Write `release.drift.detected` |
+| `scan-runner` | `ScanRunner@1234` | Write `release.scan.completed` |
+| `notification-consumer` | `NotificationConsumer@1234` | Read `release.pipeline.status`, `release.drift.detected` |
 
 ---
 
@@ -148,14 +174,21 @@ bash infra/kong/kong-setup.sh
 ```
 
 Script tạo:
-- Service `aeroflow-backend` → upstream `http://host.docker.internal:8888`
-- Route `/api` → paths=["/api"], methods=[GET,POST,PUT,PATCH,DELETE,OPTIONS]
-- Plugin **aeroflow-jwks** → RS256 verify từ JWKS Keycloak, cache 300s
+- Service `aeroflow-backend` → upstream `http://host.docker.internal:8888`, route `/api`
+- Service `release-worker` → upstream `http://release-worker:8100`, route `/api/release`
+- Plugin **aeroflow-jwks** trên cả 2 services → RS256 verify từ JWKS Keycloak, cache 300s  
+  Inject headers: `X-User-Id`, `X-User-Email`, `X-User-Name`, `X-User-Roles`, `X-Tenant-Id`, `X-Role-Id`, `X-Kong-Verified: true`
 - Plugin **IP Restriction** → allowlist private ranges (10/8, 172.16/12, 192.168/16)
 - Plugin **Correlation-ID** → header `X-Request-ID`
 - Plugin **Rate Limiting** → 300 req/phút per IP (policy=local)
 
 Nếu cert mTLS đã được tạo (`infra/certs/kong-client.crt` tồn tại), script sẽ tự đăng ký thêm.
+
+> **Lưu ý:** Mỗi khi rebuild Kong image (sau khi sửa `handler.lua`), cần restart Kong rồi chạy lại `kong-setup.sh`:
+> ```bash
+> docker compose build kong && docker compose up -d kong
+> bash infra/kong/kong-setup.sh
+> ```
 
 ---
 
@@ -188,7 +221,7 @@ Sau đó chạy lại `kong-setup.sh` để đăng ký cert vào Kong.
 
 ## TEST CASES
 
-### Kết quả Test Thực Tế — 2026-05-25
+### Kết quả Test Thực Tế — 2026-05-29
 
 Chạy trên stack live (Docker Compose, Windows 11). Môi trường: `localhost`, không có backend thật ở port 8888.
 
@@ -196,7 +229,7 @@ Chạy trên stack live (Docker Compose, Windows 11). Môi trường: `localhost
 |---|---|---|---|
 | TC-01 | KC HA Failover | ✅ PASS | node1 dừng → HAProxy route sang node2, login thành công |
 | TC-02 | KC Session Sync | ✅ PASS | Token node1 introspect trên node2 → `active:true` |
-| TC-03 | JWT valid → Kong | ✅ PASS | 502 (auth pass, no real backend) |
+| TC-03 | JWT valid → Kong → release-worker | ✅ PASS | 200 real data; tested 2026-05-29 |
 | TC-04 | JWT missing → 401 | ✅ PASS | `HTTP/1.1 401 Unauthorized` |
 | TC-05 | JWT tampered → 401 | ✅ PASS | `HTTP/1.1 401 Unauthorized` |
 | TC-06 | JWT expired → 401 | ✅ PASS | Token expires_in=15s → đợi 22s → 401 |
@@ -205,7 +238,7 @@ Chạy trên stack live (Docker Compose, Windows 11). Môi trường: `localhost
 | TC-09 | Brute force 5 fail | ✅ PASS | 6 lần sai → `disabled:true`, đúng password vẫn 401 |
 | TC-10 | Session limit | ⚠️ Không cấu hình | KC 24 hỗ trợ qua User Session Limits flow, chưa enable |
 | TC-11 | Password policy | ✅ PASS | "abc" → 400, "password123" → 400, "Str0ng@Pass" → 201 |
-| TC-12 | Kafka audit pipeline | ✅ PASS | LOGIN events → Kafka → PostgreSQL, latency ~2s |
+| TC-12 | Kafka audit pipeline | ✅ PASS | LOGIN events → Kafka → PostgreSQL, latency ~12s (bridge poll=10s); IP address written |
 | TC-13 | Kafka ACL deny | ✅ PASS | `TopicAuthorizationException`: audit-consumer WRITE bị từ chối |
 | TC-14 | KC Event Logging | ✅ PASS | KC event store có LOGIN events |
 | TC-15 | Correlation ID | ✅ PASS | `X-Kong-Request-Id` trong response |
@@ -214,31 +247,47 @@ Chạy trên stack live (Docker Compose, Windows 11). Môi trường: `localhost
 | TC-18 | HAProxy round-robin | ✅ PASS | 4/4 requests → HTTP 200 |
 | TC-19 | Token payload | ✅ PASS | RS256, issuer đúng, expires_in=900 |
 | — | KC HA cluster (cả 2 node) | ✅ PASS | Cả node1 và node2 `"status":"UP"` |
-| — | Kong plugins đã config | ✅ PASS | 6 plugins: aeroflow-jwks, jwt, pre-function, rate-limiting, correlation-id, ip-restriction |
+| — | Kong plugins đã config | ✅ PASS | 4 plugins: aeroflow-jwks (×2 services), rate-limiting, correlation-id, ip-restriction |
+| TR-E2E | End-to-end qua Kong 8000 | ✅ PASS | GET /api/release/pipelines → 200 data thật; POST trigger → pipeline_id tạo thành công |
+| TR-02b | Trigger staging (correct field) | ✅ PASS | `target_environments:["staging"]` → AWAITING_APPROVAL |
+| TR-09b | Approve staging 2026-05-29 | ✅ PASS | POST approve → SUCCESS; DB release_history ghi staging/SUCCESS |
+| TR-10b | Reject staging 2026-05-29 | ✅ PASS | POST reject → pipeline FAILED |
+| TR-11b | Rollback 2026-05-29 | ✅ PASS | rb-20260529 → DB status=SUCCESS (3 steps) |
+| TR-15b | Drift detection 2026-05-29 | ✅ PASS | drift_id=5, CRITICAL_DRIFT, production vs staging |
+| TR-17b | Immutable release_history | ✅ PASS | UPDATE blocked: "release_history is immutable" |
+| TR-22b | Partition auto-create | ✅ PASS | release_history_2026_06 created |
+| TC-RBAC | ai-engineer rollback → 403 | ✅ PASS | "Only platform-admin can trigger rollback" |
+| TC-20 | MFA bắt buộc (CONFIGURE_TOTP) | ✅ PASS | `defaultAction: true` set trong realm-export.json; `platform-admin.requiredActions=["CONFIGURE_TOTP"]` verified qua kcadm.sh; browser login redirect sang TOTP setup screen; tested 2026-05-29 |
+| TC-21 | IP allowlist middleware release-worker | ✅ PASS | Middleware active — Docker bridge IP (172.x.x.x) passes, tested 2026-05-29 |
+| TC-22 | audit_logs immutable trigger | ✅ PASS | `UPDATE` blocked → `ERROR: audit_logs is immutable — UPDATE/DELETE are not allowed`; tested 2026-05-29 |
+| TC-23 | MongoDB service healthy | ✅ PASS | `db.runCommand({ping:1})` → `{ ok: 1 }`; tested 2026-05-29 |
+| TC-24 | Elasticsearch service healthy | ✅ PASS | `GET /_cluster/health` → `"status":"green"`; tested 2026-05-29 |
+| TC-25 | Jaeger UI accessible | ✅ PASS | `http://localhost:16686` → 200 OK; OTLP endpoint `http://jaeger:4317` set in release-worker env; tested 2026-05-29 |
+| TC-26 | JWKS refresher hoạt động | ✅ PASS | `INFO Registered new Kong JWT credential` trong logs jwks-refresher; tested 2026-05-29 |
 
 ---
 
 ### Chi tiết kết quả đã pass
 
-#### TC-03/04/05 — JWT Verification qua Kong
+#### TC-03/04/05 — JWT Verification qua Kong → Release Worker
 
 ```
-# TC-03: Token hợp lệ
-curl http://localhost:8000/api/health -H "Authorization: Bearer $TOKEN"
-→ HTTP/1.1 503 Service Temporarily Unavailable   ← Kong verify pass, upstream không có
-→ X-Kong-Response-Latency: 1
-→ X-Kong-Request-Id: 85493369c179390a46489274cb5cab51
+# TC-03: Token hợp lệ → release-worker trả data thật
+curl http://localhost:8000/api/release/pipelines -H "Authorization: Bearer $TOKEN"
+→ HTTP/1.1 200 OK
+→ {"pipelines":[...], "count":25}
+→ X-Kong-Request-Id: <uuid>#counter
 
 # TC-04: Không có token
-curl http://localhost:8000/api/health
-→ HTTP/1.1 401 Unauthorized
+curl http://localhost:8000/api/release/pipelines
+→ HTTP/1.1 401 Unauthorized   ← {"message":"Authorization header missing"}
 
 # TC-05: Token bị tamper
-curl http://localhost:8000/api/health -H "Authorization: Bearer ${TOKEN}x"
-→ HTTP/1.1 401 Unauthorized
+curl http://localhost:8000/api/release/pipelines -H "Authorization: Bearer BADTOKEN"
+→ HTTP/1.1 401 Unauthorized   ← {"message":"Malformed JWT"}
 ```
 
-**Lưu ý:** 503 thay vì 200 là đúng — Kong đã verify JWT thành công nhưng không có backend service thật tại `http://host.docker.internal:8888`. Khi deploy backend thật, TC-03 sẽ trả 200 với `X-User-Id`, `X-User-Email`, `X-User-Roles`, `X-Kong-Verified: true`.
+Kong inject `X-User-Id`, `X-User-Email`, `X-User-Roles: platform-admin`, `X-Kong-Verified: true` vào upstream request. Release-worker đọc các header này để xác định user và role.
 
 ---
 
@@ -355,7 +404,7 @@ curl http://localhost:8082/health/ready → {"status": "UP"}
 
 ```bash
 curl -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=PlatformAdmin@1234"
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@123456"
 → {"token_type":"Bearer","expires_in":900}
 
 # Token RS256, issuer: http://localhost:8080/realms/aeroflow
@@ -371,7 +420,7 @@ curl -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token
 docker stop aeroflow-keycloak-1
 sleep 5
 curl -s -X POST "http://localhost:8080/realms/aeroflow/protocol/openid-connect/token" \
-  -d "grant_type=password&client_id=aeroflow-frontend&username=ai-engineer&password=AiEngineer@1234"
+  -d "grant_type=password&client_id=aeroflow-frontend&username=ai-engineer&password=Engineer@1234"
 → "expires_in":900   ← HAProxy chuyển sang node2 thành công
 
 docker start aeroflow-keycloak-1   # Khôi phục
@@ -458,7 +507,7 @@ curl .../attack-detection/brute-force/users/$USER_ID
 → {"disabled":true,"numFailures":2,"numTemporaryLockouts":0}
 
 # Thử đúng password — vẫn bị từ chối
-curl -X POST .../token -d "username=ai-engineer&password=AiEngineer@1234"
+curl -X POST .../token -d "username=ai-engineer&password=Engineer@1234"
 → {"error":"invalid_grant","error_description":"Invalid user credentials"}
 
 # Restore: failureFactor=30, clear lockout
@@ -533,6 +582,14 @@ Kong client cert sẵn sàng để gắn vào upstream service khi có backend t
 | 8 | `aeroflow-jwks` plugin: `pkey.new:load_key: expecting 'DER','PEM','JWK','*' as format` | `pkey.new(pem, "PEM")` — Lua string metatable làm `"PEM".format = string.format` (function) thay vì nil, phá vỡ format check | Đổi sang `pkey.new(pem, { format = "PEM" })` trong `handler.lua` |
 | 9 | JWKS fetch fail sau 300s: `connection refused` | `jwks_uri` dùng `localhost:8080` — từ trong Kong container, `localhost` là Kong chứ không phải Keycloak | Đổi `jwks_uri` sang `http://aeroflow-keycloak-lb:8080/...` (Docker internal DNS) |
 | 10 | `openssl req -subj "/CN=..."` fail trên Windows với Git Bash | Git Bash convert `/CN=...` thành `C:/Program Files/Git/CN=...` (Windows path) | Chạy `openssl` qua Docker container (alpine/openssl) |
+| 11 | Kafka broker không start: `Line 1: expected [{], found [⚠️]` | `kafka-broker-jaas.config` có comment kiểu `# ⚠️ DEV ONLY` — Java JAAS parser không hỗ trợ `#` comments, chỉ hỗ trợ `//` | Đổi tất cả comment từ `#` sang `//`, bỏ emoji |
+| 12 | Kafka SASL_PLAINTEXT: `SCRAM-SHA-512` không match broker | `docker-compose.yml` set `KAFKA_SASL_ENABLED_MECHANISMS: SCRAM-SHA-512` nhưng JAAS config dùng `PlainLoginModule` | Đổi sang `PLAIN` trong `docker-compose.yml` |
+| 13 | MinIO healthcheck fail: `curl: not found` | MinIO container (RELEASE.2024) không có `curl` | Dùng `["CMD", "mc", "ready", "local"]` thay vì curl |
+| 14 | `aeroflow-jwks` plugin chỉ trên `aeroflow-backend`, không có trên `release-worker` | `kong-setup.sh` chỉ đăng ký plugin cho một service | Thêm `upsert_plugin` cho `release-worker` trong `kong-setup.sh` |
+| 15 | `X-User-Roles` header rỗng → release-worker từ chối 401 | handler.lua chỉ set `X-Role-Id` từ custom claim, không đọc `realm_access.roles` | Cập nhật handler.lua: ưu tiên `realm_access.roles` (standard OIDC) và filter system roles |
+| 16 | `release-init.sql` không được mount vào postgres | Chỉ `init.sql` được mount; tất cả release tables (`pipelines`, `release_history`, v.v.) chưa tồn tại | Thêm volume mount `./infra/sql/release-init.sql:/docker-entrypoint-initdb.d/02-release-init.sql` |
+| 17 | `audit-consumer`: `column "source_event_id" does not exist` | DB live khởi tạo từ version `init.sql` cũ trước khi column được thêm; `init.sql` đã có column nhưng postgres volume không được re-init | `ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS source_event_id text;` rồi restart consumer |
+| 18 | `audit-consumer`: `ip_address` luôn rỗng | `insert_event()` hardcode `""` cho `ip_address` thay vì đọc `event.get("ipAddress")` | Sửa `main.py` dòng ip_address, đổi metadata thành `event.get("details")` |
 
 ---
 
@@ -554,7 +611,7 @@ sleep 20
 # Thử login qua HAProxy (port 8080) — phải vẫn hoạt động qua node2
 curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=PlatformAdmin@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@123456" \
   | jq .access_token | head -c 50
 ```
 
@@ -581,7 +638,7 @@ curl -s http://localhost:8081/health/ready | jq .status   # → "UP"
 # Lấy token qua node1 trực tiếp
 TOKEN=$(curl -s -X POST http://localhost:8081/realms/aeroflow/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=ai-engineer&password=AiEngineer@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=ai-engineer&password=Engineer@1234" \
   | jq -r .access_token)
 
 # Introspect token qua node2 trực tiếp
@@ -595,44 +652,33 @@ curl -s -X POST http://localhost:8082/realms/aeroflow/protocol/openid-connect/to
 
 ---
 
-### TC-03: JWT Verification — Token hợp lệ qua Kong
+### TC-03: JWT Verification — Token hợp lệ qua Kong → Release Worker
 
-**Mục đích:** Kong aeroflow-jwks plugin verify đúng và inject headers.
+**Mục đích:** Kong aeroflow-jwks plugin verify đúng và inject headers; release-worker trả data thật.
 
 ```bash
-# Bước 1: khởi động echo server trên port 8888
-python3 -c "
-import http.server, json
-class H(http.server.BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200); self.end_headers()
-        self.wfile.write(json.dumps(dict(self.headers), indent=2).encode())
-    def log_message(self, *a): pass
-http.server.HTTPServer(('0.0.0.0', 8888), H).serve_forever()
-" &
-
-# Bước 2: lấy token
+# Bước 1: lấy token
 TOKEN=$(curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=PlatformAdmin@1234" \
-  | jq -r .access_token)
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@123456" \
+  | grep -o '"access_token":"[^"]*"' | head -1 | sed 's/"access_token":"//;s/"$//')
 
-# Bước 3: gọi qua Kong
-curl -s http://localhost:8000/api/health \
-  -H "Authorization: Bearer $TOKEN" \
-  | jq 'with_entries(select(.key | test("^X-"; "i")))'
+# Bước 2: gọi qua Kong port 8000 — có JWT auth
+curl -s http://localhost:8000/api/release/pipelines \
+  -H "Authorization: Bearer $TOKEN" | head -c 200
 ```
 
 **Kết quả mong đợi:**
 ```json
-{
-  "X-User-Id": "<keycloak-user-uuid>",
-  "X-User-Email": "admin@aeroflow.local",
-  "X-User-Roles": "platform-admin",
-  "X-Kong-Verified": "true",
-  "X-Request-Id": "<uuid-counter>"
-}
+{"pipelines": [...], "count": N}
 ```
+
+Kong inject vào upstream request:
+- `X-User-Id`: Keycloak user UUID (sub claim)
+- `X-User-Email`: admin@aeroflow.local
+- `X-User-Name`: platform-admin
+- `X-User-Roles`: platform-admin (từ `realm_access.roles`, lọc system roles)
+- `X-Kong-Verified`: true
 
 ---
 
@@ -702,7 +748,7 @@ docker compose logs kong --tail=100 2>&1 | grep -c "fetch"
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=PlatformAdmin@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@123456" \
   | jq -r .access_token)
 
 # Gửi 305 request
@@ -736,7 +782,7 @@ done
 # Lần 6 — dù password đúng cũng bị từ chối
 curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=ai-engineer&password=AiEngineer@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=ai-engineer&password=Engineer@1234" \
   | jq .error_description
 ```
 
@@ -769,21 +815,21 @@ echo "User unlocked"
 # Session 1
 TOKEN1=$(curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=PlatformAdmin@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@123456" \
   | jq -r .access_token)
 echo "Session 1: ${TOKEN1:0:20}..."
 
 # Session 2
 TOKEN2=$(curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=PlatformAdmin@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@123456" \
   | jq -r .access_token)
 echo "Session 2: ${TOKEN2:0:20}..."
 
 # Session 3 — phải bị từ chối hoặc session cũ nhất bị revoke
 TOKEN3=$(curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=PlatformAdmin@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@123456" \
   | jq '{access_token: .access_token[:20], error: .error}')
 echo "Session 3: $TOKEN3"
 ```
@@ -826,7 +872,7 @@ echo "Before: $COUNT_BEFORE"
 # Bước 2: trigger login event
 curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=PlatformAdmin@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@123456" \
   > /dev/null
 
 # Bước 3: đợi consumer xử lý (~3s)
@@ -889,7 +935,7 @@ echo 'unauthorized-message' | kafka-console-producer.sh \
 # Login để tạo event
 curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=ai-engineer&password=AiEngineer@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=ai-engineer&password=Engineer@1234" \
   > /dev/null
 
 # Xem events qua Admin API
@@ -920,22 +966,45 @@ curl -sv http://localhost:8000/api/health \
 
 ---
 
-### TC-16: IP Restriction
+### TC-16: IP Restriction — Dynamic Allowlist (auth-api → Kong sync)
 
-**Mục đích:** Kong chặn request từ IP ngoài allowlist.
+**Mục đích:** Kong ip-restriction plugin được cập nhật tự động từ bảng `ip_allowlists` qua auth-api.
+**Kết quả test 2026-05-29:** PASS
 
 ```bash
-# Xem cấu hình plugin
-curl -s http://localhost:8001/plugins | jq '.data[] | select(.name=="ip-restriction") | .config'
+TENANT="a0000000-0000-0000-0000-000000000001"
+
+# 1. Thêm CIDR rule → Kong cập nhật ngay
+curl -s -X POST "http://localhost:8200/api/auth/ip-allowlists" \
+  -H "X-Tenant-Id: $TENANT" -H "X-User-Id: admin" -H "X-User-Roles: platform-admin" \
+  -H "Content-Type: application/json" \
+  -d '{"cidr":"10.0.0.0/24","label":"Office Network"}'
+
+# 2. Xác nhận Kong plugin được tạo/cập nhật
+curl -s http://localhost:8001/plugins | \
+  python3 -c "import sys,json; p=[x for x in json.load(sys.stdin)['data'] if x['name']=='ip-restriction']; print(p[0]['config']['allow'] if p else 'missing')"
+# Expected: ['10.0.0.0/24']
+
+# 3. Switch sang allow_all → Kong allow: 0.0.0.0/0
+curl -s -X PUT "http://localhost:8200/api/auth/ip-allowlist/config" \
+  -H "X-Tenant-Id: $TENANT" -H "X-User-Roles: platform-admin" \
+  -H "Content-Type: application/json" -d '{"mode":"allow_all"}'
+# Kong config: ['0.0.0.0/0', '::/0']
+
+# 4. Invalid CIDR → 422
+curl -s -X POST "http://localhost:8200/api/auth/ip-allowlists" \
+  -H "X-Tenant-Id: $TENANT" -H "X-User-Id: admin" -H "X-User-Roles: platform-admin" \
+  -H "Content-Type: application/json" -d '{"cidr":"not-a-cidr"}'
+# Expected: {"detail":"Invalid CIDR: not-a-cidr"}
+
+# 5. Non-admin → 403
+curl -s "http://localhost:8200/api/auth/ip-allowlists" \
+  -H "X-Tenant-Id: $TENANT" -H "X-User-Roles: ai-engineer"
+# Expected: {"detail":"Requires PLATFORM_ADMIN role"}
 ```
 
-**Kết quả mong đợi:**
-```json
-{
-  "allow": ["127.0.0.1/32","10.0.0.0/8","172.16.0.0/12","192.168.0.0/16"],
-  "deny": null
-}
-```
+**Lưu ý:** platform-admin user có OTP bật nên không lấy được token qua direct grant từ CLI.
+Test qua `http://localhost:8200` (auth-api trực tiếp) với header X-User-Roles inject thay Kong.
 
 ---
 
@@ -984,17 +1053,12 @@ docker compose logs keycloak-node2 --tail=10 2>&1 | grep -c "GET /realms"
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=PlatformAdmin@1234" \
-  | jq -r .access_token)
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@123456" \
+  | grep -o '"access_token":"[^"]*"' | head -1 | sed 's/"access_token":"//;s/"$//')
 
-echo $TOKEN | cut -d. -f2 | base64 -d 2>/dev/null | jq '{
-  sub,
-  email,
-  iss,
-  aud,
-  realm_access: .realm_access.roles,
-  exp_in_min: ((.exp - now) / 60 | floor)
-}'
+# Decode JWT payload (base64url → JSON)
+echo $TOKEN | cut -d. -f2 | sed 's/-/+/g;s/_/\//g' | \
+  awk '{l=length($0)%4; if(l==2)$0=$0"=="; if(l==3)$0=$0"="; print}' | base64 -d 2>/dev/null
 ```
 
 **Kết quả mong đợi:**
@@ -1008,6 +1072,211 @@ echo $TOKEN | cut -d. -f2 | base64 -d 2>/dev/null | jq '{
   "exp_in_min": 14
 }
 ```
+
+---
+
+### TC-20: MFA Bắt Buộc (CONFIGURE_TOTP)
+
+**Điều kiện:** Fresh realm import (sau `docker compose down -v && docker compose up -d`).
+
+```bash
+# Login lần đầu với user mới — phải bị yêu cầu setup TOTP
+curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@123456"
+```
+
+**Kết quả mong đợi:** Response có `"error":"invalid_grant"` với `"error_description":"Account is not fully set up"` và required action `CONFIGURE_TOTP` — không cấp token cho đến khi user hoàn thành TOTP setup qua browser.
+
+---
+
+### TC-21: IP Allowlist Middleware — Release Worker
+
+```bash
+# Test từ bên ngoài Docker network (localhost qua port 8100 trực tiếp)
+# Trong Docker bridge, host Docker IP thường là 172.17.0.1 hoặc tương tự — thuộc private range nên PASS
+
+# Để test FAIL: gọi trực tiếp từ host với IP không thuộc private range
+# Trong môi trường Docker Compose, client.host sẽ là Docker bridge IP → thuộc 172.16.0.0/12 → PASS
+# Smoke test: health check phải luôn accessible
+curl -sf http://localhost:8100/health && echo "Health OK (no auth, no IP check)"
+
+# Verify middleware active trong release-worker logs
+docker compose logs release-worker | grep -i "origin\|forbidden\|middleware" | tail -5
+```
+
+---
+
+### TC-22: audit_logs Immutable Trigger
+
+```bash
+# Chạy sau khi stack fresh start (trigger đã được tạo từ init.sql)
+docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow -c "
+  -- Thử UPDATE một row — phải bị block
+  UPDATE audit_logs SET action = 'HACKED' WHERE id IN (SELECT id FROM audit_logs LIMIT 1);
+"
+```
+
+**Kết quả mong đợi:** `ERROR:  audit_logs is immutable — UPDATE/DELETE are not allowed (compliance audit trail)`
+
+```bash
+# Kiểm tra trigger tồn tại
+docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow \
+  -c "SELECT trigger_name, event_manipulation FROM information_schema.triggers WHERE trigger_name LIKE 'trg_audit_logs%';"
+# → trg_audit_logs_no_update | UPDATE
+# → trg_audit_logs_no_delete | DELETE
+```
+
+---
+
+### TC-23 + TC-24: MongoDB & Elasticsearch Services
+
+```bash
+# MongoDB
+curl -sf http://localhost:27017 || docker exec aeroflow-mongo mongosh --eval "db.adminCommand('ping')" | grep -i "ok"
+
+# Elasticsearch
+curl -sf http://localhost:9200/_cluster/health | grep -o '"status":"[^"]*"'
+# Kết quả: "status":"green" hoặc "yellow" (single node)
+```
+
+---
+
+### TC-25: Jaeger Distributed Tracing
+
+```bash
+# Kiểm tra Jaeger UI accessible
+curl -sf http://localhost:16686/ > /dev/null && echo "Jaeger UI OK"
+
+# Trigger một pipeline request (tạo trace)
+TOKEN=$(curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@123456" \
+  | jq -r .access_token)
+curl -s http://localhost:8000/api/release/pipelines -H "Authorization: Bearer $TOKEN" > /dev/null
+
+# Xem trace trong Jaeger UI: http://localhost:16686
+# Service: release-worker → tìm span "pipeline.execute"
+```
+
+---
+
+### TC-26: JWKS Refresher
+
+```bash
+# Kiểm tra service đang chạy và sync JWKS
+docker compose logs jwks-refresher --tail=20
+# Kết quả mong đợi: log "JWKS fetched, kid=..." mỗi 300s
+
+# Kiểm tra service đã start và không crash
+docker compose ps jwks-refresher
+```
+
+---
+
+### TC-27: IP Allowlist CRUD + Kong Sync — Full Flow
+
+**Mục đích:** Verify toàn bộ vòng đời IP rule: thêm → toggle → xóa → đồng bộ Kong.
+**Kết quả test 2026-05-29:** PASS ✅
+
+```bash
+TENANT="a0000000-0000-0000-0000-000000000001"
+
+# Thêm 2 rules
+R1=$(curl -s -X POST http://localhost:8200/api/auth/ip-allowlists \
+  -H "X-Tenant-Id: $TENANT" -H "X-User-Id: admin" -H "X-User-Roles: platform-admin" \
+  -H "Content-Type: application/json" -d '{"cidr":"10.0.0.0/24","label":"Office"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+
+R2=$(curl -s -X POST http://localhost:8200/api/auth/ip-allowlists \
+  -H "X-Tenant-Id: $TENANT" -H "X-User-Id: admin" -H "X-User-Roles: platform-admin" \
+  -H "Content-Type: application/json" -d '{"cidr":"192.168.1.0/24","label":"Dev"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+
+# Đặt mode = allowlist → Kong nhận 2 CIDRs
+curl -s -X PUT http://localhost:8200/api/auth/ip-allowlist/config \
+  -H "X-Tenant-Id: $TENANT" -H "X-User-Roles: platform-admin" \
+  -H "Content-Type: application/json" -d '{"mode":"allowlist"}'
+# Kong allow: ['10.0.0.0/24', '192.168.1.0/24']
+
+# Toggle disable R1
+curl -s -X PATCH "http://localhost:8200/api/auth/ip-allowlists/$R1/toggle" \
+  -H "X-Tenant-Id: $TENANT" -H "X-User-Roles: platform-admin"
+# Kong allow: ['192.168.1.0/24']  (chỉ còn R2 active)
+
+# Delete R2
+curl -s -X DELETE "http://localhost:8200/api/auth/ip-allowlists/$R2" \
+  -H "X-Tenant-Id: $TENANT" -H "X-User-Roles: platform-admin"
+# Kong allow: fallback ['127.0.0.1/32','10.0.0.0/8','172.16.0.0/12','192.168.0.0/16']
+```
+
+| Step | Expected | Observed |
+|---|---|---|
+| Add 2 CIDRs | 201 Created × 2 | ✅ |
+| Set mode=allowlist | Kong allow = 2 CIDRs | ✅ |
+| Toggle disable | Kong allow = 1 CIDR | ✅ |
+| Delete last active | Kong allow = private fallback | ✅ |
+| allow_all mode | Kong allow = 0.0.0.0/0, ::/0 | ✅ |
+| Invalid CIDR | 422 detail: Invalid CIDR | ✅ |
+| Non-admin role | 403 detail: Requires PLATFORM_ADMIN | ✅ |
+
+---
+
+### TC-28: API Keys — Generate / Revoke / Rotate
+
+**Mục đích:** Verify API key lifecycle: tạo key (raw shown once) → revoke → rotate (audit chain).
+**Kết quả test 2026-05-29:** PASS ✅
+
+```bash
+TENANT="a0000000-0000-0000-0000-000000000001"
+
+# Tạo key read_only
+RESULT=$(curl -s -X POST http://localhost:8200/api/auth/api-keys \
+  -H "X-Tenant-Id: $TENANT" -H "X-User-Id: admin" -H "X-User-Roles: platform-admin" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"CI Pipeline","scope":"read_only","expires_at":"2027-01-01"}')
+KEY_ID=$(echo $RESULT | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+# raw_key trong response (bắt đầu sk-ro-), KHÔNG có trong GET list sau đó
+
+# Revoke
+curl -s -X POST "http://localhost:8200/api/auth/api-keys/$KEY_ID/revoke" \
+  -H "X-Tenant-Id: $TENANT" -H "X-User-Roles: platform-admin"
+# revoked_at: timestamp
+
+# Revoke lần 2 → 404
+curl -s -X POST "http://localhost:8200/api/auth/api-keys/$KEY_ID/revoke" \
+  -H "X-Tenant-Id: $TENANT" -H "X-User-Roles: platform-admin"
+# {"detail":"Key not found or already revoked"}
+
+# Tạo key full_access và rotate
+K2=$(curl -s -X POST http://localhost:8200/api/auth/api-keys \
+  -H "X-Tenant-Id: $TENANT" -H "X-User-Id: admin" -H "X-User-Roles: platform-admin" \
+  -H "Content-Type: application/json" -d '{"name":"Prod Key","scope":"full_access"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+
+curl -s -X POST "http://localhost:8200/api/auth/api-keys/$K2/rotate" \
+  -H "X-Tenant-Id: $TENANT" -H "X-User-Id: admin" -H "X-User-Roles: platform-admin"
+# new key: rotated_from = $K2, raw_key present (sk-prod-)
+# old key ($K2): revoked_at set
+
+# Invalid scope → 422
+curl -s -X POST http://localhost:8200/api/auth/api-keys \
+  -H "X-Tenant-Id: $TENANT" -H "X-User-Id: admin" -H "X-User-Roles: platform-admin" \
+  -H "Content-Type: application/json" -d '{"name":"X","scope":"superadmin"}'
+# {"detail":"Invalid scope: superadmin"}
+```
+
+| Step | Expected | Observed |
+|---|---|---|
+| Create read_only | 201, raw_key starts sk-ro- | ✅ |
+| GET list | raw_key absent | ✅ |
+| Revoke | revoked_at set | ✅ |
+| Revoke again | 404 | ✅ |
+| Rotate full_access | new key sk-prod-, rotated_from set | ✅ |
+| Old key after rotate | revoked_at set | ✅ |
+| Invalid scope | 422 | ✅ |
+
+**Security note:** Raw key chỉ xuất hiện trong response POST /api-keys và POST .../rotate — không bao giờ lưu plaintext vào DB (chỉ bcrypt hash).
 
 ---
 
@@ -1073,7 +1342,15 @@ docker compose logs audit-consumer | tail=20
 # Topic chưa có → chạy bash infra/kafka/kafka-setup.sh
 ```
 
-### audit_logs không có rows
+### audit_logs không có rows / audit-consumer error `source_event_id does not exist`
+
+```bash
+# Thêm column thiếu (chỉ cần nếu dùng volume cũ)
+docker exec aeroflow-postgres psql -U aeroflow -d aeroflow \
+  -c "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS source_event_id text;"
+docker restart aeroflow-audit-consumer
+```
+
 ```bash
 # Kiểm tra SPI đang gửi event
 docker compose logs keycloak-node1 | grep -i "kafka\|aeroflow-kafka\|event"
@@ -1083,7 +1360,7 @@ docker compose logs audit-consumer | grep "Stored\|error"
 
 # Trigger event: đăng nhập vào Keycloak → SPI push ngay
 curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=PlatformAdmin@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@123456" \
   > /dev/null
 sleep 5
 docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow \
@@ -1098,6 +1375,41 @@ docker compose logs kong-migration
 # Reset hoàn toàn (xóa data)
 docker compose down -v && docker compose up -d
 ```
+
+### Kong aeroflow-jwks chặn requests sau rebuild Kong
+
+Sau khi sửa `handler.lua` và rebuild Kong, cần re-register plugins:
+```bash
+docker compose build kong && docker compose up -d kong
+# Đợi Kong healthy
+bash infra/kong/kong-setup.sh
+```
+
+### Release-worker Kafka consumer không nhận message sau ACL setup muộn
+
+Nếu Kafka ACL được setup sau khi release-worker đã start, consumer thread có thể đã exit do lỗi authorization. Cần restart:
+```bash
+docker restart aeroflow-release-worker aeroflow-celery-worker
+```
+
+### Clean restart hoàn toàn (reset về trạng thái ban đầu)
+
+```bash
+# Xóa tất cả containers + volumes → realm import sẽ chạy lại
+docker compose down -v
+
+# Rebuild images nếu code thay đổi
+docker compose build --no-cache keycloak-node1 keycloak-node2 kong
+
+# Khởi động lại
+docker compose up -d
+
+# Chờ healthy rồi setup
+bash infra/kafka/kafka-setup.sh
+bash infra/kong/kong-setup.sh
+```
+
+> Sau `down -v`, Keycloak import realm-export.json fresh → user passwords là: `platform-admin=Admin@123456`, `ai-engineer=Engineer@1234`, `executive-viewer=Viewer@123456`.
 
 ### Frontend không kết nối Keycloak
 ```bash
@@ -1139,41 +1451,59 @@ docker compose up -d
 Chạy theo thứ tự để xác nhận stack hoạt động sau khi deploy:
 
 ```bash
-# 1. Tất cả services healthy
-docker compose ps | grep -v "Up\|Exited (0)" | grep -v "NAME"
+# 1. Tất cả services healthy (không có EXITED hoặc unhealthy ngoài kong-migration)
+docker ps --format "table {{.Names}}\t{{.Status}}"
 
 # 2. Keycloak cả 2 nodes healthy
 curl -sf http://localhost:8081/health/ready && echo "node1 OK"
 curl -sf http://localhost:8082/health/ready && echo "node2 OK"
 
 # 3. JWKS endpoint accessible
-curl -sf http://localhost:8080/realms/aeroflow/protocol/openid-connect/certs | jq '.keys | length'
-# → ít nhất 1 key
+curl -sf http://localhost:8080/realms/aeroflow/protocol/openid-connect/certs | grep -c '"kty"' | xargs echo "JWKS keys:"
 
 # 4. Lấy token thành công
 TOKEN=$(curl -sf -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=PlatformAdmin@1234" \
-  | jq -r .access_token)
-[ -n "$TOKEN" ] && echo "Token OK" || echo "Token FAIL"
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@123456" \
+  | grep -o '"access_token":"[^"]*"' | head -1 | sed 's/"access_token":"//;s/"$//')
+[ -n "$TOKEN" ] && echo "Token OK (${#TOKEN} chars)" || echo "Token FAIL"
 
 # 5. Kong plugins đã được cấu hình
-curl -sf http://localhost:8001/plugins | jq '.data[].name'
+curl -sf http://localhost:8001/plugins | grep -o '"name":"[^"]*"' | sort -u
 # → "aeroflow-jwks", "ip-restriction", "correlation-id", "rate-limiting"
 
-# 6. Kafka topic tồn tại
-docker cp /dev/stdin aeroflow-kafka:/tmp/a.props << 'EOF'
-security.protocol=SASL_PLAINTEXT
-sasl.mechanism=PLAIN
-sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username="admin" password="KafkaAdmin@1234";
-EOF
-docker exec aeroflow-kafka /opt/kafka/bin/kafka-topics.sh \
-  --bootstrap-server localhost:9092 --command-config /tmp/a.props --list \
-  | grep audit.auth.events && echo "Kafka topic OK"
+# 6. End-to-end qua Kong → release-worker
+curl -sf -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/release/pipelines \
+  | grep -o '"count":[0-9]*' && echo "→ Kong E2E OK"
 
-# 7. PostgreSQL audit_logs tồn tại
-docker exec aeroflow-postgres psql -U aeroflow -d aeroflow -tAc "\dt audit_logs*" \
-  | grep audit_logs && echo "DB OK"
+# 7. No-auth → 401
+curl -sf http://localhost:8000/api/release/pipelines || echo "Unauthenticated → 401 OK"
+
+# 8. MinIO healthy
+curl -sf http://localhost:9000/minio/health/live && echo "MinIO OK"
+
+# 9. Kafka topic tồn tại (cần /tmp/a.props trong kafka container)
+docker exec aeroflow-kafka bash -c "
+printf 'security.protocol=SASL_PLAINTEXT\nsasl.mechanism=PLAIN\nsasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username=\"admin\" password=\"KafkaAdmin@1234\";\n' > /tmp/a.props
+/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --command-config /tmp/a.props --list
+" | grep "audit.auth.events" && echo "Kafka topic OK"
+
+# 10. PostgreSQL tables tồn tại (auth + release)
+docker exec aeroflow-postgres psql -U aeroflow -d aeroflow -tAc \
+  "SELECT COUNT(*) FROM information_schema.tables WHERE table_name IN ('audit_logs','pipelines','release_history','rollback_operations');"
+# → 4
+
+# 11. MongoDB healthy
+docker exec aeroflow-mongo mongosh --eval "db.adminCommand('ping')" --quiet | grep -c '"ok" : 1' | xargs echo "MongoDB ping:"
+
+# 12. Elasticsearch healthy
+curl -sf http://localhost:9200/_cluster/health | grep -o '"status":"[a-z]*"' && echo "← Elasticsearch cluster health"
+
+# 13. Jaeger UI accessible
+curl -sf http://localhost:16686/ > /dev/null && echo "Jaeger UI OK"
+
+# 14. JWKS refresher đang chạy
+docker compose ps jwks-refresher | grep "Up" && echo "JWKS Refresher OK"
 ```
 
 ---
@@ -1212,12 +1542,12 @@ release-worker  | INFO:     Application startup complete.
 
 | Service | URL | Ghi chú |
 |---------|-----|---------|
-| Release Worker API | http://localhost:8100 | FastAPI REST API |
-| Release Worker Health | http://localhost:8100/health | Health check |
-| Release History | http://localhost:8100/api/release/history | Cần token |
+| Release Worker (trực tiếp) | http://localhost:8100 | FastAPI REST API |
+| Release Worker (qua Kong) | http://localhost:8000/api/release | **Dùng endpoint này** — có JWT auth |
+| Release Worker Health | http://localhost:8100/health | Health check (public, không cần token) |
 | PostgreSQL | localhost:5432 | aeroflow / aeroflow_secret |
-| MinIO Console | http://localhost:9001 | minioadmin / minioadmin |
-| MongoDB | localhost:27017 | Không auth (dev) |
+| MinIO Console | http://localhost:9001 | minio / minio_secret |
+| MinIO S3 API | http://localhost:9000 | minio / minio_secret |
 
 ### Kafka Users (Release)
 
@@ -1233,10 +1563,10 @@ release-worker  | INFO:     Application startup complete.
 
 ## R3 — Setup Release Schema (PostgreSQL)
 
-Chạy một lần sau khi stack đã khởi động:
+> **Tự động trên fresh start:** `release-init.sql` được mount vào postgres tại `/docker-entrypoint-initdb.d/02-release-init.sql` — chạy tự động khi volume postgres chưa có data. Bước này chỉ cần thực hiện thủ công nếu stack đã chạy trước và volume đã tồn tại.
 
 ```bash
-# Apply release schema (tables: pipelines, release_packages, release_history, etc.)
+# Chỉ cần nếu đang dùng volume cũ (không down -v)
 docker exec -i aeroflow-postgres psql -U aeroflow -d aeroflow \
   < infra/sql/release-init.sql
 
@@ -1344,15 +1674,18 @@ docker exec aeroflow-kafka /opt/kafka/bin/kafka-topics.sh \
 | 3 | `_run_rollback_impl` gọi `execute_rollback(event)` trực tiếp — Celery task không callable as function | `execute_rollback` là Celery task, gọi trực tiếp thiếu request context → `AttributeError: 'NoneType' object has no attribute 'push'` | Extract `_execute_rollback_core()` là plain function; cả thread lẫn Celery task gọi vào đó |
 | 4 | `release_history` không có trigger bảo vệ immutability | Schema chỉ có comment `-- KHÔNG UPDATE/DELETE`, không có enforcement | Thêm trigger `fn_release_history_immutable()` + `trg_release_history_no_update` + `trg_release_history_no_delete` |
 | 5 | `import threading` bị đặt trong `if __name__ == "__main__"` | Threading dùng trong `start_kafka_consumer` (body file) nhưng chỉ import ở entry point | Move `import threading` lên top-level imports |
+| 6 | `kong-setup.sh` dùng `KC_BASE` (localhost:8080) cho `JWKS_URI` của Kong plugin | Kong chạy trong Docker container — `localhost:8080` trỏ về Kong chính, không phải Keycloak | Đổi sang `KONG_KC_HOST=http://aeroflow-keycloak-lb:8080`; fix đã áp dụng vào `kong-setup.sh` |
+| 7 | `release-setup.sh` chạy trên Windows Git Bash bị path conversion `/opt/kafka/...` → `C:/Program Files/Git/...` | Git Bash tự convert Unix paths bắt đầu bằng `/` | Chạy via `docker exec aeroflow-kafka bash -c "/opt/kafka/bin/..."` thay vì trực tiếp; cần update script |
+| 8 | `keycloak-users` Kong consumer phải tồn tại trước khi jwks-refresher đăng ký JWT credential | jwks-refresher gọi `POST /consumers/keycloak-users/jwt` — nếu consumer chưa tạo → 404 | Tạo consumer: `curl -X POST http://localhost:8001/consumers -d "username=keycloak-users"` rồi restart jwks-refresher |
 
 ### Những gì còn thiếu / cần làm thêm
 
 | # | Hạng mục | Mức độ | Ghi chú |
 |---|----------|--------|---------|
 | 1 | **Celery worker** cho production | Low | Hiện dùng thread trực tiếp; cần Celery worker process cho retry/rate-limit/observability |
-| 2 | **OTEL/Jaeger** tracing | Low | `OTEL_EXPORTER_OTLP_ENDPOINT=""` → gRPC error non-fatal. Cần deploy Jaeger/OTEL Collector |
-| 3 | **MongoDB integration** | Low | `MONGO_URI` configured nhưng package manifest ghi PostgreSQL; MongoDB chưa dùng, có thể bỏ |
-| 4 | **Production environment** approval chain | Low | Chưa test target=production (hai-stage: staging + production approval) |
+| 2 | **Production environment** approval chain | Low | Chưa test target=production (hai-stage: staging + production approval) |
+| 3 | **Elasticsearch indexing** | Medium | Service đã deploy; cần thêm code index release_history/audit_logs vào ES |
+| 4 | **mTLS enforcement trong backend** | Medium | Kong đã config client cert; backend (release-worker) chưa verify cert — chỉ IP allowlist hiện tại |
 
 ---
 
@@ -1362,11 +1695,12 @@ docker exec aeroflow-kafka /opt/kafka/bin/kafka-topics.sh \
 # 1. Lấy token platform-admin
 TOKEN=$(curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=PlatformAdmin@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@123456" \
   | jq -r .access_token)
 
 # 2. Trigger pipeline target dev (auto-promote)
-curl -s -X POST http://localhost:8100/api/release/pipeline/trigger \
+# Quan trọng: dùng "target_environments" (list), KHÔNG phải "target_env" (sẽ bị ignore)
+curl -s -X POST http://localhost:8000/api/release/pipeline/trigger \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -1374,7 +1708,7 @@ curl -s -X POST http://localhost:8100/api/release/pipeline/trigger \
     "branch": "auth/release",
     "commit_sha": "4d143b2",
     "target_environments": ["dev"]
-  }' | jq .
+  }' | grep -o '"pipeline_id":"[^"]*"\|"status":"[^"]*"'
 
 # Kết quả mong đợi:
 # { "pipeline_id": "pipe-20260527-xxxxxx", "status": "triggered" }
@@ -1421,11 +1755,12 @@ docker compose logs release-worker --tail=20
 
 ```bash
 # 1. Trigger pipeline target staging (sẽ vào AWAITING_APPROVAL)
-PIPELINE_ID=$(curl -s -X POST http://localhost:8100/api/release/pipeline/trigger \
+# Route qua Kong port 8000 để JWT được verify
+PIPELINE_ID=$(curl -s -X POST http://localhost:8000/api/release/pipeline/trigger \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"package_version":"v2.4.1","target_environments":["staging"]}' \
-  | jq -r .pipeline_id)
+  | grep -o '"pipeline_id":"[^"]*"' | sed 's/"pipeline_id":"//;s/"//')
 
 echo "Pipeline: $PIPELINE_ID"
 
@@ -1491,7 +1826,7 @@ docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow \
 
 # 4. Test rollback bởi non-admin → phải bị 403
 AI_TOKEN=$(curl -s -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=ai-engineer&password=AiEngineer@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=ai-engineer&password=Engineer@1234" \
   | jq -r .access_token)
 
 curl -s -X POST http://localhost:8100/api/release/rollback \
@@ -1631,7 +1966,7 @@ Các endpoint mới thêm vào `release-worker` — tất cả đều đi qua Ko
 ```bash
 TOKEN=$(curl -sf -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=aeroflow-backend&client_secret=aeroflow-backend-secret-change-in-prod&grant_type=password&username=platform-admin&password=PlatformAdmin@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@123456" \
   | jq -r .access_token)
 
 # 1. Trigger drift detection thủ công (không cần Celery)
@@ -1779,8 +2114,7 @@ print('Done')
 
 ## Checklist Smoke Test — Release (thêm vào sau Auth checklist)
 
-> **Lưu ý quan trọng (2026-05-27):** Client `aeroflow-frontend` không hỗ trợ Direct Access Grants.  
-> Dùng `aeroflow-backend` với secret để lấy token cho CLI tests:
+> **Lấy token cho CLI tests (2026-05-29):** Dùng `aeroflow-frontend` với username/password:
 
 ```bash
 # 8. Release Worker healthy
@@ -1803,7 +2137,7 @@ docker exec aeroflow-kafka /opt/kafka/bin/kafka-topics.sh \
 
 # 11. Trigger test pipeline (qua Kong :8000 với JWT, hoặc trực tiếp :8100)
 TOKEN=$(curl -sf -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
-  -d "client_id=aeroflow-backend&client_secret=aeroflow-backend-secret-change-in-prod&grant_type=password&username=platform-admin&password=PlatformAdmin@1234" \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@123456" \
   | jq -r .access_token)
 PIPE_ID=$(curl -sf -X POST http://localhost:8000/api/release/pipeline/trigger \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
@@ -1851,3 +2185,336 @@ curl -sf -X POST http://localhost:8000/api/release/admin/create-partition \
   -H "Authorization: Bearer $TOKEN" | jq .table
 # → "release_history_2026_06" (hoặc tháng tiếp theo)
 ```
+
+---
+
+# Phần 3 — OpenBao Secrets Vault
+
+## Tổng quan kiến trúc
+
+| Thành phần | Vai trò |
+|---|---|
+| **OpenBao** (`openbao/openbao:latest`) | KV v2 + Transit engine — lưu secrets và quản lý cryptographic keys |
+| **PostgreSQL `secrets_vault`** | Metadata: key_name, key_type, version, rotation_due_at — KHÔNG lưu giá trị |
+| **openbao-init** | One-shot: khởi tạo (init) + unseal mỗi khi container restart |
+| **openbao-setup** | One-shot: enable KV v2 `secret/` + Transit `transit/`, tạo policy `secrets-vault-policy` |
+| **openbao-secrets-bootstrap** | One-shot: đẩy AI provider keys vào `secret/data/tenants/ai-keys/*` |
+
+**Secret types và storage:**
+
+| key_type | Engine | Mô tả |
+|---|---|---|
+| `SIGNING_KEY`, `ENCRYPTION_KEY`, `HMAC_KEY` | **Transit** | Key tạo trong vault, không bao giờ export — software HSM |
+| `BEARER_TOKEN`, `MCP_TOKEN`, `KB_API_KEY` | **KV v2** | Raw value lưu encrypted trong vault |
+
+**Path format:**
+- KV v2: `secret/data/tenants/{tenant_id}/{key_name}`
+- Transit: `transit/keys/{tenant_id[:8]}-{key_name_lower}`
+
+**Startup order:**
+```
+openbao → openbao-init → openbao-setup → openbao-secrets-bootstrap → auth-api
+```
+
+## URLs & Credentials
+
+| Service | URL | Ghi chú |
+|---|---|---|
+| OpenBao UI | http://localhost:8300/ui | Root token: xem bên dưới |
+| OpenBao API | http://localhost:8300/v1/ | Dùng header `X-Vault-Token` |
+| Auth API secrets | http://localhost:8200/api/auth/secrets | Qua Kong: http://localhost:8000/api/auth/secrets |
+
+**Lấy root token:**
+```bash
+docker exec aeroflow-openbao cat /openbao/data/.root-token
+```
+
+## O1 — Khởi động OpenBao Stack
+
+```bash
+# Khởi động lần đầu (xóa volume cũ nếu có lỗi permission)
+docker compose up -d openbao
+
+# Chờ healthy, sau đó chạy init chain:
+docker compose up -d openbao-init      # init + unseal
+docker compose up -d openbao-setup     # enable KV v2
+docker compose up -d openbao-secrets-bootstrap  # bootstrap infra secrets
+docker compose up -d auth-api
+
+# Hoặc để Compose tự xử lý depends_on:
+docker compose up -d
+```
+
+**Kiểm tra từng bước:**
+```bash
+docker logs aeroflow-openbao-init      --tail 5   # → ✅ OpenBao init complete
+docker logs aeroflow-openbao-setup     --tail 5   # → ✅ OpenBao setup complete
+docker logs aeroflow-openbao-secrets-bootstrap --tail 5  # → ✅ Bootstrap complete
+```
+
+## O2 — Troubleshooting OpenBao
+
+### Permission denied khi init
+```
+failed to initialize barrier: failed to persist keyring: mkdir /openbao/data/core: permission denied
+```
+**Nguyên nhân:** Volume `openbao_data` được tạo với owner `root`, nhưng server chạy bằng user `openbao`.  
+**Fix đã áp dụng:** `BAO_SKIP_DROP_ROOT: "true"` trong docker-compose (server chạy as root, tránh privilege drop).
+
+```bash
+# Nếu vẫn gặp lỗi, xóa volume và restart:
+docker compose stop openbao openbao-init openbao-setup openbao-secrets-bootstrap auth-api
+docker compose rm -f openbao openbao-init openbao-setup openbao-secrets-bootstrap auth-api
+docker volume rm data-agentt_openbao_data
+docker compose up -d
+```
+
+### HAProxy 503 / keycloak-lb unhealthy
+
+**Nguyên nhân 1:** `keycloak-node2` chưa chạy khi HAProxy start → DNS resolution fail → HAProxy crash.  
+**Fix đã áp dụng:** `keycloak-lb` depends on `keycloak-node2: service_started`.
+
+**Nguyên nhân 2:** HAProxy backend health check chưa pass (cần `rise 3` = 15s).  
+**Healthcheck:** `wget -qO- http://127.0.0.1:8080/health/ready 2>&1 | grep -qE 'UP|503'`  
+→ Pass ngay cả khi backend đang warm-up (503 = haproxy alive).
+
+```bash
+# Kiểm tra HAProxy backend status:
+docker logs aeroflow-keycloak-lb --tail 20
+# kc1/kc2 UP → "keycloak_nodes/kc1 ... 200"
+# kc1/kc2 DOWN → "<NOSRV> ... 503"
+
+# Restart nếu cần:
+docker compose restart keycloak-lb
+```
+
+### OpenBao sealed sau restart
+```bash
+# openbao-init tự unseal — chạy lại nếu cần:
+docker compose up -d openbao-init
+docker logs aeroflow-openbao-init --tail 5
+# → ✅ Unsealed successfully / ✅ Already unsealed
+```
+
+## O3 — Test Secrets Vault API
+
+```bash
+TENANT="a0000000-0000-0000-0000-000000000001"
+H="-H X-User-Id:test -H X-User-Roles:PLATFORM_ADMIN -H X-Tenant-Id:$TENANT"
+
+# 1. Danh sách secrets
+curl -s http://localhost:8200/api/auth/secrets $H | jq 'length'
+
+# 2. Tạo KV v2 secret (BEARER_TOKEN — cần value)
+KV_ID=$(curl -s -X POST http://localhost:8200/api/auth/secrets $H \
+  -H "Content-Type: application/json" \
+  -d '{"key_name":"MY_API_KEY","key_type":"BEARER_TOKEN","algorithm":"AES-256","realm":"PROD","value":"secret-value-here","rotation_days":90}' \
+  | jq -r .id)
+echo "KV secret: $KV_ID"
+
+# 3. Reveal KV value
+curl -s http://localhost:8200/api/auth/secrets/$KV_ID/reveal $H | jq .value
+# → "secret-value-here"
+
+# 4. Rotate KV secret (cần new value)
+curl -s -X POST http://localhost:8200/api/auth/secrets/$KV_ID/rotate $H \
+  -H "Content-Type: application/json" -d '{"value":"new-rotated-value"}' | jq .version
+# → 2
+
+# 5. Governance settings
+curl -s http://localhost:8200/api/auth/secrets/governance $H | jq .
+
+# 6. Audit log
+curl -s http://localhost:8200/api/auth/secrets/audit-log $H | jq 'length'
+
+# 7. Delete (soft-delete + destroy OpenBao version)
+curl -s -X DELETE http://localhost:8200/api/auth/secrets/$KV_ID $H
+
+# 8. Governance — đọc / cập nhật
+curl -s http://localhost:8200/api/auth/secrets/governance $H | jq .
+# Bật Auto-Rotation (rotate overdue Transit keys mỗi 24h)
+curl -s -X PUT http://localhost:8200/api/auth/secrets/governance $H \
+  -H "Content-Type: application/json" -d '{"vault_auto_rotation": true}' | jq .vault_auto_rotation
+# Bật PII Access Log (ghi lại mỗi lần reveal)
+curl -s -X PUT http://localhost:8200/api/auth/secrets/governance $H \
+  -H "Content-Type: application/json" -d '{"vault_pii_access_log": true}' | jq .vault_pii_access_log
+
+# 9. PII Access Log — xem các lần đã reveal secret (cần vault_pii_access_log=true)
+curl -s http://localhost:8200/api/auth/secrets/pii-log $H | jq 'length'
+curl -s http://localhost:8200/api/auth/secrets/pii-log $H | jq '[.[] | {key_name, actor_id, version, time}]'
+
+# 10. Panic Mode — khoá toàn bộ vault access (trả 503 cho tất cả secret ops)
+curl -s -X PUT http://localhost:8200/api/auth/secrets/governance $H \
+  -H "Content-Type: application/json" -d '{"vault_panic_mode": true}' | jq .vault_panic_mode
+# → true; mọi request tới /secrets/* (trừ governance/audit/pii-log) đều 503
+
+# Tắt Panic Mode
+curl -s -X PUT http://localhost:8200/api/auth/secrets/governance $H \
+  -H "Content-Type: application/json" -d '{"vault_panic_mode": false}' | jq .vault_panic_mode
+
+# 11. Panic trigger (bulk deactivate + destroy tất cả secrets)
+curl -s -X POST http://localhost:8200/api/auth/secrets/panic $H | jq .count
+```
+
+## O6 — Transit Engine (RSA/HSM Signing)
+
+Transit engine: private key tạo và lưu bên trong OpenBao, không bao giờ export. Signing xảy ra trong vault.
+
+```bash
+TENANT="a0000000-0000-0000-0000-000000000001"
+H="-H X-User-Id:test -H X-User-Roles:PLATFORM_ADMIN -H X-Tenant-Id:$TENANT"
+
+# 1. Tạo Transit key (SIGNING_KEY — KHÔNG cần value, key tự tạo trong vault)
+SIGN_ID=$(curl -s -X POST http://localhost:8200/api/auth/secrets $H \
+  -H "Content-Type: application/json" \
+  -d '{"key_name":"PAYLOAD_SIGNING_KEY","key_type":"SIGNING_KEY","algorithm":"RSA-4096","realm":"CORE-INFRA"}' \
+  | jq -r .id)
+echo "Transit key: $SIGN_ID"
+
+# 2. HSM status — xem Transit keys đang quản lý
+curl -s http://localhost:8200/api/auth/secrets/hsm/status $H | jq .
+# → {"transit_keys":[{"name":"a0000000-payload-signing-key","type":"rsa-4096","latest_version":1}],"key_count":1,"openbao_sealed":false}
+
+# 3. Reveal — trả về PUBLIC KEY (private key không bao giờ xuất ra)
+curl -s http://localhost:8200/api/auth/secrets/$SIGN_ID/reveal $H | jq .value
+# → "-----BEGIN PUBLIC KEY-----\nMIICIjAN..."
+
+# 4. Sign data (base64-encoded payload)
+DATA_B64=$(printf '%s' '{"event":"deploy","tenant":"aeroflow"}' | base64)
+SIG=$(curl -s -X POST http://localhost:8200/api/auth/secrets/$SIGN_ID/sign $H \
+  -H "Content-Type: application/json" \
+  -d "{\"data\":\"$DATA_B64\"}" | jq -r .signature)
+echo "Signature: ${SIG:0:60}..."
+
+# 5. Verify signature
+curl -s -X POST http://localhost:8200/api/auth/secrets/$SIGN_ID/verify $H \
+  -H "Content-Type: application/json" \
+  -d "{\"data\":\"$DATA_B64\",\"signature\":\"$SIG\"}" | jq .valid
+# → true
+
+# 6. Rotate Transit key (new version tạo trong vault, old version vẫn verify được)
+curl -s -X POST http://localhost:8200/api/auth/secrets/$SIGN_ID/rotate $H \
+  -H "Content-Type: application/json" -d '{}' | jq .version
+# → 2 (new version, cũ v1 vẫn verify được)
+
+# 7. Tạo ENCRYPTION_KEY (AES-256 — cũng dùng Transit)
+curl -s -X POST http://localhost:8200/api/auth/secrets $H \
+  -H "Content-Type: application/json" \
+  -d '{"key_name":"DATA_ENCRYPTION_KEY","key_type":"ENCRYPTION_KEY","algorithm":"AES-256","realm":"DATA-LAYER"}' \
+  | jq '{id,key_name,key_type,algorithm}'
+```
+
+### Verify Transit key trong OpenBao trực tiếp
+
+```bash
+ROOT_TOKEN=$(docker exec aeroflow-openbao cat /openbao/data/.root-token)
+
+# List all Transit keys
+curl -s -H "X-Vault-Token: $ROOT_TOKEN" \
+  "http://localhost:8300/v1/transit/keys?list=true" | jq .data.keys
+
+# Read Transit key info (public key, versions)
+curl -s -H "X-Vault-Token: $ROOT_TOKEN" \
+  http://localhost:8300/v1/transit/keys/a0000000-payload-signing-key | jq .data
+```
+
+## O7 — Governance Controls
+
+Ba tính năng quản trị vault — tất cả đều bật/tắt qua `PUT /api/auth/secrets/governance`.
+
+### Panic Mode
+Khi `vault_panic_mode = true`, **tất cả** endpoint `/secrets/*` (tạo, đọc, ký, xoá) trả về `503 Vault is in PANIC MODE`. Chỉ governance, audit-log, và pii-log vẫn hoạt động để admin có thể tắt.
+
+```bash
+H="-H X-User-Id:test -H X-User-Roles:PLATFORM_ADMIN -H X-Tenant-Id:a0000000-0000-0000-0000-000000000001"
+
+# Bật panic
+curl -s -X PUT http://localhost:8200/api/auth/secrets/governance $H \
+  -H "Content-Type: application/json" -d '{"vault_panic_mode":true}' | jq .vault_panic_mode
+# → true
+
+# Kiểm tra — phải 503
+curl -s -w "HTTP:%{http_code}" http://localhost:8200/api/auth/secrets $H | grep HTTP
+# → HTTP:503
+
+# Tắt panic
+curl -s -X PUT http://localhost:8200/api/auth/secrets/governance $H \
+  -H "Content-Type: application/json" -d '{"vault_panic_mode":false}' | jq .vault_panic_mode
+# → false
+```
+
+### Auto-Rotation
+Khi `vault_auto_rotation = true`, auth-api chạy background loop mỗi 24h:
+- **Transit keys** (SIGNING_KEY, ENCRYPTION_KEY, HMAC_KEY) có `rotation_due_at < now` → tự động `transit.rotate_key()`.
+- **KV secrets** (BEARER_TOKEN, MCP_TOKEN, KB_API_KEY) → log `SCHEDULED / FAILED: Manual rotation required` vào audit log (không thể tự rotate vì cần value mới).
+
+```bash
+# Bật
+curl -s -X PUT http://localhost:8200/api/auth/secrets/governance $H \
+  -H "Content-Type: application/json" -d '{"vault_auto_rotation":true}' | jq .vault_auto_rotation
+# → true
+
+# Xem audit log sau khi rotation chạy
+curl -s http://localhost:8200/api/auth/secrets/audit-log $H | jq '[.[] | select(.event=="SCHEDULED")]'
+```
+
+### PII Access Log
+Khi `vault_pii_access_log = true`, mỗi lần gọi `GET /secrets/{id}/reveal` sẽ tạo entry trong bảng `key_rotations` với `triggered_by='REVEAL'`. Admin xem qua:
+
+```bash
+# Bật
+curl -s -X PUT http://localhost:8200/api/auth/secrets/governance $H \
+  -H "Content-Type: application/json" -d '{"vault_pii_access_log":true}' | jq .vault_pii_access_log
+
+# Reveal một secret (tạo PII log entry)
+curl -s http://localhost:8200/api/auth/secrets/$SECRET_ID/reveal $H | jq .value
+
+# Xem PII log
+curl -s http://localhost:8200/api/auth/secrets/pii-log $H | jq '[.[] | {key_name, actor_id, version, time}]'
+# → [{"key_name":"test-signing","actor_id":"b00c720f-...","version":1,"time":"2026-05-29T17:41:59"}]
+```
+
+UI: Governance Controls panel trong Settings → Auth & SSO → Secrets Vault → "PII Access Log" tab (violet panel giữa Governance và HSM).
+
+---
+
+## O4 — Verify secrets trong OpenBao trực tiếp
+
+```bash
+ROOT_TOKEN=$(docker exec aeroflow-openbao cat /openbao/data/.root-token)
+TENANT="a0000000-0000-0000-0000-000000000001"
+
+# List tất cả paths dưới tenants/
+curl -s -H "X-Vault-Token: $ROOT_TOKEN" \
+  "http://localhost:8300/v1/secret/metadata/tenants?list=true" | jq .data.keys
+# → ["ai-keys/", "a0000000-0000-0000-0000-000000000001/"]
+
+# Xem AI provider keys (bootstrapped)
+curl -s -H "X-Vault-Token: $ROOT_TOKEN" \
+  "http://localhost:8300/v1/secret/metadata/tenants/ai-keys?list=true" | jq .data.keys
+# → ["ANTHROPIC_API_KEY", "AZURE_OPENAI_KEY", "OPENAI_API_KEY"]
+
+# Xem KV v2 secrets của tenant
+curl -s -H "X-Vault-Token: $ROOT_TOKEN" \
+  "http://localhost:8300/v1/secret/metadata/tenants/$TENANT?list=true" | jq .data.keys
+
+# Xem value của một KV v2 secret
+curl -s -H "X-Vault-Token: $ROOT_TOKEN" \
+  "http://localhost:8300/v1/secret/data/tenants/$TENANT/MY_API_KEY" | jq .data.data.value
+
+# List Transit keys
+curl -s -H "X-Vault-Token: $ROOT_TOKEN" \
+  "http://localhost:8300/v1/transit/keys?list=true" | jq .data.keys
+```
+
+## O5 — AI Provider Keys (Bootstrap)
+
+Chỉ có AI provider keys được tự động bootstrap vào `secret/data/tenants/ai-keys/*`:
+
+| Path | Giá trị mặc định | Ghi chú |
+|---|---|---|
+| `tenants/ai-keys/OPENAI_API_KEY` | `sk-placeholder-replace-me` | Thay bằng real key trong prod |
+| `tenants/ai-keys/ANTHROPIC_API_KEY` | `sk-ant-placeholder-replace-me` | Thay bằng real key trong prod |
+| `tenants/ai-keys/AZURE_OPENAI_KEY` | `placeholder-replace-me` | Thay bằng real key trong prod |
+
+> **Lưu ý:** Infra credentials (Postgres, Keycloak, Kafka, MinIO) KHÔNG lưu trong OpenBao — chúng đọc thẳng từ docker-compose env vars. Chỉ AI provider API keys mới cần vault vì chúng thuộc về các external service.

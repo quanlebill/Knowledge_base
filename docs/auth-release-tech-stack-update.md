@@ -129,20 +129,36 @@ const callApi = async () => {
 
 ## 1.4 API Gateway — Kong (điểm verify JWT duy nhất)
 
+**Triển khai thực tế:** Custom Lua plugin `aeroflow-jwks` (thay thế built-in JWT + OIDC plugin). Source: `infra/kong/plugins/aeroflow-jwks/handler.lua`.
+
 ```yaml
 plugins:
-  - name: oidc
+  - name: aeroflow-jwks          # custom Kong plugin
     config:
-      discovery: https://auth.yourdomain.com/realms/aeroflow/.well-known/openid-configuration
-      # Kong tự fetch và cache JWKS từ Keycloak (TTL: jwks_uri_refresh_interval = 300s)
-      # Force-refresh khi Keycloak rotate key qua event hook
-      # Sau khi verify xong, inject header cho backend:
-      header_names: ["X-User-Id", "X-User-Roles", "X-User-Email"]
+      jwks_uri: http://aeroflow-keycloak-lb:8080/realms/aeroflow/protocol/openid-connect/certs
+      issuer:   http://localhost:8080/realms/aeroflow
+      jwks_refresh_interval: 300   # cache TTL seconds; force-refresh on unknown kid
 ```
 
-> *Backend không cần verify JWT — chỉ đọc các header Kong đã inject.*
+**Plugin chạy trên 2 services:**
+- `aeroflow-backend` (route `/api`) → backend FastAPI tại port 8888
+- `release-worker` (route `/api/release`) → Release Worker FastAPI tại port 8100
 
-> ⚡ **Giải pháp (Comment #0):** Cấu hình `jwks_uri_refresh_interval: 300s` trong Kong OIDC plugin. Khi Keycloak rotate key, cần trigger force-refresh qua Kong Admin API hoặc cấu hình event hook để tránh verify fail với key cũ còn trong cache.
+**Sau khi verify RS256 thành công, inject vào upstream request:**
+
+| Header | Nguồn | Ghi chú |
+|--------|-------|---------|
+| `X-User-Id` | JWT `sub` claim | Keycloak user UUID |
+| `X-User-Email` | JWT `email` claim | |
+| `X-User-Name` | JWT `preferred_username` | |
+| `X-User-Roles` | `realm_access.roles` (lọc system roles) | comma-separated, e.g. `platform-admin` |
+| `X-Tenant-Id` | JWT `tenant_id` claim | custom attribute |
+| `X-Role-Id` | JWT `role_id` claim | custom attribute |
+| `X-Kong-Verified` | `true` (hardcoded) | Backend verify header này |
+
+> *Backend không cần verify JWT — chỉ đọc các header Kong đã inject. Header được clear trước khi plugin chạy để chặn spoofing.*
+
+> ⚡ **Giải pháp (Comment #0):** `kong.cache` TTL 300s. Khi Keycloak rotate key (kid mới), plugin tự invalidate cache và re-fetch JWKS trong cùng request — không cần event hook.
 
 ---
 
@@ -263,7 +279,7 @@ Keycloak single node là **Single Point of Failure** — auth service down thì 
 | Build artifacts | MinIO (internal) → S3 (production) | Lưu deployment packages |
 | Notifications | RabbitMQ → Notification service | Alert khi pipeline xong |
 
-> ⚡ **Giải pháp (Comment #4):** Kafka topic `release.pipeline.triggered` cần **SASL/SCRAM auth** (hoặc mTLS). Chỉ CI/CD service được phép produce vào topic này — ngăn trigger release trái phép.
+> ⚡ **Giải pháp (Comment #4):** Kafka topic `release.pipeline.triggered` cần **SASL/PLAIN auth** (hoặc mTLS). Chỉ CI/CD service được phép produce vào topic này — ngăn trigger release trái phép.
 
 ---
 
@@ -443,11 +459,25 @@ Toàn bộ stack được phân tách rõ ràng, không chồng lấp trách nhi
 | High Availability | Keycloak cluster Active/Active + shared PostgreSQL |
 | Monitor | Keycloak events → Grafana/Loki |
 
+### SECRETS VAULT (OpenBao)
+
+| Feature | Technology |
+|---------|-----------|
+| KV storage | OpenBao KV v2 — `secret/data/tenants/{tenant_id}/{key_name}` |
+| Cryptographic keys | OpenBao Transit engine — RSA-4096/2048, EC-P256, AES-256, HMAC-SHA256 |
+| Key types (KV) | `BEARER_TOKEN`, `MCP_TOKEN`, `KB_API_KEY` — raw value in vault |
+| Key types (Transit) | `SIGNING_KEY`, `ENCRYPTION_KEY`, `HMAC_KEY` — key generated & stays inside vault |
+| Sign/Verify | `POST /secrets/{id}/sign` + `POST /secrets/{id}/verify` — Transit never exports private key |
+| Rotation | Transit: `transit.rotate_key()`, no value needed; KV: requires new value |
+| Governance | Panic Mode (503 all ops), Auto-Rotation (24h background task), PII Access Log |
+| PII Log | Every `reveal` recorded to `key_rotations` (`triggered_by='REVEAL'`) + `/pii-log` endpoint |
+| UI | Settings → Auth & SSO → Secrets Vault (TRANSIT badge, HSM status, PII log panel) |
+
 ### RELEASE MANAGEMENT
 
 | Module | Technology |
 |--------|-----------|
-| Pipeline | Kafka (events + SASL/SCRAM ACL), Celery workers (Python) |
+| Pipeline | Kafka (events + SASL/PLAIN + StandardAuthorizer ACL), Celery workers (Python) |
 | Package | MinIO → S3, MongoDB (manifest + scan results) |
 | Env Config | PostgreSQL self-hosted (Dev/Staging/Prod) |
 | Secret | OpenBao (Production) |
@@ -471,7 +501,7 @@ Toàn bộ stack được phân tách rõ ràng, không chồng lấp trách nhi
 | 1 | Kong → Backend header | Rất dễ bị giả mạo header nếu không có Network Segmentation | Bổ sung IP allowlist / mTLS service-to-service → xem §1.2 |
 | 2 | Audit log Event Listener | Cần retry mechanism — không để mất event quan trọng | Đổi sang Kafka at-least-once → Consumer ghi DB → xem §1.6 |
 | 3 | Audit log (tiếp) | Nên bắn qua Kafka | Đã áp dụng Kafka topic `audit.auth.events` → xem §1.6 |
-| 4 | Kafka pipeline trigger | Cần Auth cho Kafka message — ngăn release trái phép | Thêm SASL/SCRAM ACL cho topic → xem §2.1 |
+| 4 | Kafka pipeline trigger | Cần Auth cho Kafka message — ngăn release trái phép | Thêm SASL/PLAIN ACL cho topic → xem §2.1 |
 | 5 | AWS PostgreSQL | Dùng PostgreSQL local, không triển khai trên AWS | Đổi sang PostgreSQL self-hosted toàn bộ → xem §2.1, §2.3 |
 | 6 | AWS Redis (Dev config) | Redis mất dữ liệu khi restart | Thay bằng PostgreSQL self-hosted → xem §2.3 |
 | 7 | Manual approval | Không tự động hoá được trên giao diện | Cần UI dashboard cho approval flow → xem §2.3 |
