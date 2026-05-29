@@ -17,6 +17,8 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from models import Conversation, Message, AgentTrace, Member, Agent
+
 
 def _json_fallback(obj):
     if isinstance(obj, (datetime, date)):
@@ -83,8 +85,6 @@ def _sanitize_trace(data: dict) -> dict:
         else:
             result[k] = v
     return result
-
-from models import Conversation, Message, AgentTrace, Member, Agent
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +174,7 @@ async def create_conversation(
             return None
         conv = Conversation(
             tenant_id=UUID(tenant_id),
-            agent_version_id=UUID(agent_version_id),
+            agent_version_id=UUID(agent_version_id or _DEV_AGENT_VER_ID),
             user_ref=user_ref,
             channel=channel,
         )

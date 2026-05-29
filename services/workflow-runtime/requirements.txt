@@ -13,3 +13,4 @@ psycopg2-binary>=2.9
 alembic>=1.13
 sqlalchemy[asyncio]>=2.0
 regex>=2024.0
+qdrant-client>=1.13.0,<1.14.0

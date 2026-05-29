@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Boolean, SmallInteger, Integer, ForeignKey
+from sqlalchemy import Column, String, Boolean, SmallInteger, Integer, Float, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import DeclarativeBase
 
@@ -57,7 +57,7 @@ class AgentMemory(Base):
     user_ref    = Column(String)
     memory_type = Column(String, nullable=False)
     content     = Column(String, nullable=False)
-    importance  = Column(Integer, default=0)
+    importance  = Column(Float, default=0.5)
     expires_at  = Column(String)
     deleted_at  = Column(String)
 

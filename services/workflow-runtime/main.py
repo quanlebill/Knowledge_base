@@ -18,13 +18,19 @@ from config_loader import load_agent_config
 from observability import get_langfuse_handler
 from node_registry import NODE_REGISTRY
 from db import init_db, close_db, create_conversation, save_message, save_trace, validate_agent_tenant
-from memory_middleware import retrieve_memories, apply_memory_policy, _DEV_AGENT_ID, _DEV_TENANT_ID
+from memory_middleware import (
+    retrieve_memories, apply_memory_policy,
+    init_qdrant, close_qdrant,
+    _DEV_AGENT_ID, _DEV_TENANT_ID,
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    await init_qdrant()
     _graph  # ensure graph is built before first request
     yield
+    await close_qdrant()
     await close_db()
 
 
@@ -111,6 +117,8 @@ async def run_conversation(req: RunRequest, request: Request):
         from fastapi.responses import JSONResponse
         return JSONResponse(status_code=403, content={"detail": "Agent not found or access denied"})
 
+    user_ref = request.headers.get("X-User-ID", "anonymous")
+
     # RETRIEVE memory trước khi build state
     memory_context = []
     if cfg.get("memory_enabled"):
@@ -120,8 +128,6 @@ async def run_conversation(req: RunRequest, request: Request):
             user_ref=user_ref,
             query=req.query,
         )
-
-    user_ref = request.headers.get("X-User-ID", "anonymous")
     conv_id = req.conversation_id or await create_conversation(
         agent_version_id=cfg.get("agent_version_id", None),
         user_ref=user_ref,
@@ -221,7 +227,7 @@ async def run_conversation(req: RunRequest, request: Request):
                     )
             if cfg.get("memory_enabled") and not guardrail_triggered:
                 final_state = {**state, "response": assistant_text}
-                await apply_memory_policy(final_state, agent_id, tenant_id)
+                await apply_memory_policy(final_state, agent_id, tenant_id, user_ref)
 
     response = StreamingResponse(event_stream(), media_type="text/event-stream")
     response.headers["X-Conversation-Id"] = conv_id or ""
