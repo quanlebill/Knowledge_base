@@ -7,7 +7,26 @@
 ## Mục lục
 
 - [Phần 1 — Auth (Keycloak + Kong + Kafka)](#phần-1--auth-keycloak--kong--kafka)
+- [Phần 2 — Release Management](#phần-2--release-management)
+  - [R1 — Khởi động Release Stack](#r1--khởi-động-release-stack)
+  - [R2 — URLs & Credentials Release](#r2--urls--credentials-release)
+  - [R3 — Setup Release Schema PostgreSQL](#r3--setup-release-schema-postgresql)
+  - [R4 — Setup Release Kafka Topics & ACL](#r4--setup-release-kafka-topics--acl)
+  - [R5 — Test Cases Release](#r5--test-cases-release)
+  - [R6 — Trigger Pipeline thủ công](#r6--trigger-pipeline-thủ-công)
+  - [R7 — Approval Flow](#r7--approval-flow)
+  - [R8 — Rollback](#r8--rollback)
+  - [R9 — Drift Detection](#r9--drift-detection)
+  - [R10 — Release History Query](#r10--release-history-query)
+  - [R11 — Kong Services cho Rollback](#r11--kong-services-cho-rollback-setup-một-lần)
+  - [R12 — New API Endpoints](#r12--new-api-endpoints-2026-05-27)
+  - [R14 — Troubleshooting Release](#r14--troubleshooting-release)
 - [Phần 3 — OpenBao Secrets Vault](#phần-3--openbao-secrets-vault)
+  - [O1 — Khởi động OpenBao Stack](#o1--khởi-động-openbao-stack)
+  - [O2 — Troubleshooting OpenBao](#o2--troubleshooting-openbao)
+  - [O3 — Test Secrets Vault API](#o3--test-secrets-vault-api)
+  - [O4 — Verify secrets trong OpenBao trực tiếp](#o4--verify-secrets-trong-openbao-trực-tiếp)
+  - [O5 — AI Provider Keys (Bootstrap)](#o5--ai-provider-keys-bootstrap)
   - [O6 — Transit Engine (RSA/HSM Signing)](#o6--transit-engine-rsahsm-signing)
   - [O7 — Governance Controls (Panic Mode, Auto-Rotation, PII Log)](#o7--governance-controls)
 - [Phần 4 — Multi-Tenant Management](#phần-4--multi-tenant-management)
@@ -15,20 +34,6 @@
   - [MT2 — Verify Tenant Isolation](#mt2--verify-tenant-isolation)
   - [MT3 — Tenant Users Credentials](#mt3--tenant-users-credentials)
   - [MT4 — Isolation Mechanism Summary](#mt4--isolation-mechanism-summary)
-- [Phần 2 — Release Management](#phần-2--release-management)
-  - [R1. Khởi động Release Stack](#r1--khởi-động-release-stack)
-  - [R2. URLs & Credentials Release](#r2--urls--credentials-release)
-  - [R3. Setup Release Schema PostgreSQL](#r3--setup-release-schema-postgresql)
-  - [R4. Setup Release Kafka Topics & ACL](#r4--setup-release-kafka-topics--acl)
-  - [R5. Test Cases Release](#r5--test-cases-release)
-  - [R6. Trigger Pipeline thủ công](#r6--trigger-pipeline-thủ-công)
-  - [R7. Approval Flow](#r7--approval-flow)
-  - [R8. Rollback](#r8--rollback)
-  - [R9. Drift Detection](#r9--drift-detection)
-  - [R10. Release History Query](#r10--release-history-query)
-  - [R11. Kong Services cho Rollback](#r11--kong-services-cho-rollback-setup-một-lần)
-  - [R12. New API Endpoints (2026-05-27)](#r12--new-api-endpoints-2026-05-27)
-  - [R14. Troubleshooting Release](#r14--troubleshooting-release)
 
 ---
 
@@ -65,28 +70,48 @@ docker compose ps
 
 Kết quả mong đợi:
 ```
-NAME                        STATUS
-aeroflow-postgres           Up (healthy)
-aeroflow-redis              Up (healthy)
-aeroflow-kafka              Up (healthy)
-aeroflow-minio              Up (healthy)
-aeroflow-mongo              Up (healthy)
-aeroflow-elasticsearch      Up (healthy)
-aeroflow-jaeger             Up (healthy)
-aeroflow-keycloak-1         Up (healthy)    ← mất ~90s lần đầu (import realm + DB migration)
-aeroflow-keycloak-2         Up (healthy)    ← đợi node1 healthy mới join cluster
-aeroflow-keycloak-lb        Up (healthy)
-aeroflow-kong-migration     Exited (0)      ← migration thành công, exit 0 là đúng
-aeroflow-kong               Up (healthy)
-aeroflow-release-worker     Up (healthy)
-aeroflow-celery-worker      Up
-aeroflow-audit-bridge       Up
-aeroflow-audit-consumer     Up
-aeroflow-jwks-refresher     Up
-aeroflow-frontend           Up
+NAME                               STATUS
+aeroflow-postgres                  Up (healthy)
+aeroflow-redis                     Up (healthy)
+aeroflow-kafka                     Up (healthy)
+aeroflow-minio                     Up (healthy)
+aeroflow-mongo                     Up (healthy)
+aeroflow-elasticsearch             Up (healthy)
+aeroflow-jaeger                    Up (healthy)
+aeroflow-keycloak-1                Up (healthy)      ← ~90s lần đầu (import realm + DB migration)
+aeroflow-keycloak-2                Up (healthy)      ← đợi node1 healthy mới join cluster
+aeroflow-keycloak-lb               Up (healthy)
+aeroflow-kong-migration            Exited (0)        ← migration thành công, exit 0 là đúng
+aeroflow-kong                      Up (healthy)
+aeroflow-konga                     Up
+aeroflow-openbao                   Up (healthy)      ← OpenBao vault
+aeroflow-openbao-init              Exited (0)        ← unseal thành công
+aeroflow-openbao-setup             Exited (0)        ← KV v2 + Transit + policy đã cấu hình
+aeroflow-openbao-secrets-bootstrap Exited (0)        ← AI provider keys đã inject
+aeroflow-auth-api                  Up (healthy)      ← Secrets Vault + IP Allowlist + API Key API
+aeroflow-release-worker            Up (healthy)
+aeroflow-celery-worker             Up
+aeroflow-audit-bridge              Up
+aeroflow-audit-consumer            Up
+aeroflow-jwks-refresher            Up
+aeroflow-frontend                  Up
 ```
 
-> **Thứ tự khởi động:** postgres → redis → kafka → minio → mongo → elasticsearch → jaeger → keycloak-node1 → keycloak-node2 → keycloak-lb → kong-migration → kong → jwks-refresher → release-worker → celery-worker → audit-bridge → audit-consumer → frontend
+> **Thứ tự khởi động:** postgres → redis → kafka → minio → mongo → elasticsearch → jaeger → openbao → openbao-init → openbao-setup → openbao-secrets-bootstrap → keycloak-node1 → keycloak-node2 → keycloak-lb → kong-migration → kong → jwks-refresher → auth-api → release-worker → celery-worker → audit-bridge → audit-consumer → frontend
+
+**Port mapping:**
+
+| Container | Host Port | Description |
+|---|---|---|
+| aeroflow-frontend | :5173 | React app (nginx in Docker) |
+| aeroflow-kong | :8000 / :8001 | Proxy / Admin |
+| aeroflow-auth-api | :8200 | Auth/Secrets API (direct, no JWT check) |
+| aeroflow-openbao | :8300 | OpenBao vault (internal :8200) |
+| aeroflow-keycloak-1 | :8081 | Direct node 1 |
+| aeroflow-keycloak-2 | :8082 | Direct node 2 |
+| aeroflow-keycloak-lb | :8080 | HAProxy load balancer |
+| aeroflow-release-worker | :8100 | Release API (direct) |
+| aeroflow-konga | :1337 | Kong admin UI |
 
 ---
 
@@ -94,21 +119,27 @@ aeroflow-frontend           Up
 
 | Service | URL | Credentials |
 |---|---|---|
-| Frontend (Vite) | http://localhost:5173 | — |
-| Keycloak (HAProxy LB) | http://localhost:8080/admin | admin / admin |
+| **Frontend** | http://localhost:5173 | Keycloak login |
+| **Kong Proxy** (API gateway) | http://localhost:8000 | JWT Bearer token |
+| Kong Admin API | http://localhost:8001 | — |
+| Konga (Kong UI) | http://localhost:1337 | setup lần đầu |
+| **Auth API** (direct, bypass Kong) | http://localhost:8200 | `X-User-Id`, `X-User-Roles`, `X-Tenant-Id` headers |
+| **Keycloak** (HAProxy LB) | http://localhost:8080/admin | admin / admin |
 | Keycloak Node 1 (direct) | http://localhost:8081/admin | admin / admin |
 | Keycloak Node 2 (direct) | http://localhost:8082/admin | admin / admin |
-| Kong Admin API | http://localhost:8001 | — |
-| Kong Proxy | http://localhost:8000 | JWT Bearer token |
-| Konga (Kong UI) | http://localhost:1337 | setup lần đầu |
-| Release Worker (direct) | http://localhost:8100 | JWT Bearer token |
+| **OpenBao** (Secrets Vault) | http://localhost:8300/ui | Root token từ `/openbao/data/.root-token` |
+| **Release Worker** (direct) | http://localhost:8100 | JWT Bearer token |
 | MinIO Console | http://localhost:9001 | minio / minio_secret |
 | MinIO S3 API | http://localhost:9000 | minio / minio_secret |
 | MongoDB | localhost:27017 | (no auth — dev only) |
 | Elasticsearch | http://localhost:9200 | (no auth — dev only) |
 | Jaeger UI | http://localhost:16686 | — |
-| PostgreSQL | localhost:5432 | aeroflow / aeroflow_secret |
+| PostgreSQL | localhost:5432 | aeroflow / aeroflow\_secret |
 | Kafka | localhost:9092 | SASL/PLAIN (xem §Kafka) |
+
+> **Note — Auth API trực tiếp vs qua Kong:**  
+> - **Kong (:8000):** JWT bắt buộc; plugin inject `X-User-Id`, `X-Tenant-Id`, `X-User-Roles` từ token → dùng cho mọi test production.  
+> - **Auth API direct (:8200):** Không qua JWT; headers phải truyền thủ công → chỉ dùng cho test/debug nội bộ.
 
 ---
 
@@ -126,15 +157,26 @@ aeroflow-frontend           Up
 
 ### Realm `aeroflow` — Test Users
 
+**Tenant 1: AeroFlow Dev** (`a0000000-0000-0000-0000-000000000001`)
+
 | Username | Password | Role | Email |
 |---|---|---|---|
-| `platform-admin` | `Admin@123456` | `platform-admin` | admin@aeroflow.local |
-| `ai-engineer` | `Engineer@1234` | `ai-engineer` | engineer@aeroflow.local |
-| `executive-viewer` | `Viewer@123456` | `executive-viewer` | viewer@aeroflow.local |
+| `platform-admin` | `Admin123456!` | `platform-admin` | admin@aeroflow.local |
+| `ai-engineer` | *(reset via Keycloak admin)* | `ai-engineer` | engineer@aeroflow.local |
+| `executive-viewer` | *(reset via Keycloak admin)* | `executive-viewer` | viewer@aeroflow.local |
 
-> Các tài khoản này được import từ `realm-export.json` khi stack khởi động lần đầu.  
-> **Quan trọng:** Realm import chỉ chạy khi realm chưa tồn tại trong DB. Nếu stack đã từng chạy, cần `docker compose down -v && docker compose up -d` để re-import với credentials trên.  
-> **JWT claim `realm_access.roles`** — Kong `aeroflow-jwks` plugin inject header `X-User-Roles` từ `realm_access.roles` (standard OIDC). Role `platform-admin` và `ai-engineer` cần đúng để release-worker phân quyền.
+**Tenant 2: Helios Corp** (`b0000000-0000-0000-0000-000000000002`)
+
+| Username | Password | Role | Email |
+|---|---|---|---|
+| `helios-admin` | `H3lios@Admin01!` | `platform-admin` | helios-admin@helios.corp |
+| `helios-engineer` | `H3lios@Eng001!` | `ai-engineer` | helios-engineer@helios.corp |
+| `helios-viewer` | `H3lios@View01!` | `executive-viewer` | helios-viewer@helios.corp |
+
+> **Realm import:** `--import-realm` chỉ chạy khi realm chưa tồn tại trong PostgreSQL. Sau lần đầu, users tồn tại trong DB và persist qua restarts.  
+> **Password policy:** min 12 chars, upper+lower+digit+special, notUsername, history(5).  
+> **JWT claims:** Kong `aeroflow-jwks` plugin inject `X-User-Roles`, `X-Tenant-Id`, `X-Role-Id` từ JWT claims. Role và tenant_id là user attributes trong Keycloak.  
+> **Keycloak User Profile:** `unmanagedAttributePolicy: ENABLED` required để lưu `tenant_id` và `role_id` attributes (đã cấu hình trong `realm-export.json → userProfileConfig`).
 
 ---
 
@@ -269,6 +311,23 @@ Chạy trên stack live (Docker Compose, Windows 11). Môi trường: `localhost
 | TC-24 | Elasticsearch service healthy | ✅ PASS | `GET /_cluster/health` → `"status":"green"`; tested 2026-05-29 |
 | TC-25 | Jaeger UI accessible | ✅ PASS | `http://localhost:16686` → 200 OK; OTLP endpoint `http://jaeger:4317` set in release-worker env; tested 2026-05-29 |
 | TC-26 | JWKS refresher hoạt động | ✅ PASS | `INFO Registered new Kong JWT credential` trong logs jwks-refresher; tested 2026-05-29 |
+| TC-27 | OpenBao Transit signing (RSA-4096) | ✅ PASS | SIGNING_KEY inject → vault tạo RSA key; POST /sign → `vault:v1:...` signature; POST /verify valid=true; tested 2026-05-30 |
+| TC-28 | Transit verify tampered data | ✅ PASS | Wrong payload → `{"valid":false}`; tested 2026-05-30 |
+| TC-29 | Transit rotate (no value needed) | ✅ PASS | POST /rotate → version 2; old version vẫn verify được; tested 2026-05-30 |
+| TC-30 | Transit reveal = public key only | ✅ PASS | GET /reveal → `-----BEGIN PUBLIC KEY-----\n...`; private key không export; tested 2026-05-30 |
+| TC-31 | Panic Mode enforcement | ✅ PASS | `vault_panic_mode=true` → tất cả /secrets/* trả 503; governance/audit vẫn hoạt động; tested 2026-05-30 |
+| TC-32 | Governance PUT → state persists | ✅ PASS | PUT /governance → `panic_mode=false` → GET /secrets HTTP 200; tested 2026-05-30 |
+| TC-33 | PII Access Log | ✅ PASS | vault_pii_access_log=true + reveal → entry trong /pii-log với triggered_by=REVEAL; tested 2026-05-30 |
+| TC-34 | Transit HMAC key (aes256-gcm96) | ✅ PASS | HMAC_KEY + HMAC-SHA256 → Transit key type `aes256-gcm96` (không dùng 'hmac'); tested 2026-05-30 |
+| TC-MT01 | Tenant isolation — secrets list | ✅ PASS | T1 list (11 secrets): 0 HELIOS keys; T2 list (5 secrets): chỉ HELIOS keys; tested 2026-05-30 |
+| TC-MT02 | Cross-tenant reveal blocked | ✅ PASS | T1 user GET T2 secret UUID → 404 (không phải 403); tested 2026-05-30 |
+| TC-MT03 | Cross-tenant sign blocked | ✅ PASS | T1 user POST T2 signing key → 404; T2 user POST T1 signing key → 404; tested 2026-05-30 |
+| TC-MT04 | Cross-tenant API key revoke blocked | ✅ PASS | T1 POST revoke T2 key → 404; T2 POST revoke T1 key → 404; tested 2026-05-30 |
+| TC-MT05 | Cross-tenant IP rule toggle blocked | ✅ PASS | T1 PATCH T2 IP rule → 404; T2 PATCH T1 IP rule → 404; tested 2026-05-30 |
+| TC-MT06 | HSM Transit key isolation | ✅ PASS | T1 HSM: 2 keys (prefix a0000000); T2 HSM: 2 keys (prefix b0000000); no overlap; tested 2026-05-30 |
+| TC-MT07 | Audit log isolation | ✅ PASS | T1 audit (20 entries): 0 HELIOS entries; T2 audit (2 entries): 0 AeroFlow entries; tested 2026-05-30 |
+| TC-MT08 | T2 own data fully operational | ✅ PASS | T2 reveal, sign, rotate, API key create all work on own resources; tested 2026-05-30 |
+| TC-MT09 | JWT tenant binding | ✅ PASS | helios-admin JWT: tenant_id=b0000000-..., role_id=platform-admin (confirmed via token decode) |
 
 ---
 
@@ -1453,62 +1512,103 @@ docker compose up -d
 
 ## Checklist Smoke Test (nhanh)
 
-Chạy theo thứ tự để xác nhận stack hoạt động sau khi deploy:
+Chạy theo thứ tự để xác nhận toàn bộ stack hoạt động sau khi deploy:
 
 ```bash
-# 1. Tất cả services healthy (không có EXITED hoặc unhealthy ngoài kong-migration)
-docker ps --format "table {{.Names}}\t{{.Status}}"
+# ── 1. Infra services ────────────────────────────────────────────────────────
+docker ps --format "table {{.Names}}\t{{.Status}}" | grep aeroflow
 
-# 2. Keycloak cả 2 nodes healthy
-curl -sf http://localhost:8081/health/ready && echo "node1 OK"
-curl -sf http://localhost:8082/health/ready && echo "node2 OK"
+# ── 2. Keycloak HA (cả 2 nodes) ─────────────────────────────────────────────
+curl -sf http://localhost:8081/health/ready && echo "KC node1 OK"
+curl -sf http://localhost:8082/health/ready && echo "KC node2 OK"
 
-# 3. JWKS endpoint accessible
-curl -sf http://localhost:8080/realms/aeroflow/protocol/openid-connect/certs | grep -c '"kty"' | xargs echo "JWKS keys:"
+# ── 3. JWKS endpoint ─────────────────────────────────────────────────────────
+curl -sf http://localhost:8080/realms/aeroflow/protocol/openid-connect/certs \
+  | python -c "import sys,json; k=json.load(sys.stdin); print(f'JWKS OK: {len(k[\"keys\"])} keys')"
 
-# 4. Lấy token thành công
-TOKEN=$(curl -sf -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin@123456" \
-  | grep -o '"access_token":"[^"]*"' | head -1 | sed 's/"access_token":"//;s/"$//')
-[ -n "$TOKEN" ] && echo "Token OK (${#TOKEN} chars)" || echo "Token FAIL"
+# ── 4. Lấy token — Tenant 1 (AeroFlow Dev) ──────────────────────────────────
+T1_TOKEN=$(curl -sf -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=platform-admin&password=Admin123456!" \
+  | python -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+[ -n "$T1_TOKEN" ] && echo "T1 Token OK" || echo "T1 Token FAIL"
 
-# 5. Kong plugins đã được cấu hình
-curl -sf http://localhost:8001/plugins | grep -o '"name":"[^"]*"' | sort -u
-# → "aeroflow-jwks", "ip-restriction", "correlation-id", "rate-limiting"
+# ── 5. Lấy token — Tenant 2 (Helios Corp) ───────────────────────────────────
+T2_TOKEN=$(curl -sf -X POST http://localhost:8080/realms/aeroflow/protocol/openid-connect/token \
+  -d "client_id=aeroflow-frontend&grant_type=password&username=helios-admin&password=H3lios@Admin01!" \
+  | python -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+[ -n "$T2_TOKEN" ] && echo "T2 Token OK" || echo "T2 Token FAIL"
 
-# 6. End-to-end qua Kong → release-worker
-curl -sf -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/release/pipelines \
-  | grep -o '"count":[0-9]*' && echo "→ Kong E2E OK"
+# ── 6. Kong plugins ───────────────────────────────────────────────────────────
+curl -sf http://localhost:8001/plugins | python -c \
+  "import sys,json; names=sorted({p['name'] for p in json.load(sys.stdin)['data']}); print('Plugins:', names)"
+# → ['aeroflow-jwks', 'correlation-id', 'ip-restriction', 'rate-limiting']
 
-# 7. No-auth → 401
-curl -sf http://localhost:8000/api/release/pipelines || echo "Unauthenticated → 401 OK"
+# ── 7. E2E qua Kong → release-worker ────────────────────────────────────────
+curl -sf -H "Authorization: Bearer $T1_TOKEN" http://localhost:8000/api/release/pipelines \
+  | python -c "import sys,json; r=json.load(sys.stdin); print('Release E2E OK, count:', r.get('count',0))"
 
-# 8. MinIO healthy
+# ── 8. No-auth → 401 ─────────────────────────────────────────────────────────
+STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/api/release/pipelines)
+[ "$STATUS" = "401" ] && echo "No-auth 401 OK" || echo "FAIL: got $STATUS"
+
+# ── 9. Auth API health ───────────────────────────────────────────────────────
+curl -sf http://localhost:8200/api/auth/health && echo " ← Auth API OK"
+
+# ── 10. OpenBao healthy (vault unsealed) ─────────────────────────────────────
+curl -sf http://localhost:8300/v1/sys/health \
+  | python -c "import sys,json; r=json.load(sys.stdin); print('OpenBao sealed:', r.get('sealed', '?'))"
+# → OpenBao sealed: False
+
+# ── 11. Secrets Vault — T1 có thể list secrets ──────────────────────────────
+COUNT=$(curl -sf -H "Authorization: Bearer $T1_TOKEN" http://localhost:8000/api/auth/secrets \
+  | python -c "import sys,json; print(len(json.load(sys.stdin)))")
+[ "$COUNT" -ge 0 ] && echo "T1 Secrets OK: $COUNT secrets" || echo "Secrets FAIL"
+
+# ── 12. Tenant isolation — T1 không thấy T2 secrets ─────────────────────────
+T2_FIRST=$(curl -sf -H "Authorization: Bearer $T2_TOKEN" http://localhost:8000/api/auth/secrets \
+  | python -c "import sys,json; secrets=json.load(sys.stdin); print(secrets[0]['id'] if secrets else 'none')")
+if [ "$T2_FIRST" != "none" ]; then
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+    -H "Authorization: Bearer $T1_TOKEN" \
+    "http://localhost:8000/api/auth/secrets/$T2_FIRST/reveal")
+  [ "$STATUS" = "404" ] && echo "Tenant isolation OK (T1 blocked from T2 secret)" || echo "ISOLATION FAIL: $STATUS"
+fi
+
+# ── 13. MinIO healthy ─────────────────────────────────────────────────────────
 curl -sf http://localhost:9000/minio/health/live && echo "MinIO OK"
 
-# 9. Kafka topic tồn tại (cần /tmp/a.props trong kafka container)
+# ── 14. Kafka topics ──────────────────────────────────────────────────────────
 docker exec aeroflow-kafka bash -c "
 printf 'security.protocol=SASL_PLAINTEXT\nsasl.mechanism=PLAIN\nsasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username=\"admin\" password=\"KafkaAdmin@1234\";\n' > /tmp/a.props
 /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --command-config /tmp/a.props --list
-" | grep "audit.auth.events" && echo "Kafka topic OK"
+" | grep -E "audit.auth.events|release.pipeline" | sort
 
-# 10. PostgreSQL tables tồn tại (auth + release)
+# ── 15. PostgreSQL — tenants table ───────────────────────────────────────────
 docker exec aeroflow-postgres psql -U aeroflow -d aeroflow -tAc \
-  "SELECT COUNT(*) FROM information_schema.tables WHERE table_name IN ('audit_logs','pipelines','release_history','rollback_operations');"
-# → 4
+  "SELECT name, slug FROM tenants ORDER BY created_at;"
+# → AeroFlow Dev|aeroflow-dev
+# → Helios Corp|helios-corp
 
-# 11. MongoDB healthy
-docker exec aeroflow-mongo mongosh --eval "db.adminCommand('ping')" --quiet | grep -c '"ok" : 1' | xargs echo "MongoDB ping:"
+# ── 16. PostgreSQL — core tables ─────────────────────────────────────────────
+docker exec aeroflow-postgres psql -U aeroflow -d aeroflow -tAc \
+  "SELECT COUNT(*) FROM information_schema.tables
+   WHERE table_name IN ('tenants','audit_logs','secrets_vault','api_keys','ip_allowlists',
+                        'pipelines','release_history','rollback_operations');"
+# → 8
 
-# 12. Elasticsearch healthy
-curl -sf http://localhost:9200/_cluster/health | grep -o '"status":"[a-z]*"' && echo "← Elasticsearch cluster health"
+# ── 17. MongoDB healthy ───────────────────────────────────────────────────────
+docker exec aeroflow-mongo mongosh --eval "db.adminCommand('ping').ok" --quiet
 
-# 13. Jaeger UI accessible
-curl -sf http://localhost:16686/ > /dev/null && echo "Jaeger UI OK"
+# ── 18. Elasticsearch healthy ────────────────────────────────────────────────
+curl -sf http://localhost:9200/_cluster/health | python -c \
+  "import sys,json; r=json.load(sys.stdin); print('ES status:', r['status'])"
 
-# 14. JWKS refresher đang chạy
-docker compose ps jwks-refresher | grep "Up" && echo "JWKS Refresher OK"
+# ── 19. Jaeger UI ─────────────────────────────────────────────────────────────
+curl -sf -o /dev/null http://localhost:16686/ && echo "Jaeger OK"
+
+# ── 20. Run full multi-tenant isolation suite ────────────────────────────────
+python infra/scripts/test_tenant_isolation.py
+# → 23 PASSED | 0 FAILED | 23 TOTAL
 ```
 
 ---
