@@ -1,16 +1,13 @@
-node_modules/
-build/
-dist/
-coverage/
-.DS_Store
-*.log
-.env*
-!.env.example
-.idea
+# Ignore everything
+*
 
-# Python
-__pycache__/
-*.py[cod]
-*.pyo
-data_agent.egg-info/
-.data_agent.egg-info/
+!services/
+!services/**
+
+!logs/
+!logs/**
+
+!basemodel/
+!basemodel/**
+
+!.gitignore

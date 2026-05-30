@@ -11,15 +11,6 @@ class ResponseModel(BaseModel, Generic[T]):
     data: T | None = None
     error: str | None = None
 
-
-def Success(data: T = None) -> ResponseModel[T]:
-    return ResponseModel(data=data, error=None)
-
-
-def Error(code: int, error: str) -> ResponseModel[None]:
-    return ResponseModel(code=code, error=error)
-
-
 class RetryNumber(BaseModel):
     count: int = 5
 
