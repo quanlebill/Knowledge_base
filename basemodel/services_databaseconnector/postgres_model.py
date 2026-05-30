@@ -52,7 +52,6 @@ class Language(Enum):
     EN = "english"
     VN = "vietnamese"
 
-
 class SourceType(str, Enum):
     DOC = "doc"
     WEB = "web"
@@ -912,8 +911,6 @@ class KBPublishAPIDelete(BaseModel):
     tenant_id: str
     id: str
 
-
-# ── Join ──────────────────────────────────────────────────────────────────────
 
 
 class SelectedColumn(BaseModel):

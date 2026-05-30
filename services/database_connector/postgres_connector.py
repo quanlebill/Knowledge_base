@@ -9,22 +9,17 @@ from pydantic import BaseModel
 from sqlalchemy.dialects.postgresql import JSONB
 
 from services.database_connector.db_config import DBConfig
-from services.database_connector.response_model import ResponseModel
 from services.log_set_up import create_logger
-from basemodel.services_databaseconnector.shared_model import RetryNumber, HealthCheckLoopConfig
+from basemodel.services_databaseconnector.shared_model import RetryNumber, HealthCheckLoopConfig, ResponseModel
 from basemodel.services_databaseconnector.postgres_model import (
     REGISTRY, MODEL_TO_TABLE, ReadJoinRequest,
 )
 
 log = create_logger("services.postgres", "service_postgres")
 
-
-
 class PostgresClient:
-    __slots__ = (
-        "_client", "_connection_wait", "_healthy",
-        "_connected", "_timeout", "_timeout_incremental", "_url",
-    )
+    # Follow Protocol DatabaseConnector in /basemodel/services_databaseconnector/protocol_model.py
+    __slots__ = ("_client", "_connection_wait", "_healthy","_connected", "_timeout", "_timeout_incremental", "_url",)
 
     def __init__(self):
         self._client: asyncpg.Pool | None = None
@@ -146,8 +141,6 @@ def _server_default_cols(orm_cls) -> set[str]:
     return {col.name for col in orm_cls.__table__.columns if col.server_default is not None}
 
 
-# ── Prepared query types ──────────────────────────────────────────────────────
-
 @dataclass
 class _CreateQuery:
     sql: str
@@ -163,8 +156,6 @@ class _Query:
     sql: str
     params: list[Any]
 
-
-# ── Helper functions ──────────────────────────────────────────────────────────
 
 def _resolve(model: BaseModel) -> tuple[str, Any] | ResponseModel:
     table_name = MODEL_TO_TABLE.get(type(model))

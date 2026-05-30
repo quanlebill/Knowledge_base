@@ -1,7 +1,6 @@
 from typing import Protocol, Any, Annotated
 from pydantic import Field
 
-
 class DatabaseConnector(Protocol):
     async def open(self, retry: Any) -> Annotated[Any, Field(description="open connection and return the client")]: ...
     async def close(self) -> Annotated[None, Field(description="close connection")]: ...

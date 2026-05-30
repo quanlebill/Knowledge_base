@@ -1,11 +1,8 @@
 from qdrant_client import models
 from qdrant_client.async_qdrant_client import AsyncQdrantClient
-
-from services.database_connector.response_model import ResponseModel, Success, Error
 from typing import List
 import asyncio
 from services.log_set_up import create_logger
-
 from basemodel.services_databaseconnector.qdrant_model import (
     # Enums
     DistanceMetric, MatchType,
@@ -27,6 +24,7 @@ from basemodel.services_databaseconnector.qdrant_model import (
 )
 
 from basemodel.services_databaseconnector.shared_model import (
+    ResponseModel,
     RetryNumber,
     HealthCheckLoopConfig,
 )
@@ -35,7 +33,7 @@ from basemodel.services_databaseconnector.shared_model import (
 log = create_logger("services.qdrant", "service_qdrant")
 
 # Utilities
-def build_qdrant_filters(
+def _build_qdrant_filters(
         tenant_id: str | List[str],
         data: List[MatchingPayload],
         match_type: MatchType | None = None,
@@ -87,6 +85,7 @@ def build_qdrant_filters(
     if pagination_config is not None and pagination_config.pagination_cursor is not None:
         matching_require += build_paginating()
 
+
     if not matching_field:
         return None
 
@@ -101,7 +100,7 @@ def build_qdrant_filters(
     )
 
 
-def build_point_batch(tenant_id: str, points: List[PointData]):
+def _build_batch_points(tenant_id: str, points: List[PointData]):
 
     def add_tenant(payload: PointPayload):
         payload.tenant_id = tenant_id
@@ -216,19 +215,17 @@ class QdrantClient:
         return self._client
 
 async def delete_collection(client: AsyncQdrantClient, item: DeleteCollectionRequest) -> ResponseModel:
-
     if not await client.collection_exists(item.collection_name):
         return ResponseModel(code=404, error="Collection does not exist")
     await client.delete_collection(item.collection_name)
     return ResponseModel(code=200)
 
 async def create_collection(client: AsyncQdrantClient, item: CreateCollectionRequest) -> ResponseModel:
-
     if await client.collection_exists(item.name):
-        return Error(code=409, error="Collection already exists")
+        return ResponseModel(code=409, error="Collection already exists")
 
     if item.distance_metric not in DistanceMetric:
-        return Error(code=404, error="Distance metric does not exist")
+        return ResponseModel(code=404, error="Distance metric does not exist")
 
     distance = models.Distance.COSINE
     if item.distance_metric == DistanceMetric.Euclidean.value:
@@ -247,7 +244,6 @@ async def create_collection(client: AsyncQdrantClient, item: CreateCollectionReq
 
 
 async def add_points(client: AsyncQdrantClient, item: AddPointsRequest) -> ResponseModel:
-
     if not await client.collection_exists(item.collection_name):
         return ResponseModel(code=404, error="Collection does not exist")
 
@@ -256,13 +252,12 @@ async def add_points(client: AsyncQdrantClient, item: AddPointsRequest) -> Respo
 
     await client.upsert(
         collection_name=item.collection_name,
-        points=build_point_batch(item.tenant_id,item.points),
+        points=_build_batch_points(item.tenant_id,item.points),
     )
     return ResponseModel(code=200)
 
 
 async def soft_delete_points(client: AsyncQdrantClient, item: SoftDeletePointsRequest) -> ResponseModel:
-
     if not await client.collection_exists(item.collection_name):
         return ResponseModel(code=404, error="Collection does not exist")
 
@@ -279,7 +274,7 @@ async def soft_delete_points(client: AsyncQdrantClient, item: SoftDeletePointsRe
         payload={
             "is_deleted": True
         },
-        points=build_qdrant_filters(
+        points=_build_qdrant_filters(
             tenant_id=item.tenant_id,
             data=matching_field,
             match_type=MatchType.must
@@ -295,7 +290,7 @@ async def soft_delete_points(client: AsyncQdrantClient, item: SoftDeletePointsRe
         payload={
             "is_deleted": True
         },
-        points=build_qdrant_filters(
+        points=_build_qdrant_filters(
             tenant_id=item.tenant_id,
             data=matching_field,
             match_type=MatchType.must
@@ -310,7 +305,7 @@ async def delete_points(client: AsyncQdrantClient, item: DeletePointsRequest) ->
 
     await client.delete(
         collection_name=item.collection_name,
-        points_selector=build_qdrant_filters(
+        points_selector=_build_qdrant_filters(
             tenant_id=item.tenant_id,
             data=[MatchingPayload(field="is_deleted", values=[True])],
             match_type=MatchType.must
@@ -326,7 +321,7 @@ async def query_by_payload(client: AsyncQdrantClient, item: QueryByPayloadReques
 
     results, _ = await client.scroll(
         collection_name=item.collection_name,
-        scroll_filter=build_qdrant_filters(
+        scroll_filter=_build_qdrant_filters(
             tenant_id=item.tenant_id,
             data=item.matching_payload,
             match_type=item.match_type,
@@ -345,7 +340,7 @@ async def vector_search(client: AsyncQdrantClient, item: SearchRequest) -> Respo
 
     query_filter = None
     if item.matching_payload is not None:
-        query_filter = build_qdrant_filters(
+        query_filter = _build_qdrant_filters(
             tenant_id=item.tenant_id,
             data=item.matching_payload,
             match_type=MatchType.must,
@@ -359,4 +354,4 @@ async def vector_search(client: AsyncQdrantClient, item: SearchRequest) -> Respo
         query_filter=query_filter,
         with_payload=True,
     )
-    return Success(data=list(results))
+    return ResponseModel(code = 200, data=list(results))
