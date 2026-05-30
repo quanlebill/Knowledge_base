@@ -20,8 +20,8 @@ interface KcUserEvent {
 interface KcAdminEvent {
   time:            number;
   realmId:         string;
-  operationType:   string;   // CREATE / UPDATE / DELETE / ACTION
-  resourceType:    string;   // USER / GROUP / REALM_ROLE / CLIENT / ...
+  operationType:   string;
+  resourceType:    string;
   resourcePath?:   string;
   representation?: string;
   error?:          string;
@@ -36,8 +36,8 @@ interface KcAdminEvent {
 
 /* ── Normalised shape used by the UI ─────────────────────────────────── */
 export interface AuditLogEntry {
-  id:        string;   // synthetic — time+index
-  time:      string;   // ISO
+  id:        string;
+  time:      string;
   event:     string;
   actor:     string;
   ip:        string;
@@ -57,21 +57,21 @@ const outcomeOf = (type: string, error?: string): AuditLogEntry['outcome'] => {
 
 const labelOf = (ev: KcUserEvent): string => {
   const map: Record<string, string> = {
-    LOGIN:            'LOGIN_SUCCESS',
-    LOGIN_ERROR:      'LOGIN_FAILURE',
-    LOGOUT:           'LOGOUT',
-    TOKEN_REFRESH:    'TOKEN_REFRESHED',
+    LOGIN:               'LOGIN_SUCCESS',
+    LOGIN_ERROR:         'LOGIN_FAILURE',
+    LOGOUT:              'LOGOUT',
+    TOKEN_REFRESH:       'TOKEN_REFRESHED',
     TOKEN_REFRESH_ERROR: 'TOKEN_REFRESH_ERROR',
-    REGISTER:         'USER_REGISTERED',
-    RESET_PASSWORD:   'PASSWORD_RESET',
-    UPDATE_PASSWORD:  'PASSWORD_CHANGED',
-    UPDATE_PROFILE:   'PROFILE_UPDATED',
-    SEND_VERIFY_EMAIL: 'VERIFY_EMAIL_SENT',
-    VERIFY_EMAIL:     'EMAIL_VERIFIED',
-    UPDATE_TOTP:      'MFA_UPDATED',
-    REMOVE_TOTP:      'MFA_REMOVED',
-    GRANT_CONSENT:    'CONSENT_GRANTED',
-    REVOKE_GRANT:     'CONSENT_REVOKED',
+    REGISTER:            'USER_REGISTERED',
+    RESET_PASSWORD:      'PASSWORD_RESET',
+    UPDATE_PASSWORD:     'PASSWORD_CHANGED',
+    UPDATE_PROFILE:      'PROFILE_UPDATED',
+    SEND_VERIFY_EMAIL:   'VERIFY_EMAIL_SENT',
+    VERIFY_EMAIL:        'EMAIL_VERIFIED',
+    UPDATE_TOTP:         'MFA_UPDATED',
+    REMOVE_TOTP:         'MFA_REMOVED',
+    GRANT_CONSENT:       'CONSENT_GRANTED',
+    REVOKE_GRANT:        'CONSENT_REVOKED',
   };
   return map[ev.type] ?? ev.type;
 };
@@ -83,9 +83,8 @@ const adminLabel = (ev: KcAdminEvent): string => {
   return `${op} ${res}`;
 };
 
-const actorFromUser = (ev: KcUserEvent): string =>
+const actorFromUser  = (ev: KcUserEvent):  string =>
   ev.details?.username ?? ev.details?.email ?? ev.userId ?? 'unknown';
-
 const actorFromAdmin = (ev: KcAdminEvent): string =>
   ev.authDetails?.username ?? ev.authDetails?.userId ?? 'System';
 
@@ -108,11 +107,25 @@ export const useAuthAuditLogs = (isAdmin: boolean, maxRows = 200): Result => {
     setError(null);
 
     try {
-      // Refresh token before request so it doesn't expire mid-way
       await keycloak.updateToken(30).catch(() => {});
 
-      const headers = { Authorization: `Bearer ${keycloak.token}` };
-      const base    = `${KC_URL}/admin/realms/${KC_REALM}`;
+      const headers  = { Authorization: `Bearer ${keycloak.token}` };
+      const base     = `${KC_URL}/admin/realms/${KC_REALM}`;
+      const tenantId = (keycloak.tokenParsed as any)?.tenant_id ?? '';
+
+      // Fetch tenant users first so we can scope events to this tenant only.
+      // Without filtering, all users in the shared realm would be visible.
+      const tenantUserIds = new Set<string>();
+      if (tenantId) {
+        const uRes = await fetch(
+          `${base}/users?q=tenant_id%3A${encodeURIComponent(tenantId)}&max=500`,
+          { headers },
+        );
+        if (uRes.ok) {
+          const tenantUsers: Array<{ id: string }> = await uRes.json();
+          tenantUsers.forEach(u => tenantUserIds.add(u.id));
+        }
+      }
 
       const [userRes, adminRes] = await Promise.all([
         fetch(`${base}/events?max=${maxRows}`,       { headers }),
@@ -127,41 +140,47 @@ export const useAuthAuditLogs = (isAdmin: boolean, maxRows = 200): Result => {
       const userEvents:  KcUserEvent[]  = await userRes.json();
       const adminEvents: KcAdminEvent[] = await adminRes.json();
 
-      const userMapped: AuditLogEntry[] = userEvents.map((ev, i) => ({
-        id:        `U-${ev.time}-${i}`,
-        time:      new Date(ev.time).toISOString(),
-        event:     labelOf(ev),
-        actor:     actorFromUser(ev),
-        ip:        ev.ipAddress ?? '—',
-        sessionId: ev.sessionId,
-        realm:     KC_REALM,
-        outcome:   outcomeOf(ev.type, ev.error),
-        detail:    ev.error
-          ? `Error: ${ev.error}${ev.details?.username ? ` — user: ${ev.details.username}` : ''}`
-          : ev.details?.redirect_uri
-            ? `client: ${ev.clientId}`
-            : undefined,
-        raw: ev,
-      }));
+      // Filter events to the current tenant: keep events where userId is in
+      // the tenant's user set, or userId is absent (system events with no actor).
+      const isTenantEvent = (userId?: string) =>
+        !tenantId || !userId || tenantUserIds.has(userId);
 
-      const adminMapped: AuditLogEntry[] = adminEvents.map((ev, i) => ({
-        id:        `A-${ev.time}-${i}`,
-        time:      new Date(ev.time).toISOString(),
-        event:     adminLabel(ev),
-        actor:     actorFromAdmin(ev),
-        ip:        ev.authDetails?.ipAddress ?? '—',
-        realm:     KC_REALM,
-        outcome:   ev.error ? 'FAILURE' : 'SUCCESS',
-        detail:    ev.error ?? ev.resourcePath,
-        raw:       ev,
-      }));
+      const userMapped: AuditLogEntry[] = userEvents
+        .filter(ev => isTenantEvent(ev.userId))
+        .map((ev, i) => ({
+          id:        `U-${ev.time}-${i}`,
+          time:      new Date(ev.time).toISOString(),
+          event:     labelOf(ev),
+          actor:     actorFromUser(ev),
+          ip:        ev.ipAddress ?? '—',
+          sessionId: ev.sessionId,
+          realm:     KC_REALM,
+          outcome:   outcomeOf(ev.type, ev.error),
+          detail:    ev.error
+            ? `Error: ${ev.error}${ev.details?.username ? ` — user: ${ev.details.username}` : ''}`
+            : ev.details?.redirect_uri ? `client: ${ev.clientId}` : undefined,
+          raw: ev,
+        }));
 
-      // Merge + sort newest-first
-      const merged = [...userMapped, ...adminMapped].sort(
-        (a, b) => new Date(b.time).getTime() - new Date(a.time).getTime(),
+      const adminMapped: AuditLogEntry[] = adminEvents
+        .filter(ev => isTenantEvent(ev.authDetails?.userId))
+        .map((ev, i) => ({
+          id:        `A-${ev.time}-${i}`,
+          time:      new Date(ev.time).toISOString(),
+          event:     adminLabel(ev),
+          actor:     actorFromAdmin(ev),
+          ip:        ev.authDetails?.ipAddress ?? '—',
+          realm:     KC_REALM,
+          outcome:   ev.error ? 'FAILURE' : 'SUCCESS',
+          detail:    ev.error ?? ev.resourcePath,
+          raw:       ev,
+        }));
+
+      setLogs(
+        [...userMapped, ...adminMapped].sort(
+          (a, b) => new Date(b.time).getTime() - new Date(a.time).getTime(),
+        ),
       );
-
-      setLogs(merged);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to fetch audit logs');
     } finally {

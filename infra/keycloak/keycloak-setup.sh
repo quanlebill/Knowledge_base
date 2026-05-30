@@ -1,7 +1,8 @@
 #!/usr/bin/env sh
 # Idempotent post-start configuration for Keycloak.
 # Runs as a one-shot container after keycloak-lb is healthy.
-# Assigns required realm-management client roles to platform-admin.
+# Assigns realm-management client roles (view-users, view-events, …) to
+# ALL users whose role_id attribute is "platform-admin" — covers every tenant.
 
 set -e
 
@@ -23,13 +24,6 @@ TOKEN=$(curl -sf -X POST "${KC}/realms/master/protocol/openid-connect/token" \
 
 AUTH="Authorization: Bearer ${TOKEN}"
 
-# ── Resolve platform-admin user ID ─────────────────────────────────────────
-USER_ID=$(curl -sf -H "${AUTH}" \
-  "${KC}/admin/realms/${REALM}/users?username=platform-admin&exact=true" \
-  | sed 's/.*"id":"\([^"]*\)".*/\1/' | head -1)
-
-echo "[keycloak-setup] platform-admin user id: ${USER_ID}"
-
 # ── Resolve realm-management client ID ─────────────────────────────────────
 CLIENT_ID=$(curl -sf -H "${AUTH}" \
   "${KC}/admin/realms/${REALM}/clients?clientId=realm-management&search=false" \
@@ -37,35 +31,47 @@ CLIENT_ID=$(curl -sf -H "${AUTH}" \
 
 echo "[keycloak-setup] realm-management client id: ${CLIENT_ID}"
 
-# ── Fetch all available roles for realm-management ─────────────────────────
 ALL_ROLES=$(curl -sf -H "${AUTH}" \
   "${KC}/admin/realms/${REALM}/clients/${CLIENT_ID}/roles")
 
-# ── Fetch already-assigned client roles for the user ───────────────────────
-ASSIGNED=$(curl -sf -H "${AUTH}" \
-  "${KC}/admin/realms/${REALM}/users/${USER_ID}/role-mappings/clients/${CLIENT_ID}")
+assign_roles_to_user() {
+  local uid="$1"
+  local uname="$2"
+  local assigned
+  assigned=$(curl -sf -H "${AUTH}" \
+    "${KC}/admin/realms/${REALM}/users/${uid}/role-mappings/clients/${CLIENT_ID}")
 
-assign_role_if_missing() {
-  ROLE_NAME="$1"
-  if echo "${ASSIGNED}" | grep -q "\"${ROLE_NAME}\""; then
-    echo "[keycloak-setup] ${ROLE_NAME} already assigned, skipping."
-    return
-  fi
-  ROLE_JSON=$(echo "${ALL_ROLES}" | grep -o "{[^}]*\"name\":\"${ROLE_NAME}\"[^}]*}")
-  if [ -z "${ROLE_JSON}" ]; then
-    echo "[keycloak-setup] WARNING: role ${ROLE_NAME} not found in realm-management."
-    return
-  fi
-  curl -sf -X POST -H "${AUTH}" -H "Content-Type: application/json" \
-    "${KC}/admin/realms/${REALM}/users/${USER_ID}/role-mappings/clients/${CLIENT_ID}" \
-    -d "[${ROLE_JSON}]"
-  echo "[keycloak-setup] Assigned ${ROLE_NAME} to platform-admin."
+  for ROLE_NAME in view-events view-users query-users query-groups; do
+    if echo "${assigned}" | grep -q "\"${ROLE_NAME}\""; then
+      echo "[keycloak-setup] ${uname}: ${ROLE_NAME} already assigned."
+      continue
+    fi
+    ROLE_JSON=$(echo "${ALL_ROLES}" | grep -o "{[^}]*\"name\":\"${ROLE_NAME}\"[^}]*}")
+    if [ -z "${ROLE_JSON}" ]; then
+      echo "[keycloak-setup] WARNING: role ${ROLE_NAME} not found."
+      continue
+    fi
+    curl -sf -X POST -H "${AUTH}" -H "Content-Type: application/json" \
+      "${KC}/admin/realms/${REALM}/users/${uid}/role-mappings/clients/${CLIENT_ID}" \
+      -d "[${ROLE_JSON}]"
+    echo "[keycloak-setup] ${uname}: assigned ${ROLE_NAME}."
+  done
 }
 
-assign_role_if_missing "view-events"
-assign_role_if_missing "view-users"
-assign_role_if_missing "query-users"
-assign_role_if_missing "query-groups"
+# ── Assign roles to ALL users with role_id=platform-admin (all tenants) ─────
+# Keycloak attribute search: q=role_id:platform-admin
+ALL_ADMINS=$(curl -sf -H "${AUTH}" \
+  "${KC}/admin/realms/${REALM}/users?q=role_id%3Aplatform-admin&max=100")
+
+echo "${ALL_ADMINS}" | python3 -c "
+import sys, json
+users = json.load(sys.stdin)
+for u in users:
+    print(u['id'] + '|' + u['username'])
+" | while IFS='|' read -r uid uname; do
+  echo "[keycloak-setup] Processing platform-admin user: ${uname} (${uid})"
+  assign_roles_to_user "${uid}" "${uname}"
+done
 
 # ── User Profile: enable unmanagedAttributePolicy so tenant_id/role_id persist ──
 # Without this, Keycloak 22+ declarative UP drops unknown attributes on write.

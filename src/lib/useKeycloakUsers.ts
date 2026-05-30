@@ -23,17 +23,27 @@ interface Result {
 }
 
 export const useKeycloakUsers = (isAdmin: boolean): Result => {
-  const [users, setUsers]   = useState<KcUser[]>([]);
+  const [users, setUsers]     = useState<KcUser[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError]   = useState<string | null>(null);
+  const [error, setError]     = useState<string | null>(null);
 
   const fetchUsers = useCallback(async () => {
     if (!isAdmin || !keycloak.token) return;
     setLoading(true);
     setError(null);
     try {
+      await keycloak.updateToken(30).catch(() => {});
+
+      // Scope user list to the current tenant via tenant_id attribute search.
+      // Keycloak attribute query: q=tenant_id:<value> returns only users
+      // whose tenant_id attribute matches — prevents cross-tenant visibility.
+      const tenantId = (keycloak.tokenParsed as any)?.tenant_id ?? '';
+      const qs = tenantId
+        ? `q=tenant_id%3A${encodeURIComponent(tenantId)}&max=200`
+        : 'max=200';
+
       const res = await fetch(
-        `${KC_URL}/admin/realms/${KC_REALM}/users?max=200&briefRepresentation=true`,
+        `${KC_URL}/admin/realms/${KC_REALM}/users?${qs}`,
         { headers: { Authorization: `Bearer ${keycloak.token}` } },
       );
       if (res.status === 403) throw new Error('Token lacks view-users permission — assign realm-management → view-users in Keycloak');
