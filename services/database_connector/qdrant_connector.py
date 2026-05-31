@@ -25,7 +25,7 @@ from basemodel.services_databaseconnector.qdrant_model import (
 
 from basemodel.services_databaseconnector.shared_model import (
     ResponseModel,
-    RetryNumber,
+    RetryConfig,
     HealthCheckLoopConfig,
 )
 
@@ -154,7 +154,7 @@ class QdrantClient:
 
             await asyncio.sleep(config.interval)
 
-    async def open(self, retry: RetryNumber):
+    async def open(self, retry: RetryConfig):
         if self._client is None:
            return self._client
         log.info("Qdrant Connection established")
