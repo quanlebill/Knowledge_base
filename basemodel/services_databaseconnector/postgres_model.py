@@ -5,12 +5,6 @@ from enum import Enum
 from typing import Any, Annotated, Literal, Optional, Type, Union
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import (
-    Boolean, DateTime, Float, ForeignKey, Integer,
-    String, Text, func,
-)
-from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 _ROLES = frozenset({"create", "read", "update", "delete", "orm"})
 _partial: dict[str, dict] = {}
@@ -144,6 +138,15 @@ Base Struct
 """
 
 
+class DMLPreparation(BaseModel):
+    instance: Any | None = None
+    orm_cls: Any | None = None
+    table_name: str | None = None
+    compiled_query: Any | None = None
+
+class DQLPreparation(BaseModel):
+    compiled_query: Any
+
 class Document(BaseModel):
     source_type: Literal[SourceType.DOC]
     doc_type: str
@@ -210,22 +213,24 @@ class ModelConfig(BaseModel):
     extra: Optional[dict[str, Any]] = None
 
 
+
 """
 Request Model
 """
+class TenantModel(BaseModel):
+    tenant_id: str
 
-# ── Create ────────────────────────────────────────────────────────────────────
 
 
 @register("KBModel", "create")
-class KBModelCreate(BaseModel):
+class KBModelCreate(TenantModel):
     model_name: str
     task_type: TaskType
     model_config = ConfigDict(use_enum_values=True)
 
 
 @register("KBModelVersion", "create")
-class KBModelVersionCreate(BaseModel):
+class KBModelVersionCreate(TenantModel):
     model_id: str
     version_number: int
     added_by: Optional[str] = None
@@ -234,8 +239,7 @@ class KBModelVersionCreate(BaseModel):
 
 
 @register("KBData", "create")
-class KBDataCreate(BaseModel):
-    tenant_id: str
+class KBDataCreate(TenantModel):
     role_id: str
     name: str
     extension: str
@@ -250,7 +254,7 @@ class KBDataCreate(BaseModel):
 
 
 @register("KBLifecycleHistory", "create")
-class KBLifecycleHistoryCreate(BaseModel):
+class KBLifecycleHistoryCreate(TenantModel):
     data_id: str
     to_tier: Tier
     from_tier: Optional[Tier] = None
@@ -260,8 +264,7 @@ class KBLifecycleHistoryCreate(BaseModel):
 
 
 @register("KBFilterPolicy", "create")
-class KBFilterPolicyCreate(BaseModel):
-    tenant_id: str
+class KBFilterPolicyCreate(TenantModel):
     policy_name: str
     configformat: PolicyFormat
     config: Optional[PolicyConfig] = None
@@ -272,8 +275,7 @@ class KBFilterPolicyCreate(BaseModel):
 
 
 @register("KBExtractionPolicy", "create")
-class KBExtractionPolicyCreate(BaseModel):
-    tenant_id: str
+class KBExtractionPolicyCreate(TenantModel):
     policy_name: str
     policy_type: PolicyType
     custom_override: Optional[str] = None
@@ -283,18 +285,16 @@ class KBExtractionPolicyCreate(BaseModel):
 
 
 @register("KBConflictBatch", "create")
-class KBConflictBatchCreate(BaseModel):
+class KBConflictBatchCreate(TenantModel):
     batch_title: str
-    tenant_id: Optional[str] = None
     status: ConflictStatus = ConflictStatus.PENDING
     model_config = ConfigDict(use_enum_values=True)
 
 
 @register("KBConflict", "create")
-class KBConflictCreate(BaseModel):
+class KBConflictCreate(TenantModel):
     conflict_type: ConflictType
     severity: ConflictSeverity
-    tenant_id: Optional[str] = None
     batch_id: Optional[str] = None
     status: ConflictStatus = ConflictStatus.PENDING
     detailed_explanation: Optional[str] = None
@@ -305,13 +305,13 @@ class KBConflictCreate(BaseModel):
 
 
 @register("KBWarehouse", "create")
-class KBWarehouseCreate(BaseModel):
+class KBWarehouseCreate(TenantModel):
     service: str
     description: Optional[str] = None
 
 
 @register("KBWarehouse_Config", "create")
-class KBWarehouseConfigCreate(BaseModel):
+class KBWarehouseConfigCreate(TenantModel):
     warehouse_id: str
     version_number: int
     is_active: bool = False
@@ -320,7 +320,7 @@ class KBWarehouseConfigCreate(BaseModel):
 
 
 @register("KBTable", "create")
-class KBTableCreate(BaseModel):
+class KBTableCreate(TenantModel):
     owner_id: str
     table_name: str
     description: Optional[str] = None
@@ -329,13 +329,13 @@ class KBTableCreate(BaseModel):
 
 
 @register("KBTextBlock", "create")
-class KBTextBlockCreate(BaseModel):
+class KBTextBlockCreate(TenantModel):
     owner_id: str
     block_index: int
 
 
 @register("KBTextBlockVersion", "create")
-class KBTextBlockVersionCreate(BaseModel):
+class KBTextBlockVersionCreate(TenantModel):
     block_id: str
     version_number: int
     content: Optional[str] = None
@@ -346,7 +346,7 @@ class KBTextBlockVersionCreate(BaseModel):
 
 
 @register("KBTextTable", "create")
-class KBTextTableCreate(BaseModel):
+class KBTextTableCreate(TenantModel):
     version_id: str
     table_name: str
     description: Optional[str] = None
@@ -354,14 +354,13 @@ class KBTextTableCreate(BaseModel):
 
 
 @register("KBQdrantConnection", "create")
-class KBQdrantConnectionCreate(BaseModel):
-    tenant_id: str
+class KBQdrantConnectionCreate(TenantModel):
     is_active: bool = False
     total_collection: int = 0
 
 
 @register("KBQdrantCollection", "create")
-class KBQdrantCollectionCreate(BaseModel):
+class KBQdrantCollectionCreate(TenantModel):
     connection_id: str
     collection_name: str
     is_active: bool = False
@@ -373,8 +372,7 @@ class KBQdrantCollectionCreate(BaseModel):
 
 
 @register("KBNeo4jConnection", "create")
-class KBNeo4jConnectionCreate(BaseModel):
-    tenant_id: str
+class KBNeo4jConnectionCreate(TenantModel):
     is_connected: bool = False
     total_node: int = 0
     total_edge: int = 0
@@ -382,14 +380,14 @@ class KBNeo4jConnectionCreate(BaseModel):
 
 
 @register("KBNeo4jNode", "create")
-class KBNeo4jNodeCreate(BaseModel):
+class KBNeo4jNodeCreate(TenantModel):
     connection_id: str
     node_name: str
     node_description: Optional[str] = None
 
 
 @register("KBNeo4jRelationship", "create")
-class KBNeo4jRelationshipCreate(BaseModel):
+class KBNeo4jRelationshipCreate(TenantModel):
     from_node: str
     to_node: str
     score: Optional[float] = None
@@ -397,14 +395,13 @@ class KBNeo4jRelationshipCreate(BaseModel):
 
 
 @register("KBEntityLookup", "create")
-class KBEntityLookupCreate(BaseModel):
+class KBEntityLookupCreate(TenantModel):
     alias_name: str
     canonical_name: str
 
 
 @register("KBPublishAPI", "create")
-class KBPublishAPICreate(BaseModel):
-    tenant_id: str
+class KBPublishAPICreate(TenantModel):
     name: str
     type: APIType
     endpoint_url: str
@@ -413,12 +410,9 @@ class KBPublishAPICreate(BaseModel):
     model_config = ConfigDict(use_enum_values=True)
 
 
-# ── Read ──────────────────────────────────────────────────────────────────────
-
 
 @register("KBModel", "read")
-class KBModelRead(BaseModel):
-    tenant_id: str
+class KBModelRead(TenantModel):
     task_type: Optional[TaskType] = None
     limit: int = 10
     pagination_cursor: datetime.datetime | None = None
@@ -426,8 +420,7 @@ class KBModelRead(BaseModel):
 
 
 @register("KBModelVersion", "read")
-class KBModelVersionRead(BaseModel):
-    tenant_id: str
+class KBModelVersionRead(TenantModel):
     model_id: str
     is_active: Optional[bool] = None
     limit: int = 10
@@ -435,8 +428,7 @@ class KBModelVersionRead(BaseModel):
 
 
 @register("KBData", "read")
-class KBDataRead(BaseModel):
-    tenant_id: str
+class KBDataRead(TenantModel):
     data_id: Optional[str] = None
     source_type: Optional[SourceType] = None
     role_id: Optional[str] = None
@@ -447,16 +439,14 @@ class KBDataRead(BaseModel):
 
 
 @register("KBLifecycleHistory", "read")
-class KBLifecycleHistoryRead(BaseModel):
-    tenant_id: str
+class KBLifecycleHistoryRead(TenantModel):
     data_id: str
     limit: int = 10
     pagination_cursor: datetime.datetime | None = None
 
 
 @register("KBFilterPolicy", "read")
-class KBFilterPolicyRead(BaseModel):
-    tenant_id: str
+class KBFilterPolicyRead(TenantModel):
     language: Optional[Language] = None
     limit: int = 10
     pagination_cursor: datetime.datetime | None = None
@@ -464,8 +454,7 @@ class KBFilterPolicyRead(BaseModel):
 
 
 @register("KBExtractionPolicy", "read")
-class KBExtractionPolicyRead(BaseModel):
-    tenant_id: str
+class KBExtractionPolicyRead(TenantModel):
     language: Optional[Language] = None
     limit: int = 10
     pagination_cursor: datetime.datetime | None = None
@@ -473,8 +462,7 @@ class KBExtractionPolicyRead(BaseModel):
 
 
 @register("KBConflictBatch", "read")
-class KBConflictBatchRead(BaseModel):
-    tenant_id: str
+class KBConflictBatchRead(TenantModel):
     status: Optional[ConflictStatus] = None
     limit: int = 10
     pagination_cursor: datetime.datetime | None = None
@@ -482,8 +470,7 @@ class KBConflictBatchRead(BaseModel):
 
 
 @register("KBConflict", "read")
-class KBConflictRead(BaseModel):
-    tenant_id: str
+class KBConflictRead(TenantModel):
     batch_id: Optional[str] = None
     status: Optional[ConflictStatus] = None
     severity: Optional[ConflictSeverity] = None
@@ -493,15 +480,13 @@ class KBConflictRead(BaseModel):
 
 
 @register("KBWarehouse", "read")
-class KBWarehouseRead(BaseModel):
-    tenant_id: str
+class KBWarehouseRead(TenantModel):
     limit: int = 10
     pagination_cursor: datetime.datetime | None = None
 
 
 @register("KBWarehouse_Config", "read")
-class KBWarehouseConfigRead(BaseModel):
-    tenant_id: str
+class KBWarehouseConfigRead(TenantModel):
     warehouse_id: str
     is_active: Optional[bool] = None
     limit: int = 10
@@ -509,8 +494,7 @@ class KBWarehouseConfigRead(BaseModel):
 
 
 @register("KBTable", "read")
-class KBTableRead(BaseModel):
-    tenant_id: str
+class KBTableRead(TenantModel):
     owner_id: Optional[str] = None
     table_name: Optional[str] = None
     limit: int = 10
@@ -518,16 +502,14 @@ class KBTableRead(BaseModel):
 
 
 @register("KBTextBlock", "read")
-class KBTextBlockRead(BaseModel):
-    tenant_id: str
+class KBTextBlockRead(TenantModel):
     owner_id: str
     limit: int = 10
     pagination_cursor: datetime.datetime | None = None
 
 
 @register("KBTextBlockVersion", "read")
-class KBTextBlockVersionRead(BaseModel):
-    tenant_id: str
+class KBTextBlockVersionRead(TenantModel):
     block_id: str
     is_active: Optional[bool] = None
     limit: int = 10
@@ -535,24 +517,21 @@ class KBTextBlockVersionRead(BaseModel):
 
 
 @register("KBTextTable", "read")
-class KBTextTableRead(BaseModel):
-    tenant_id: str
+class KBTextTableRead(TenantModel):
     version_id: str
     limit: int = 10
     pagination_cursor: datetime.datetime | None = None
 
 
 @register("KBQdrantConnection", "read")
-class KBQdrantConnectionRead(BaseModel):
-    tenant_id: str
+class KBQdrantConnectionRead(TenantModel):
     is_active: Optional[bool] = None
     limit: int = 10
     pagination_cursor: datetime.datetime | None = None
 
 
 @register("KBQdrantCollection", "read")
-class KBQdrantCollectionRead(BaseModel):
-    tenant_id: str
+class KBQdrantCollectionRead(TenantModel):
     connection_id: str
     is_active: Optional[bool] = None
     limit: int = 10
@@ -560,24 +539,21 @@ class KBQdrantCollectionRead(BaseModel):
 
 
 @register("KBNeo4jConnection", "read")
-class KBNeo4jConnectionRead(BaseModel):
-    tenant_id: str
+class KBNeo4jConnectionRead(TenantModel):
     is_connected: Optional[bool] = None
     limit: int = 10
     pagination_cursor: datetime.datetime | None = None
 
 
 @register("KBNeo4jNode", "read")
-class KBNeo4jNodeRead(BaseModel):
-    tenant_id: str
+class KBNeo4jNodeRead(TenantModel):
     connection_id: str
     limit: int = 10
     pagination_cursor: datetime.datetime | None = None
 
 
 @register("KBNeo4jRelationship", "read")
-class KBNeo4jRelationshipRead(BaseModel):
-    tenant_id: str
+class KBNeo4jRelationshipRead(TenantModel):
     from_node: Optional[str] = None
     to_node: Optional[str] = None
     limit: int = 10
@@ -585,8 +561,7 @@ class KBNeo4jRelationshipRead(BaseModel):
 
 
 @register("KBEntityLookup", "read")
-class KBEntityLookupRead(BaseModel):
-    tenant_id: str
+class KBEntityLookupRead(TenantModel):
     alias_name: Optional[str] = None
     canonical_name: Optional[str] = None
     limit: int = 10
@@ -594,32 +569,31 @@ class KBEntityLookupRead(BaseModel):
 
 
 @register("KBPublishAPI", "read")
-class KBPublishAPIRead(BaseModel):
-    tenant_id: str
+class KBPublishAPIRead(TenantModel):
     is_published: Optional[bool] = None
     limit: int = 10
     pagination_cursor: datetime.datetime | None = None
 
 
-# ── Update ────────────────────────────────────────────────────────────────────
+
 
 
 @register("KBModel", "update")
-class KBModelUpdate(BaseModel):
+class KBModelUpdate(TenantModel):
     model_id: str
     model_name: Optional[str] = None
     model_config = ConfigDict(use_enum_values=True)
 
 
 @register("KBModelVersion", "update")
-class KBModelVersionUpdate(BaseModel):
+class KBModelVersionUpdate(TenantModel):
     version_id: int
     config: Optional[ModelConfig] = None
     is_active: Optional[bool] = None
 
 
 @register("KBData", "update")
-class KBDataUpdate(BaseModel):
+class KBDataUpdate(TenantModel):
     data_id: str
     name: Optional[str] = None
     extension: Optional[str] = None
@@ -632,13 +606,13 @@ class KBDataUpdate(BaseModel):
 
 
 @register("KBLifecycleHistory", "update")
-class KBLifecycleHistoryUpdate(BaseModel):
+class KBLifecycleHistoryUpdate(TenantModel):
     history_id: str
     notes: Optional[str] = None
 
 
 @register("KBFilterPolicy", "update")
-class KBFilterPolicyUpdate(BaseModel):
+class KBFilterPolicyUpdate(TenantModel):
     policy_id: str
     policy_name: Optional[str] = None
     configformat: Optional[PolicyFormat] = None
@@ -649,7 +623,7 @@ class KBFilterPolicyUpdate(BaseModel):
 
 
 @register("KBExtractionPolicy", "update")
-class KBExtractionPolicyUpdate(BaseModel):
+class KBExtractionPolicyUpdate(TenantModel):
     policy_id: str
     policy_name: Optional[str] = None
     policy_type: Optional[PolicyType] = None
@@ -659,7 +633,7 @@ class KBExtractionPolicyUpdate(BaseModel):
 
 
 @register("KBConflictBatch", "update")
-class KBConflictBatchUpdate(BaseModel):
+class KBConflictBatchUpdate(TenantModel):
     batch_id: str
     batch_title: Optional[str] = None
     status: Optional[ConflictStatus] = None
@@ -667,7 +641,7 @@ class KBConflictBatchUpdate(BaseModel):
 
 
 @register("KBConflict", "update")
-class KBConflictUpdate(BaseModel):
+class KBConflictUpdate(TenantModel):
     conflict_id: str
     batch_id: Optional[str] = None
     status: Optional[ConflictStatus] = None
@@ -677,21 +651,21 @@ class KBConflictUpdate(BaseModel):
 
 
 @register("KBWarehouse", "update")
-class KBWarehouseUpdate(BaseModel):
+class KBWarehouseUpdate(TenantModel):
     warehouse_id: str
     service: Optional[str] = None
     description: Optional[str] = None
 
 
 @register("KBWarehouse_Config", "update")
-class KBWarehouseConfigUpdate(BaseModel):
+class KBWarehouseConfigUpdate(TenantModel):
     config_id: str
     config: Optional[WarehouseConfigPayload] = None
     is_active: Optional[bool] = None
 
 
 @register("KBTable", "update")
-class KBTableUpdate(BaseModel):
+class KBTableUpdate(TenantModel):
     table_id: str
     table_name: Optional[str] = None
     description: Optional[str] = None
@@ -699,13 +673,13 @@ class KBTableUpdate(BaseModel):
 
 
 @register("KBTextBlock", "update")
-class KBTextBlockUpdate(BaseModel):
+class KBTextBlockUpdate(TenantModel):
     block_id: str
     block_index: Optional[int] = None
 
 
 @register("KBTextBlockVersion", "update")
-class KBTextBlockVersionUpdate(BaseModel):
+class KBTextBlockVersionUpdate(TenantModel):
     version_id: str
     is_active: Optional[bool] = None
     content: Optional[str] = None
@@ -715,7 +689,7 @@ class KBTextBlockVersionUpdate(BaseModel):
 
 
 @register("KBTextTable", "update")
-class KBTextTableUpdate(BaseModel):
+class KBTextTableUpdate(TenantModel):
     version_id: str
     table_name: Optional[str] = None
     description: Optional[str] = None
@@ -723,14 +697,14 @@ class KBTextTableUpdate(BaseModel):
 
 
 @register("KBQdrantConnection", "update")
-class KBQdrantConnectionUpdate(BaseModel):
+class KBQdrantConnectionUpdate(TenantModel):
     connection_id: str
     is_active: Optional[bool] = None
     total_collection: Optional[int] = None
 
 
 @register("KBQdrantCollection", "update")
-class KBQdrantCollectionUpdate(BaseModel):
+class KBQdrantCollectionUpdate(TenantModel):
     collection_id: str
     is_active: Optional[bool] = None
     similarity_metric: Optional[SimilarityMetric] = None
@@ -741,7 +715,7 @@ class KBQdrantCollectionUpdate(BaseModel):
 
 
 @register("KBNeo4jConnection", "update")
-class KBNeo4jConnectionUpdate(BaseModel):
+class KBNeo4jConnectionUpdate(TenantModel):
     connection_id: str
     is_connected: Optional[bool] = None
     total_node: Optional[int] = None
@@ -750,14 +724,14 @@ class KBNeo4jConnectionUpdate(BaseModel):
 
 
 @register("KBNeo4jNode", "update")
-class KBNeo4jNodeUpdate(BaseModel):
+class KBNeo4jNodeUpdate(TenantModel):
     node_id: str
     node_name: Optional[str] = None
     node_description: Optional[str] = None
 
 
 @register("KBNeo4jRelationship", "update")
-class KBNeo4jRelationshipUpdate(BaseModel):
+class KBNeo4jRelationshipUpdate(TenantModel):
     from_node: str
     to_node: str
     score: Optional[float] = None
@@ -765,14 +739,14 @@ class KBNeo4jRelationshipUpdate(BaseModel):
 
 
 @register("KBEntityLookup", "update")
-class KBEntityLookupUpdate(BaseModel):
+class KBEntityLookupUpdate(TenantModel):
     lookup_id: str
     alias_name: Optional[str] = None
     canonical_name: Optional[str] = None
 
 
 @register("KBPublishAPI", "update")
-class KBPublishAPIUpdate(BaseModel):
+class KBPublishAPIUpdate(TenantModel):
     id: str
     name: Optional[str] = None
     type: Optional[APIType] = None
@@ -782,136 +756,110 @@ class KBPublishAPIUpdate(BaseModel):
     model_config = ConfigDict(use_enum_values=True)
 
 
-# ── Delete ────────────────────────────────────────────────────────────────────
-
 
 @register("KBModel", "delete")
-class KBModelDelete(BaseModel):
-    tenant_id: str
+class KBModelDelete(TenantModel):
     model_id: str
 
 
 @register("KBModelVersion", "delete")
-class KBModelVersionDelete(BaseModel):
-    tenant_id: str
+class KBModelVersionDelete(TenantModel):
     version_id: int
 
 
 @register("KBData", "delete")
-class KBDataDelete(BaseModel):
-    tenant_id: str
+class KBDataDelete(TenantModel):
     data_id: str
 
 
 @register("KBLifecycleHistory", "delete")
-class KBLifecycleHistoryDelete(BaseModel):
-    tenant_id: str
+class KBLifecycleHistoryDelete(TenantModel):
     history_id: str
 
 
 @register("KBFilterPolicy", "delete")
-class KBFilterPolicyDelete(BaseModel):
-    tenant_id: str
+class KBFilterPolicyDelete(TenantModel):
     policy_id: str
 
 
 @register("KBExtractionPolicy", "delete")
-class KBExtractionPolicyDelete(BaseModel):
-    tenant_id: str
+class KBExtractionPolicyDelete(TenantModel):
     policy_id: str
 
 
 @register("KBConflictBatch", "delete")
-class KBConflictBatchDelete(BaseModel):
-    tenant_id: str
+class KBConflictBatchDelete(TenantModel):
     batch_id: str
 
 
 @register("KBConflict", "delete")
-class KBConflictDelete(BaseModel):
-    tenant_id: str
+class KBConflictDelete(TenantModel):
     conflict_id: str
 
 
 @register("KBWarehouse", "delete")
-class KBWarehouseDelete(BaseModel):
-    tenant_id: str
+class KBWarehouseDelete(TenantModel):
     warehouse_id: str
 
 
 @register("KBWarehouse_Config", "delete")
-class KBWarehouseConfigDelete(BaseModel):
-    tenant_id: str
+class KBWarehouseConfigDelete(TenantModel):
     config_id: str
 
 
 @register("KBTable", "delete")
-class KBTableDelete(BaseModel):
-    tenant_id: str
+class KBTableDelete(TenantModel):
     table_id: str
 
 
 @register("KBTextBlock", "delete")
-class KBTextBlockDelete(BaseModel):
-    tenant_id: str
+class KBTextBlockDelete(TenantModel):
     block_id: str
 
 
 @register("KBTextBlockVersion", "delete")
-class KBTextBlockVersionDelete(BaseModel):
-    tenant_id: str
+class KBTextBlockVersionDelete(TenantModel):
     version_id: str
 
 
 @register("KBTextTable", "delete")
-class KBTextTableDelete(BaseModel):
-    tenant_id: str
+class KBTextTableDelete(TenantModel):
     version_id: str
 
 
 @register("KBQdrantConnection", "delete")
-class KBQdrantConnectionDelete(BaseModel):
-    tenant_id: str
+class KBQdrantConnectionDelete(TenantModel):
     connection_id: str
 
 
 @register("KBQdrantCollection", "delete")
-class KBQdrantCollectionDelete(BaseModel):
-    tenant_id: str
+class KBQdrantCollectionDelete(TenantModel):
     collection_id: str
 
 
 @register("KBNeo4jConnection", "delete")
-class KBNeo4jConnectionDelete(BaseModel):
-    tenant_id: str
+class KBNeo4jConnectionDelete(TenantModel):
     connection_id: str
 
-
 @register("KBNeo4jNode", "delete")
-class KBNeo4jNodeDelete(BaseModel):
-    tenant_id: str
+class KBNeo4jNodeDelete(TenantModel):
     node_id: str
 
 
 @register("KBNeo4jRelationship", "delete")
-class KBNeo4jRelationshipDelete(BaseModel):
-    tenant_id: str
+class KBNeo4jRelationshipDelete(TenantModel):
     from_node: str
     to_node: str
 
 
 @register("KBEntityLookup", "delete")
-class KBEntityLookupDelete(BaseModel):
-    tenant_id: str
+class KBEntityLookupDelete(TenantModel):
     lookup_id: str
 
 
 @register("KBPublishAPI", "delete")
-class KBPublishAPIDelete(BaseModel):
-    tenant_id: str
+class KBPublishAPIDelete(TenantModel):
     id: str
-
-
 
 class SelectedColumn(BaseModel):
     table_name: str
@@ -933,7 +881,7 @@ class WhereFilter(BaseModel):
     value: Any
 
 
-class ReadJoinRequest(BaseModel):
+class ReadJoinRequest(TenantModel):
     joins_table: list[str]
     join_on: list[JoinOn]
     selected_columns: list[SelectedColumn]
@@ -968,379 +916,3 @@ class ReadJoinRequest(BaseModel):
         return self
 
 
-"""
-ORM
-"""
-
-
-class Base(DeclarativeBase):
-    pass
-
-
-@register("KBModel", "orm")
-class KBModelORM(Base):
-    __tablename__ = "KBModel"
-
-    model_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False, index=True)
-    model_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    task_type: Mapped[str] = mapped_column(String(64), nullable=False)          # TaskType
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
-    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-
-    versions: Mapped[list["KBModelVersionORM"]] = relationship(back_populates="model", cascade="all, delete-orphan")
-    text_block_versions: Mapped[list["KBTextBlockVersionORM"]] = relationship(back_populates="embedding_model")
-    qdrant_collections: Mapped[list["KBQdrantCollectionORM"]] = relationship(back_populates="embedding_model")
-    neo4j_connections: Mapped[list["KBNeo4jConnectionORM"]] = relationship(back_populates="embedding_model")
-
-
-@register("KBModelVersion", "orm")
-class KBModelVersionORM(Base):
-    __tablename__ = "KBModelVersion"
-
-    # SERIAL pk — generated by DB
-    version_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False, index=True)
-    model_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("KBModel.model_id"), nullable=False)
-    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    added_by: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), nullable=True)
-    config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)        # ModelConfig
-    is_active: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-    added_on: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
-    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-
-    model: Mapped["KBModelORM"] = relationship(back_populates="versions")
-
-
-@register("KBData", "orm")
-class KBDataORM(Base):
-    __tablename__ = "KBData"
-
-    data_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False, index=True)
-    role_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
-    name: Mapped[str] = mapped_column(String(512), nullable=False)
-    extension: Mapped[str] = mapped_column(String(32), nullable=False)
-    language: Mapped[str] = mapped_column(String(32), nullable=False)           # Language
-    source_type: Mapped[str] = mapped_column(String(32), nullable=False)        # SourceType
-    added_by: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
-    abstract: Mapped[str] = mapped_column(Text, nullable=False)
-    doc_metadata: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False)  # MetadataType
-    current_tier: Mapped[str] = mapped_column(String(16), default=Tier.BRONZE.value, nullable=False)  # Tier
-    path: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
-    added_on: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
-    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-
-    lifecycle_histories: Mapped[list["KBLifecycleHistoryORM"]] = relationship(back_populates="data", cascade="all, delete-orphan")
-    text_blocks: Mapped[list["KBTextBlockORM"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
-    tables: Mapped[list["KBTableORM"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
-
-
-@register("KBLifecycleHistory", "orm")
-class KBLifecycleHistoryORM(Base):
-    __tablename__ = "KBLifecycleHistory"
-
-    history_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False, index=True)
-    data_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("KBData.data_id"), nullable=False, index=True)
-    to_tier: Mapped[str] = mapped_column(String(16), nullable=False)            # Tier
-    from_tier: Mapped[Optional[str]] = mapped_column(String(16), nullable=True) # Tier
-    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), nullable=True)
-    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    transitioned_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
-    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-
-    data: Mapped["KBDataORM"] = relationship(back_populates="lifecycle_histories")
-
-
-@register("KBFilterPolicy", "orm")
-class KBFilterPolicyORM(Base):
-    __tablename__ = "KBFilterPolicy"
-
-    policy_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False, index=True)
-    policy_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    configformat: Mapped[str] = mapped_column(String(64), nullable=False)       # PolicyFilteringType
-    config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)        # PolicyConfig
-    is_active: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), nullable=True)
-    language: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)  # Language
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
-    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-
-
-@register("KBExtractionPolicy", "orm")
-class KBExtractionPolicyORM(Base):
-    __tablename__ = "KBExtractionPolicy"
-
-    policy_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False, index=True)
-    policy_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    policy_type: Mapped[str] = mapped_column(String(64), nullable=False)        # PolicyExtractionType
-    custom_override: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), nullable=True)
-    language: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)  # Language
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
-    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-
-
-@register("KBConflictBatch", "orm")
-class KBConflictBatchORM(Base):
-    __tablename__ = "KBConflictBatch"
-
-    batch_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), nullable=True, index=True)
-    batch_title: Mapped[str] = mapped_column(String(512), nullable=False)
-    status: Mapped[str] = mapped_column(String(32), default=ConflictStatus.PENDING.value, nullable=False)  # ConflictStatus
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
-    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-
-    conflicts: Mapped[list["KBConflictORM"]] = relationship(back_populates="batch", cascade="all, delete-orphan")
-
-
-@register("KBConflict", "orm")
-class KBConflictORM(Base):
-    __tablename__ = "KBConflict"
-
-    conflict_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), nullable=True, index=True)
-    conflict_type: Mapped[str] = mapped_column(String(64), nullable=False)      # ConflictType
-    severity: Mapped[str] = mapped_column(String(16), nullable=False)           # ConflictSeverity
-    batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("KBConflictBatch.batch_id"), nullable=True, index=True)
-    status: Mapped[str] = mapped_column(String(32), default=ConflictStatus.PENDING.value, nullable=False)  # ConflictStatus
-    detailed_explanation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    existing_snapshot: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
-    incoming_snapshot: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
-    resolution_instruction: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    resolved_by: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), nullable=True)
-    detected_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
-    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-
-    batch: Mapped[Optional["KBConflictBatchORM"]] = relationship(back_populates="conflicts")
-
-
-@register("KBWarehouse", "orm")
-class KBWarehouseORM(Base):
-    __tablename__ = "KBWarehouse"
-
-    warehouse_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False, index=True)
-    service: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
-    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-
-    configs: Mapped[list["KBWarehouseConfigORM"]] = relationship(back_populates="warehouse", cascade="all, delete-orphan")
-
-
-@register("KBWarehouse_Config", "orm")
-class KBWarehouseConfigORM(Base):
-    __tablename__ = "KBWarehouse_Config"
-
-    config_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False, index=True)
-    warehouse_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("KBWarehouse.warehouse_id"), nullable=False, index=True)
-    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-    config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)        # WarehouseConfigPayload
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), nullable=True)
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
-    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-
-    warehouse: Mapped["KBWarehouseORM"] = relationship(back_populates="configs")
-
-
-@register("KBTable", "orm")
-class KBTableORM(Base):
-    __tablename__ = "KBTable"
-
-    table_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False, index=True)
-    owner_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("KBData.data_id"), nullable=False, index=True)
-    table_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    table_schema: Mapped[Optional[dict]] = mapped_column("schema", JSONB, nullable=True)
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), nullable=True)
-    created_on: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
-    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-
-    owner: Mapped["KBDataORM"] = relationship(back_populates="tables")
-
-
-@register("KBTextBlock", "orm")
-class KBTextBlockORM(Base):
-    __tablename__ = "KBTextBlock"
-
-    block_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False, index=True)
-    owner_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("KBData.data_id"), nullable=False, index=True)
-    block_index: Mapped[int] = mapped_column(Integer, nullable=False)
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
-    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-
-    owner: Mapped["KBDataORM"] = relationship(back_populates="text_blocks")
-    versions: Mapped[list["KBTextBlockVersionORM"]] = relationship(back_populates="block", cascade="all, delete-orphan")
-
-
-@register("KBTextBlockVersion", "orm")
-class KBTextBlockVersionORM(Base):
-    __tablename__ = "KBTextBlockVersion"
-
-    version_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False, index=True)
-    block_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("KBTextBlock.block_id"), nullable=False, index=True)
-    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), nullable=True)
-    table_involved: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
-    embedding_model_id: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("KBModel.model_id"), nullable=True)
-    payload: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
-    is_active: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
-    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-
-    block: Mapped["KBTextBlockORM"] = relationship(back_populates="versions")
-    embedding_model: Mapped[Optional["KBModelORM"]] = relationship(back_populates="text_block_versions")
-    text_table: Mapped[Optional["KBTextTableORM"]] = relationship(back_populates="version", uselist=False, cascade="all, delete-orphan")
-
-
-@register("KBTextTable", "orm")
-class KBTextTableORM(Base):
-    __tablename__ = "KBTextTable"
-
-    # provided pk — same UUID as the owning KBTextBlockVersion
-    version_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("KBTextBlockVersion.version_id"), primary_key=True)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False, index=True)
-    table_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    data: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
-    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-
-    version: Mapped["KBTextBlockVersionORM"] = relationship(back_populates="text_table")
-
-
-@register("KBQdrantConnection", "orm")
-class KBQdrantConnectionORM(Base):
-    __tablename__ = "KBQdrantConnection"
-
-    connection_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False, index=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-    total_collection: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
-    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-
-    collections: Mapped[list["KBQdrantCollectionORM"]] = relationship(back_populates="connection", cascade="all, delete-orphan")
-
-
-@register("KBQdrantCollection", "orm")
-class KBQdrantCollectionORM(Base):
-    __tablename__ = "KBQdrantCollection"
-
-    collection_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False, index=True)
-    connection_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("KBQdrantConnection.connection_id"), nullable=False, index=True)
-    collection_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-    similarity_metric: Mapped[str] = mapped_column(String(16), default=SimilarityMetric.COSINE.value, nullable=False)  # SimilarityMetric
-    points_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
-    vector_dimension: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    embedding_model_id: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("KBModel.model_id"), nullable=True)
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
-    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-
-    connection: Mapped["KBQdrantConnectionORM"] = relationship(back_populates="collections")
-    embedding_model: Mapped[Optional["KBModelORM"]] = relationship(back_populates="qdrant_collections")
-
-
-@register("KBNeo4jConnection", "orm")
-class KBNeo4jConnectionORM(Base):
-    __tablename__ = "KBNeo4jConnection"
-
-    connection_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False, index=True)
-    is_connected: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-    total_node: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
-    total_edge: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
-    embedding_model_id: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("KBModel.model_id"), nullable=True)
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
-    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-
-    embedding_model: Mapped[Optional["KBModelORM"]] = relationship(back_populates="neo4j_connections")
-    nodes: Mapped[list["KBNeo4jNodeORM"]] = relationship(back_populates="connection", cascade="all, delete-orphan")
-
-
-@register("KBNeo4jNode", "orm")
-class KBNeo4jNodeORM(Base):
-    __tablename__ = "KBNeo4jNode"
-
-    node_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False, index=True)
-    connection_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("KBNeo4jConnection.connection_id"), nullable=False, index=True)
-    node_name: Mapped[str] = mapped_column(String(512), nullable=False)
-    node_description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    inserted_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
-    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-
-    connection: Mapped["KBNeo4jConnectionORM"] = relationship(back_populates="nodes")
-    outgoing_relationships: Mapped[list["KBNeo4jRelationshipORM"]] = relationship(
-        back_populates="from_node_obj",
-        foreign_keys="KBNeo4jRelationshipORM.from_node",
-        cascade="all, delete-orphan",
-    )
-    incoming_relationships: Mapped[list["KBNeo4jRelationshipORM"]] = relationship(
-        back_populates="to_node_obj",
-        foreign_keys="KBNeo4jRelationshipORM.to_node",
-        cascade="all, delete-orphan",
-    )
-
-
-@register("KBNeo4jRelationship", "orm")
-class KBNeo4jRelationshipORM(Base):
-    __tablename__ = "KBNeo4jRelationship"
-
-    # compound provided pk
-    from_node: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("KBNeo4jNode.node_id"), primary_key=True)
-    to_node: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("KBNeo4jNode.node_id"), primary_key=True)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False, index=True)
-    score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
-    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-
-    from_node_obj: Mapped["KBNeo4jNodeORM"] = relationship(back_populates="outgoing_relationships", foreign_keys=[from_node])
-    to_node_obj: Mapped["KBNeo4jNodeORM"] = relationship(back_populates="incoming_relationships", foreign_keys=[to_node])
-
-
-@register("KBEntityLookup", "orm")
-class KBEntityLookupORM(Base):
-    __tablename__ = "KBEntityLookup"
-
-    lookup_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False, index=True)
-    alias_name: Mapped[str] = mapped_column(String(512), nullable=False, index=True)
-    canonical_name: Mapped[str] = mapped_column(String(512), nullable=False, index=True)
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
-    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-
-
-@register("KBPublishAPI", "orm")
-class KBPublishAPIORM(Base):
-    __tablename__ = "KBPublishAPI"
-
-    id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False, index=True)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    type: Mapped[str] = mapped_column(String(32), nullable=False)               # APIType
-    endpoint_url: Mapped[str] = mapped_column(String(1024), nullable=False)
-    http_method: Mapped[str] = mapped_column(String(8), nullable=False)         # HttpMethod
-    is_published: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
-    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)

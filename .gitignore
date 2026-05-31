@@ -1,5 +1,7 @@
 # Ignore everything
 *
+__pycache__/
+*.pyc
 
 !services/
 !services/**
