@@ -11,7 +11,7 @@ class ResponseModel(BaseModel, Generic[T]):
     data: T | None = None
     error: str | None = None
 
-class RetryNumber(BaseModel):
+class RetryConfig(BaseModel):
     count: int = 5
 
 class HealthCheckLoopConfig(BaseModel):
