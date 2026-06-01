@@ -2,13 +2,17 @@ import asyncio
 from typing import Any
 
 from sqlalchemy import select, update as sa_update, delete as sa_delete, text
+from sqlalchemy.engine import CursorResult
+from sqlalchemy import inspect as sa_inspect
+from sqlalchemy.orm import selectinload, attributes as sa_attributes
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from services.log_set_up import create_logger
 from basemodel.services_databaseconnector.shared_model import RetryConfig, HealthCheckLoopConfig, ResponseModel
+from pydantic import BaseModel
 from basemodel.services_databaseconnector.postgres_model import (
-    REGISTRY, MODEL_TO_TABLE, ReadJoinRequest, TenantModel, DMLPreparation, DQLPreparation
+    REGISTRY, MODEL_TO_TABLE, ReadJoinRequest, SelectInLoadRequest, DMLPreparation, DQLPreparation
 )
 import basemodel.services_databaseconnector.postgres_orm  # noqa: F401 — registers ORM classes into REGISTRY
 
@@ -95,7 +99,7 @@ class PostgresClient:
                 log.info(f"Postgres health check failed: {e}")
             await asyncio.sleep(config.interval)
 
-    def session(self) -> AsyncSession:
+    def get_client(self) -> AsyncSession:
         if self._session_factory is None:
             raise RuntimeError("PostgresClient is not open — call open() first")
         return self._session_factory()
@@ -112,7 +116,53 @@ def _orm_to_dict(instance) -> dict[str, Any]:
     return {c.name: getattr(instance, c.name) for c in instance.__table__.columns}
 
 
-def _resolve(data: TenantModel):
+def _orm_to_dict_deep(instance) -> dict[str, Any]:
+    result = {c.name: getattr(instance, c.name) for c in instance.__table__.columns}
+    state = sa_attributes.instance_state(instance)
+    mapper = sa_inspect(type(instance))
+    for key, val in state.dict.items():
+        if key in result:
+            continue
+        table_name = (
+            mapper.relationships[key].mapper.class_.__tablename__
+            if key in mapper.relationships
+            else key
+        )
+        if isinstance(val, list):
+            result[table_name] = [_orm_to_dict_deep(v) for v in val]
+        elif val is not None and hasattr(val, "__table__"):
+            result[table_name] = _orm_to_dict_deep(val)
+    return result
+
+
+def _rel_key_to(orm_cls, target_cls) -> str:
+    for rel in sa_inspect(orm_cls).relationships:
+        if rel.mapper.class_ is target_cls:
+            return rel.key
+    raise AttributeError(
+        f"No relationship from {orm_cls.__tablename__} to {target_cls.__tablename__}"
+    )
+
+
+def _build_load_option(root_orm_cls, path: str):
+    table_names = path.split(".")
+    current_cls = root_orm_cls
+    option = None
+    for table_name in table_names:
+        if table_name not in REGISTRY:
+            raise AttributeError(f"Unknown table in load path: {table_name}")
+        target_cls = REGISTRY[table_name].orm
+        rel_key = _rel_key_to(current_cls, target_cls)
+        option = (
+            selectinload(getattr(current_cls, rel_key))
+            if option is None
+            else option.selectinload(getattr(current_cls, rel_key))
+        )
+        current_cls = target_cls
+    return option
+
+
+def _resolve(data: BaseModel):
     table_name = MODEL_TO_TABLE.get(type(data))
     if table_name is None:
         raise AttributeError(f"Unregistered model: {type(data).__name__}")
@@ -121,7 +171,7 @@ def _resolve(data: TenantModel):
 
 # Query Compilers
 
-def _prepare_create(data: TenantModel) -> DMLPreparation:
+def _prepare_insert(data: BaseModel) -> DMLPreparation:
     table_name, orm_cls = _resolve(data)
     return DMLPreparation(
         instance=orm_cls(**data.model_dump(mode="json")),
@@ -130,101 +180,112 @@ def _prepare_create(data: TenantModel) -> DMLPreparation:
     )
 
 
-def _prepare_read(data: TenantModel) -> DQLPreparation:
+def _prepare_deep_search(data: SelectInLoadRequest) -> DQLPreparation:
+    schema = REGISTRY.get(data.table)
+    if schema is None:
+        raise AttributeError(f"Unknown table: {data.table}")
+    orm_cls = schema.orm
+
+    load_options = [_build_load_option(orm_cls, path) for path in data.load_paths]
+
+    stmt = select(orm_cls).options(*load_options)
+
+    if data.tenant_id is not None:
+        stmt = stmt.where(orm_cls.tenant_id == data.tenant_id)
+    for f in data.filters:
+        stmt = stmt.where(getattr(orm_cls, f.column_name) == f.value)
+    if data.cursor is not None:
+        stmt = stmt.where(orm_cls.inserted_at > data.cursor)
+
+    stmt = stmt.order_by(orm_cls.inserted_at.asc()).limit(data.limit)
+    return DQLPreparation(compiled_query=stmt)
+
+def _prepare_soft_delete(data: BaseModel) -> DMLPreparation:
     _, orm_cls = _resolve(data)
+    try:
+        orm_cls.is_deleted
+    except AttributeError:
+        raise AttributeError(f"{orm_cls.__tablename__} does not support soft delete — missing is_deleted column")
     fields = data.model_dump()
-    limit = fields.pop("limit", 10)
-    pagination_cursor = fields.pop("pagination_cursor", None)
-    tenant_id = fields.pop("tenant_id")
-
-    stmt = select(orm_cls).where(orm_cls.tenant_id == tenant_id, orm_cls.is_deleted == False)
-    for k, v in fields.items():
-        if v is not None:
-            stmt = stmt.where(getattr(orm_cls, k) == v)
-    if pagination_cursor is not None:
-        stmt = stmt.where(orm_cls.created_at > pagination_cursor)
-    return DQLPreparation(compiled_query=stmt.order_by(orm_cls.created_at.asc()).limit(limit))
-
-
-def _prepare_update(data: TenantModel) -> DMLPreparation:
-    _, orm_cls = _resolve(data)
-    pks = [col.name for col in orm_cls.__table__.primary_key]
-    all_fields = data.model_dump(exclude_none=True, mode="json")
-    tenant_id = all_fields.pop("tenant_id")
-    pk_values = {k: all_fields.pop(k) for k in pks if k in all_fields}
-    if len(pk_values) != len(pks):
-        raise AttributeError(f"Missing primary key field(s): {pks}")
-    if not all_fields:
-        raise AttributeError("No fields to update")
-
-    conditions = [getattr(orm_cls, k) == v for k, v in pk_values.items()]
-    conditions.append(orm_cls.tenant_id == tenant_id)
-    return DMLPreparation(compiled_query=sa_update(orm_cls).where(*conditions).values(**all_fields))
-
-
-def _prepare_soft_delete(data: TenantModel) -> DMLPreparation:
-    _, orm_cls = _resolve(data)
-    fields = data.model_dump()
-    tenant_id = fields.pop("tenant_id")
     pk_fields = {k: v for k, v in fields.items() if v is not None}
 
     conditions = [
-        orm_cls.tenant_id == tenant_id,
         orm_cls.is_deleted == False,
         *[getattr(orm_cls, k) == v for k, v in pk_fields.items()],
     ]
     return DMLPreparation(compiled_query=sa_update(orm_cls).where(*conditions).values(is_deleted=True))
 
 
-def _prepare_delete(table_name: str, tenant_id: str) -> DMLPreparation:
+def _prepare_delete(data: BaseModel) -> DMLPreparation:
+    _, orm_cls = _resolve(data)
+    fields = data.model_dump()
+    conditions = [getattr(orm_cls, k) == v for k, v in fields.items() if v is not None]
+    if not conditions:
+        raise AttributeError("delete requires at least one field to identify the record")
+    return DMLPreparation(compiled_query=sa_delete(orm_cls).where(*conditions))
+
+
+def _prepare_flush(table_name: str) -> DMLPreparation:
     schema = REGISTRY.get(table_name)
     if schema is None:
-        raise AttributeError("Unknown table: {table_name}")
+        raise AttributeError(f"Unknown table: {table_name}")
     orm_cls = schema.orm
-    return DMLPreparation(
-        compiled_query=sa_delete(orm_cls).where(orm_cls.is_deleted == True, orm_cls.tenant_id == tenant_id)
-    )
+    try:
+        orm_cls.is_deleted
+    except AttributeError:
+        raise AttributeError(f"{orm_cls.__tablename__} does not support flush — missing is_deleted column")
+    return DMLPreparation(compiled_query=sa_delete(orm_cls).where(orm_cls.is_deleted == True))
 
 
-def _prepare_read_join(data: ReadJoinRequest) -> DQLPreparation:
+def _prepare_read(data: ReadJoinRequest) -> DQLPreparation:
     unknown = [t for t in data.joins_table if t not in REGISTRY]
     if unknown:
-        raise AttributeError("Unknown table(s): {unknown}")
+        raise AttributeError(f"Unknown table(s): {unknown}")
 
     orm_map = {t: REGISTRY[t].orm for t in data.joins_table}
     from_cls = orm_map[data.joins_table[0]]
 
-    cols = [
-        getattr(orm_map[c.table_name], c.column_name).label(
-            c.alias or f"{c.table_name}__{c.column_name}"
-        )
-        for c in data.selected_columns
-    ]
+    if data.selected_columns:
+        # use alias if provided, otherwise just the column name (caller adds alias for ambiguous joins)
+        cols = [
+            getattr(orm_map[c.table_name], c.column_name).label(c.alias or c.column_name)
+            for c in data.selected_columns
+        ]
+        stmt = select(*cols).select_from(from_cls)
+    else:
+        # enumerate columns explicitly so mappings() returns flat dicts not ORM objects
+        cols = [col for orm_cls in orm_map.values() for col in orm_cls.__table__.columns]
+        stmt = select(*cols).select_from(from_cls)
 
-    stmt = select(*cols).select_from(from_cls)
-    for i, join_on in enumerate(data.join_on):
-        join_cls = orm_map[data.joins_table[i + 1]]
-        left_col = getattr(orm_map[join_on.left_table], join_on.left_column)
-        right_col = getattr(join_cls, join_on.right_column)
-        stmt = stmt.join(join_cls, left_col == right_col, isouter=join_on.join_type != "INNER")
+    # single table → loop skipped; multi-table → SQLAlchemy resolves ON from FK metadata
+    for i in range(1, len(data.joins_table)):
+        join_cls = orm_map[data.joins_table[i]]
+        stmt = stmt.join(join_cls)
 
-    stmt = stmt.where(from_cls.tenant_id == data.tenant_id)
+    if data.tenant_id is not None:
+        stmt = stmt.where(from_cls.tenant_id == data.tenant_id)
     for f in data.filters:
         stmt = stmt.where(getattr(orm_map[f.table_name], f.column_name) == f.value)
-
-    if data.order_by:
-        stmt = stmt.order_by(text(data.order_by))
-    return DQLPreparation(compiled_query=stmt.limit(data.limit).offset(data.offset))
-
-
-# CRUD method
-async def create(client: PostgresClient, data: TenantModel) -> ResponseModel:
+    if data.cursor is not None:
+        stmt = stmt.where(from_cls.inserted_at > data.cursor)
+    # exclude soft-deleted rows if the root table supports it
     try:
-        prep = _prepare_create(data)
-    except IntegrityError as e:
-        return ResponseModel(code=404, error=f"Violate Data Integrity. Error: {e}")
+        stmt = stmt.where(from_cls.is_deleted == False)
+    except AttributeError:
+        pass
 
-    async with client.session() as session:
+    stmt = stmt.order_by(text(data.order_by) if data.order_by else from_cls.inserted_at.asc())
+    return DQLPreparation(compiled_query=stmt.limit(data.limit))
+
+
+# Operations
+async def insert(client: PostgresClient, data: BaseModel) -> ResponseModel:
+    try:
+        prep = _prepare_insert(data)
+    except AttributeError as e:
+        return ResponseModel(code=400, error=str(e))
+
+    async with client.get_client() as session:
         session.add(prep.instance)
         try:
             await session.commit()
@@ -236,47 +297,15 @@ async def create(client: PostgresClient, data: TenantModel) -> ResponseModel:
     return ResponseModel(code=200, data={pk: str(getattr(prep.instance, pk)) for pk in pks if getattr(prep.instance, pk) is not None})
 
 
-async def read(client: PostgresClient, data: TenantModel) -> ResponseModel:
-    try:
-        prep = _prepare_read(data)
-    except IntegrityError as e:
-        return ResponseModel(code=404, error=f"Violate Data Integrity. Error: {e}")
-
-    async with client.session() as session:
-        result = await session.execute(prep.compiled_query)
-        rows = result.scalars().all()
-    return ResponseModel(code=200, data=[_orm_to_dict(r) for r in rows])
-
-
-async def update(client: PostgresClient, data: TenantModel) -> ResponseModel:
-    try:
-        prep = _prepare_update(data)
-    except IntegrityError as e:
-        return ResponseModel(code=404, error=f"Violate Data Integrity. Error: {e}")
-
-    if isinstance(prep, ResponseModel):
-        return prep
-    async with client.session() as session:
-        try:
-            result = await session.execute(prep.compiled_query)
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-    if result.rowcount == 0:
-        return ResponseModel(code=404, error="Record not found")
-    return ResponseModel(code=200)
-
-
-async def soft_delete(client: PostgresClient, data: TenantModel) -> ResponseModel:
+async def soft_delete(client: PostgresClient, data: BaseModel) -> ResponseModel:
     try:
         prep = _prepare_soft_delete(data)
-    except IntegrityError as e:
-        return ResponseModel(code=404, error=f"Violate Data Integrity. Error: {e}")
+    except AttributeError as e:
+        return ResponseModel(code=400, error=str(e))
 
-    async with client.session() as session:
+    async with client.get_client() as session:
         try:
-            result = await session.execute(prep.compiled_query)
+            result: Any|CursorResult = await session.execute(prep.compiled_query)
             await session.commit()
         except Exception:
             await session.rollback()
@@ -286,15 +315,13 @@ async def soft_delete(client: PostgresClient, data: TenantModel) -> ResponseMode
     return ResponseModel(code=200)
 
 
-async def delete(client: PostgresClient, table_name: str, tenant_id: str) -> ResponseModel:
+async def delete(client: PostgresClient, data: BaseModel) -> ResponseModel:
     try:
-        prep = _prepare_delete(table_name, tenant_id)
-    except IntegrityError as e:
-        return ResponseModel(code=404, error=f"Violate Data Integrity. Error: {e}")
+        prep = _prepare_delete(data)
+    except AttributeError as e:
+        return ResponseModel(code=400, error=str(e))
 
-    if isinstance(prep, ResponseModel):
-        return prep
-    async with client.session() as session:
+    async with client.get_client() as session:
         try:
             await session.execute(prep.compiled_query)
             await session.commit()
@@ -304,15 +331,41 @@ async def delete(client: PostgresClient, table_name: str, tenant_id: str) -> Res
     return ResponseModel(code=200)
 
 
-async def read_join(client: PostgresClient, data: ReadJoinRequest) -> ResponseModel:
+async def read_deep(client: PostgresClient, data: SelectInLoadRequest) -> ResponseModel:
     try:
-        prep = _prepare_read_join(data)
-    except IntegrityError as e:
-        return ResponseModel(code=404, error=f"Violate Data Integrity. Error: {e}")
+        prep = _prepare_deep_search(data)
+    except AttributeError as e:
+        return ResponseModel(code=400, error=str(e))
 
-    if isinstance(prep, ResponseModel):
-        return prep
-    async with client.session() as session:
+    async with client.get_client() as session:
+        result = await session.execute(prep.compiled_query)
+        rows = result.scalars().all()
+    return ResponseModel(code=200, data=[_orm_to_dict_deep(r) for r in rows])
+
+
+async def flush(client: PostgresClient, table_name: str) -> ResponseModel:
+    try:
+        prep = _prepare_flush(table_name)
+    except AttributeError as e:
+        return ResponseModel(code=400, error=str(e))
+
+    async with client.get_client() as session:
+        try:
+            await session.execute(prep.compiled_query)
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+    return ResponseModel(code=200)
+
+
+async def read(client: PostgresClient, data: ReadJoinRequest) -> ResponseModel:
+    try:
+        prep = _prepare_read(data)
+    except AttributeError as e:
+        return ResponseModel(code=400, error=str(e))
+
+    async with client.get_client() as session:
         result = await session.execute(prep.compiled_query)
         rows = result.mappings().all()
     return ResponseModel(code=200, data=[dict(r) for r in rows])

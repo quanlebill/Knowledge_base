@@ -2,17 +2,14 @@ import datetime
 import uuid
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, func, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from basemodel.services_databaseconnector.postgres_model import (
     register, ConflictStatus, SimilarityMetric, Tier,
 )
-
-
-class Base(DeclarativeBase):
-    pass
+from basemodel.services_databaseconnector.postgres_orm.base import Base
 
 
 @register("orm")
@@ -24,7 +21,6 @@ class KBModelORM(Base):
     )
 
     model_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("Tenants.id"), nullable=False, index=True)
     model_name: Mapped[str] = mapped_column(String(255), nullable=False)
     task_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
@@ -46,10 +42,9 @@ class KBModelVersionORM(Base):
     )
 
     version_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("Tenants.id"), nullable=False, index=True)
     model_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("KBModel.model_id"), nullable=False)
     version_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    added_by: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    added_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     added_on: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -77,7 +72,7 @@ class KBDataORM(Base):
     extension: Mapped[str] = mapped_column(String(32), nullable=False)
     language: Mapped[str] = mapped_column(String(32), nullable=False)
     source_type: Mapped[str] = mapped_column(String(32), nullable=False)
-    added_by: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    added_by: Mapped[str] = mapped_column(String(255), nullable=False)
     abstract: Mapped[str] = mapped_column(Text, nullable=False)
     doc_metadata: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False)
     current_tier: Mapped[str] = mapped_column(String(16), default=Tier.BRONZE.value, nullable=False)
@@ -87,6 +82,7 @@ class KBDataORM(Base):
     inserted_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
 
+    tenant: Mapped["TenantsORM"] = relationship(back_populates="kb_data")
     lifecycle_histories: Mapped[list["KBLifecycleHistoryORM"]] = relationship(back_populates="data", cascade="all, delete-orphan")
     text_blocks: Mapped[list["KBTextBlockORM"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
     tables: Mapped[list["KBTableORM"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
@@ -101,11 +97,10 @@ class KBLifecycleHistoryORM(Base):
     )
 
     history_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("Tenants.id"), nullable=False, index=True)
     data_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("KBData.data_id"), nullable=False, index=True)
     to_tier: Mapped[str] = mapped_column(String(16), nullable=False)
     from_tier: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
-    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    approved_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     transitioned_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
@@ -129,11 +124,13 @@ class KBFilterPolicyORM(Base):
     configformat: Mapped[str] = mapped_column(String(64), nullable=False)
     config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    created_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     language: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
     inserted_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+
+    tenant: Mapped["TenantsORM"] = relationship(back_populates="kb_filter_policies")
 
 
 @register("orm")
@@ -149,11 +146,13 @@ class KBExtractionPolicyORM(Base):
     policy_name: Mapped[str] = mapped_column(String(255), nullable=False)
     policy_type: Mapped[str] = mapped_column(String(64), nullable=False)
     custom_override: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    created_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     language: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
     inserted_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+
+    tenant: Mapped["TenantsORM"] = relationship(back_populates="kb_extraction_policies")
 
 
 @register("orm")
@@ -172,6 +171,7 @@ class KBConflictBatchORM(Base):
     inserted_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
 
+    tenant: Mapped[Optional["TenantsORM"]] = relationship(back_populates="kb_conflict_batches")
     conflicts: Mapped[list["KBConflictORM"]] = relationship(back_populates="batch", cascade="all, delete-orphan")
 
 
@@ -193,12 +193,15 @@ class KBConflictORM(Base):
     existing_snapshot: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     incoming_snapshot: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     resolution_instruction: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    resolved_by: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    resolution_method: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    resolved_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    resolved_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     detected_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
     inserted_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
 
+    tenant: Mapped[Optional["TenantsORM"]] = relationship(back_populates="kb_conflicts")
     batch: Mapped[Optional["KBConflictBatchORM"]] = relationship(back_populates="conflicts")
 
 
@@ -211,7 +214,6 @@ class KBWarehouseORM(Base):
     )
 
     warehouse_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("Tenants.id"), nullable=False, index=True)
     service: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
@@ -231,12 +233,11 @@ class KBWarehouseConfigORM(Base):
     )
 
     config_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("Tenants.id"), nullable=False, index=True)
     warehouse_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("KBWarehouse.warehouse_id"), nullable=False, index=True)
     version_number: Mapped[int] = mapped_column(Integer, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    created_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
     inserted_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
@@ -253,12 +254,11 @@ class KBTableORM(Base):
     )
 
     table_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("Tenants.id"), nullable=False, index=True)
     owner_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("KBData.data_id"), nullable=False, index=True)
     table_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     table_schema: Mapped[Optional[dict]] = mapped_column("schema", JSONB, nullable=True)
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    created_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     created_on: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
     inserted_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -276,7 +276,6 @@ class KBTextBlockORM(Base):
     )
 
     block_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("Tenants.id"), nullable=False, index=True)
     owner_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("KBData.data_id"), nullable=False, index=True)
     block_index: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
@@ -296,11 +295,10 @@ class KBTextBlockVersionORM(Base):
     )
 
     version_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("Tenants.id"), nullable=False, index=True)
     block_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("KBTextBlock.block_id"), nullable=False, index=True)
     version_number: Mapped[int] = mapped_column(Integer, nullable=False)
     content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    created_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     table_involved: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     embedding_model_id: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("KBModel.model_id"), nullable=True)
     payload: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
@@ -323,7 +321,6 @@ class KBTextTableORM(Base):
     )
 
     version_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("KBTextBlockVersion.version_id"), primary_key=True)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("Tenants.id"), nullable=False, index=True)
     table_name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     data: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
@@ -350,6 +347,7 @@ class KBQdrantConnectionORM(Base):
     inserted_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
 
+    tenant: Mapped["TenantsORM"] = relationship(back_populates="kb_qdrant_connections")
     collections: Mapped[list["KBQdrantCollectionORM"]] = relationship(back_populates="connection", cascade="all, delete-orphan")
 
 
@@ -362,7 +360,6 @@ class KBQdrantCollectionORM(Base):
     )
 
     collection_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("Tenants.id"), nullable=False, index=True)
     connection_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("KBQdrantConnection.connection_id"), nullable=False, index=True)
     collection_name: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
@@ -396,6 +393,7 @@ class KBNeo4jConnectionORM(Base):
     inserted_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
 
+    tenant: Mapped["TenantsORM"] = relationship(back_populates="kb_neo4j_connections")
     embedding_model: Mapped[Optional["KBModelORM"]] = relationship(back_populates="neo4j_connections")
     nodes: Mapped[list["KBNeo4jNodeORM"]] = relationship(back_populates="connection", cascade="all, delete-orphan")
 
@@ -409,7 +407,6 @@ class KBNeo4jNodeORM(Base):
     )
 
     node_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("Tenants.id"), nullable=False, index=True)
     connection_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("KBNeo4jConnection.connection_id"), nullable=False, index=True)
     node_name: Mapped[str] = mapped_column(String(512), nullable=False)
     node_description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -440,7 +437,6 @@ class KBNeo4jRelationshipORM(Base):
 
     from_node: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("KBNeo4jNode.node_id"), primary_key=True)
     to_node: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("KBNeo4jNode.node_id"), primary_key=True)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("Tenants.id"), nullable=False, index=True)
     score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
@@ -460,7 +456,6 @@ class KBEntityLookupORM(Base):
     )
 
     lookup_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("Tenants.id"), nullable=False, index=True)
     alias_name: Mapped[str] = mapped_column(String(512), nullable=False)
     canonical_name: Mapped[str] = mapped_column(String(512), nullable=False, index=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
@@ -486,3 +481,5 @@ class KBPublishAPIORM(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
     inserted_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+
+    tenant: Mapped["TenantsORM"] = relationship(back_populates="kb_publish_apis")
