@@ -1,0 +1,168 @@
+import React, { useState, useEffect } from 'react';
+import { AnimatePresence } from 'motion/react';
+import { AgentRegistryOverview } from './AgentRegistry/Overview';
+import { NewAgentWizard } from './AgentRegistry/Wizard';
+import { CLIScreen } from './AgentRegistry/CLI';
+import { ConfigRegistry } from './AgentRegistry/ConfigRegistry';
+import { TraceExplorer } from './AgentRegistry/TraceExplorer';
+import { ProvisioningView } from './AgentRegistry/Provisioning';
+import { RunRegistry } from './AgentRegistry/RunRegistry';
+import { AgentDetailView } from './AgentRegistry/AgentDetail';
+import { DetailDrawer } from './shared/DetailDrawer';
+import { Bot, Terminal, Sliders, Activity, Zap, Plus, Settings } from 'lucide-react';
+import { cn } from '../lib/utils';
+
+export type RegistryView = 'OVERVIEW' | 'CLI' | 'CONFIG' | 'TRACES' | 'RUNS';
+
+interface AgentRuntimeProps {
+  view?: RegistryView;
+  onViewChange?: (view: RegistryView) => void;
+  /* External imperative triggers */
+  openWizard?: boolean;
+  onWizardClose?: () => void;
+  openProvision?: boolean;
+  onProvisionClose?: () => void;
+}
+
+export const AgentRuntimeView = ({
+  view: externalView,
+  onViewChange,
+  openWizard,
+  onWizardClose,
+  openProvision,
+  onProvisionClose,
+}: AgentRuntimeProps = {}) => {
+  const [internalView, setInternalView] = useState<RegistryView>('OVERVIEW');
+  const view = externalView ?? internalView;
+  const setView = (v: RegistryView) => {
+    if (onViewChange) onViewChange(v);
+    else setInternalView(v);
+  };
+
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [showWizard, setShowWizard] = useState(false);
+  const [showProvisioning, setShowProvisioning] = useState(false);
+
+  useEffect(() => { if (openWizard) setShowWizard(true); }, [openWizard]);
+  useEffect(() => { if (openProvision) setShowProvisioning(true); }, [openProvision]);
+
+  const handleCloseWizard = () => {
+    setShowWizard(false);
+    onWizardClose?.();
+  };
+  const handleCloseProvision = () => {
+    setShowProvisioning(false);
+    onProvisionClose?.();
+  };
+
+  const handleSelectAgent = (id: string) => setSelectedAgentId(id);
+
+  const renderView = () => {
+    switch (view) {
+      case 'CLI':     return <CLIScreen />;
+      case 'CONFIG':  return <ConfigRegistry />;
+      case 'TRACES':  return <TraceExplorer />;
+      case 'RUNS':    return <RunRegistry />;
+      case 'OVERVIEW':
+      default:
+        return (
+          <AgentRegistryOverview
+            onNewAgent={() => setShowWizard(true)}
+            onOpenCLI={() => setView('CLI')}
+            onOpenProvision={() => setShowProvisioning(true)}
+            onSelectAgent={handleSelectAgent}
+          />
+        );
+    }
+  };
+
+  return (
+    <div className="flex flex-col relative">
+      {/* Internal view tabs — kept as a fallback so the component still works standalone */}
+      {!externalView && (
+        <div className="sub-tab-bar mb-6">
+          {[
+            { id: 'OVERVIEW', label: 'Registry', icon: Bot },
+            { id: 'CONFIG',   label: 'Config',   icon: Sliders },
+            { id: 'TRACES',   label: 'Traces',   icon: Activity },
+            { id: 'RUNS',     label: 'Runs',     icon: Zap },
+            { id: 'CLI',      label: 'CLI',      icon: Terminal },
+          ].map(nav => (
+            <button
+              key={nav.id}
+              onClick={() => { setView(nav.id as RegistryView); setSelectedAgentId(null); }}
+              className={cn('sub-tab', view === nav.id && 'active')}
+            >
+              <nav.icon className="tab-icon w-3.5 h-3.5" />
+              {nav.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <DetailDrawer
+        isOpen={showWizard}
+        onClose={handleCloseWizard}
+        title="Agent Architect"
+        subtitle="Provision specialized AI agents with discrete capabilities"
+        icon={Plus}
+        size="wide"
+        persistKey="agent-wizard"
+      >
+        <NewAgentWizard
+          onCancel={handleCloseWizard}
+          onComplete={handleCloseWizard}
+        />
+      </DetailDrawer>
+
+      <DetailDrawer
+        isOpen={showProvisioning}
+        onClose={handleCloseProvision}
+        title="Fleet Provisioning"
+        subtitle="Autoscale agent clusters based on demand"
+        icon={Zap}
+        size="standard"
+        persistKey="agent-provision"
+      >
+        <ProvisioningView />
+      </DetailDrawer>
+
+      <DetailDrawer
+        isOpen={!!selectedAgentId}
+        onClose={() => setSelectedAgentId(null)}
+        title={selectedAgentId ? `Agent: ${selectedAgentId}` : 'Agent Detail'}
+        subtitle="Control Plane • Production Runtime • V2.0"
+        icon={Bot}
+        size="xwide"
+        persistKey="agent-detail"
+        tabs={[
+          { id: 'CONFIG',  label: 'Configuration', icon: Settings },
+          { id: 'LOGS',    label: 'Real-time Logs', icon: Terminal },
+          { id: 'METRICS', label: 'Metrics',       icon: Activity },
+          { id: 'POLICY',  label: 'Governance',    icon: Sliders },
+        ]}
+        footer={
+          <div className="flex gap-3">
+            <button className="btn-secondary">Restart Instance</button>
+            <button className="btn-primary">Synchronize Configuration</button>
+          </div>
+        }
+      >
+        {selectedAgentId && (
+          <AgentDetailView
+            agentId={selectedAgentId}
+            onBack={() => setSelectedAgentId(null)}
+            onRun={() => { setView('RUNS'); setSelectedAgentId(null); }}
+            onTrace={() => { setView('TRACES'); setSelectedAgentId(null); }}
+          />
+        )}
+      </DetailDrawer>
+
+      <AnimatePresence mode="wait">
+        <div key={view} className="flex-1">
+          {renderView()}
+        </div>
+      </AnimatePresence>
+    </div>
+  );
+};

@@ -1,15 +1,12 @@
 # Ignore everything
-*
+.claude/
+
+data_agent.egg-info/
+
+dist/
+.env.example
+.env.local
+.idea/
+node_modules/
 __pycache__/
 *.pyc
-
-!services/
-!services/**
-
-!logs/
-!logs/**
-
-!basemodel/
-!basemodel/**
-
-!.gitignore
