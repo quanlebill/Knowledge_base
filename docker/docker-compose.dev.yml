@@ -1,4 +1,4 @@
-﻿# Shared dev server â€” migrate + seed, cháº¡y trÃªn server dev chung cá»§a team
+# Shared dev server — migrate + seed, chạy trên server dev chung của team
 # Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
 
 services:
@@ -8,7 +8,7 @@ services:
     working_dir: /app
     command: alembic upgrade head
     environment:
-      DATABASE_URL: postgresql+asyncpg://admin:dev123@postgres:5432/dataagent
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-dev123}@postgres:5432/dataagent
     depends_on:
       postgres:
         condition: service_healthy
@@ -16,7 +16,7 @@ services:
   seed:
     image: postgres:16
     restart: "no"
-    command: psql postgresql://admin:dev123@postgres:5432/dataagent -f /seed.sql
+    command: psql postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-dev123}@postgres:5432/dataagent -f /seed.sql
     volumes:
       - ../services/workflow-runtime/migrations/seed.sql:/seed.sql:ro
     depends_on:

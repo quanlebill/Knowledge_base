@@ -5,9 +5,15 @@ Dùng: python jobs/memory_cleanup.py
 import asyncio
 import logging
 import os
+import sys
 
-import asyncpg
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from dotenv import load_dotenv, find_dotenv
+from sqlalchemy import delete, func, select, text
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+
+from models import AgentMemory
 
 load_dotenv(find_dotenv())
 
@@ -15,22 +21,23 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 RETENTION_DAYS = int(os.environ.get("MEMORY_RETENTION_DAYS", "90"))
-BATCH_SIZE = int(os.environ.get("MEMORY_CLEANUP_BATCH_SIZE", "1000"))
+BATCH_SIZE     = int(os.environ.get("MEMORY_CLEANUP_BATCH_SIZE", "1000"))
 
 
-async def _delete_in_batches(conn: asyncpg.Connection, where_clause: str, label: str) -> int:
+async def _delete_in_batches(session_factory, where_clause, label: str) -> int:
     total = 0
     while True:
-        result = await conn.execute(f"""
-            DELETE FROM agent_memories
-            WHERE id IN (
-                SELECT id FROM agent_memories
-                WHERE {where_clause}
-                LIMIT {BATCH_SIZE}
+        async with session_factory() as session:
+            subq = (
+                select(AgentMemory.id)
+                .where(where_clause)
+                .limit(BATCH_SIZE)
             )
-        """)
-        # asyncpg returns "DELETE N" string
-        deleted = int(result.split()[-1])
+            result = await session.execute(
+                delete(AgentMemory).where(AgentMemory.id.in_(subq))
+            )
+            deleted = result.rowcount
+            await session.commit()
         total += deleted
         logger.info("%s — batch deleted %d rows (total so far: %d)", label, deleted, total)
         if deleted < BATCH_SIZE:
@@ -40,32 +47,37 @@ async def _delete_in_batches(conn: asyncpg.Connection, where_clause: str, label:
 
 async def run():
     url = os.environ["DATABASE_URL"]
-    conn = await asyncpg.connect(url)
+    if "postgresql+asyncpg" not in url:
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+    engine = create_async_engine(url, pool_size=1, max_overflow=2)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
     try:
         # Log per-tenant counts trước khi xóa để debug nếu cần
-        tenant_counts = await conn.fetch("""
-            SELECT tenant_id, COUNT(*) AS cnt
-            FROM agent_memories
-            WHERE (deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL '{days} days')
-               OR (expires_at IS NOT NULL AND expires_at < NOW())
-            GROUP BY tenant_id
-        """.format(days=RETENTION_DAYS))
-        for row in tenant_counts:
-            logger.info("tenant=%s — %d records pending cleanup", row["tenant_id"], row["cnt"])
+        async with session_factory() as session:
+            counts = await session.execute(
+                select(AgentMemory.tenant_id, func.count().label("cnt"))
+                .where(text(
+                    f"(deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL '{RETENTION_DAYS} days') "
+                    "OR (expires_at IS NOT NULL AND expires_at < NOW())"
+                ))
+                .group_by(AgentMemory.tenant_id)
+            )
+            for row in counts.fetchall():
+                logger.info("tenant=%s — %d records pending cleanup", row.tenant_id, row.cnt)
 
-        # Batch delete: soft-deleted quá RETENTION_DAYS ngày
         soft_deleted = await _delete_in_batches(
-            conn,
-            where_clause=f"deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL '{RETENTION_DAYS} days'",
-            label="soft-deleted",
+            session_factory,
+            text(f"deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL '{RETENTION_DAYS} days'"),
+            "soft-deleted",
         )
         logger.info("cleanup complete — soft-deleted total: %d", soft_deleted)
 
-        # Batch delete: expired
         expired = await _delete_in_batches(
-            conn,
-            where_clause="expires_at IS NOT NULL AND expires_at < NOW()",
-            label="expired",
+            session_factory,
+            text("expires_at IS NOT NULL AND expires_at < NOW()"),
+            "expired",
         )
         logger.info("cleanup complete — expired total: %d", expired)
 
@@ -73,7 +85,7 @@ async def run():
         logger.exception("memory_cleanup failed")
         raise
     finally:
-        await conn.close()
+        await engine.dispose()
 
 
 if __name__ == "__main__":

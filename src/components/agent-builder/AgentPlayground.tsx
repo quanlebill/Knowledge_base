@@ -294,7 +294,14 @@ export default function AgentPlayground({ embedded = false }: { embedded?: boole
         for (const line of chunk.split('\n')) {
           if (!line.startsWith('data: ')) continue;
           const data = line.slice(6);
-          if (data === '[DONE]' || data.startsWith('[ERROR]')) continue;
+          if (data === '[DONE]') continue;
+          if (data.startsWith('[ERROR]')) {
+            fullText = data.slice(7).trim() || 'Đã xảy ra lỗi, vui lòng thử lại.';
+            setMessages(prev => prev.map(m =>
+              m.id === placeholderId ? { ...m, content: fullText } : m,
+            ));
+            break;
+          }
           fullText += data;
           setMessages(prev => prev.map(m =>
             m.id === placeholderId ? { ...m, content: fullText } : m,

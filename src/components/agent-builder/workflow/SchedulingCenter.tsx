@@ -4,7 +4,7 @@ import {
   Play, GitMerge, RefreshCcw, CheckCircle2, Settings2, CalendarDays
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { cn } from '../../lib/utils';
+import { cn } from '../../../lib/utils';
 
 const SCHEDULES = [
   { id: 'sc-1', name: 'Global Finance Sync', workflow: 'Multi-Agent Banking Support', type: 'CRON', pattern: '0 */4 * * *', nextRun: '2h 12m', status: 'ACTIVE' },

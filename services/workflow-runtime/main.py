@@ -174,7 +174,7 @@ async def run_conversation(req: RunRequest, request: Request):
                 # Guardrail detection — catch state updates from both guardrail nodes
                 if kind == "on_chain_end" and node in ("guardrail_input", "guardrail_output"):
                     output = event["data"].get("output", {})
-                    if output.get("guardrail_triggered"):
+                    if isinstance(output, dict) and output.get("guardrail_triggered"):
                         guardrail_triggered = True
                         guardrail_msg    = output.get("guardrail_message", "")
                         guardrail_stage  = output.get("guardrail_stage")

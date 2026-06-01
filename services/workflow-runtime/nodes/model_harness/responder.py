@@ -65,7 +65,7 @@ async def responder_node(state: AgentState) -> dict:
         api_key=_LITELLM_KEY,
         temperature=cfg.get("responder_temperature", 0.2),
         max_tokens=cfg.get("responder_max_tokens", 1000),
-        streaming=True,
+        streaming=cfg.get("responder_streaming", True),
     )
 
     t0 = time.monotonic()

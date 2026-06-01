@@ -5,14 +5,14 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_DB: dataagent
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: dev123
+      POSTGRES_DB: ${POSTGRES_DB:-dataagent}
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev123}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ../infra/postgres/init.sql:/docker-entrypoint-initdb.d/01_databases.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d dataagent"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-dataagent}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -41,7 +41,7 @@ services:
     env_file: ../.env
     environment:
       REDIS_URL: redis://redis:6379
-      DATABASE_URL: postgresql://admin:dev123@postgres:5432/litellm
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-dev123}@postgres:5432/litellm
     command: ["--config", "/app/config.yaml", "--port", "4000"]
     depends_on:
       postgres:
@@ -55,9 +55,9 @@ services:
     ports:
       - "3001:3000"
     environment:
-      DATABASE_URL: postgresql://admin:dev123@postgres:5432/langfuse
-      NEXTAUTH_SECRET: dev-langfuse-nextauth-secret-changeme
-      SALT: dev-langfuse-salt-changeme
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-dev123}@postgres:5432/langfuse
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET}
+      SALT: ${LANGFUSE_SALT}
       NEXTAUTH_URL: http://localhost:3001
       TELEMETRY_ENABLED: "false"
       LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_EMAIL:-admin@example.com}
@@ -77,7 +77,7 @@ services:
       - "8001:8001"
     env_file: ../.env
     environment:
-      DATABASE_URL: postgresql://admin:dev123@postgres:5432/dataagent
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-dev123}@postgres:5432/dataagent
       RUNTIME_DB_URL: postgresql+asyncpg://runtime_writer:${RUNTIME_DB_PASSWORD:-runtime_dev_pw}@postgres:5432/dataagent
       MONGODB_URL: mongodb://mongodb:27017/dataagent
       REDIS_URL: redis://redis:6379

@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ExecutionStatus, WorkflowExecution } from '../../../types/workflow';
-import { cn } from '../../lib/utils';
+import { cn } from '../../../lib/utils';
 
 const MOCK_EXECUTIONS: WorkflowExecution[] = [
   {

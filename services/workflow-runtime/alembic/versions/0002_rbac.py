@@ -29,7 +29,7 @@ def upgrade() -> None:
     """))
     op.execute(DDL("GRANT CONNECT ON DATABASE dataagent TO runtime_writer"))
     op.execute(DDL("GRANT USAGE ON SCHEMA public TO runtime_writer"))
-    op.execute(DDL("GRANT SELECT ON members, tenants TO runtime_writer"))
+    op.execute(DDL("GRANT SELECT ON members, tenants, agents, agent_versions TO runtime_writer"))
     op.execute(DDL("GRANT INSERT, SELECT ON conversations, messages, agent_traces TO runtime_writer"))
 
 

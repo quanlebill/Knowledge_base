@@ -8,6 +8,15 @@ class Base(DeclarativeBase):
     pass
 
 
+class Tenant(Base):
+    __tablename__ = "tenants"
+    id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name       = Column(String, nullable=False)
+    slug       = Column(String, unique=True, nullable=False)
+    is_active  = Column(Boolean, default=True)
+    deleted_at = Column(String)
+
+
 class Member(Base):
     __tablename__ = "members"
     id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

@@ -14,8 +14,8 @@ from models import AgentMemory, MemoryPolicy
 
 logger = logging.getLogger(__name__)
 
-_DEV_AGENT_ID  = "00000000-0000-0000-0000-000000000030"
-_DEV_TENANT_ID = "00000000-0000-0000-0000-000000000001"
+_DEV_AGENT_ID  = os.getenv("DEV_AGENT_ID",  "00000000-0000-0000-0000-000000000030")
+_DEV_TENANT_ID = os.getenv("DEV_TENANT_ID", "00000000-0000-0000-0000-000000000001")
 
 _LITELLM_BASE  = os.environ.get("LITELLM_BASE_URL", "http://localhost:4000")
 _LITELLM_KEY   = os.environ.get("LITELLM_API_KEY",  "sk-dev")
@@ -205,9 +205,24 @@ async def apply_memory_policy(state: dict, agent_id: str, tenant_id: str, user_r
                     content = await _extract_memory_content(query, response)
                     if not content:
                         continue  # LLM đánh giá không có gì đáng nhớ
+
+                    # Dedup: skip nếu exact content đã tồn tại cho cùng agent/tenant/user
+                    scope = (condition or {}).get("scope", "user")
+                    dedup_q = (
+                        select(AgentMemory.id)
+                        .where(AgentMemory.tenant_id == UUID(tenant_id))
+                        .where(AgentMemory.agent_id  == UUID(agent_id))
+                        .where(AgentMemory.content   == content)
+                        .where(AgentMemory.deleted_at.is_(None))
+                    )
+                    if scope == "user":
+                        dedup_q = dedup_q.where(AgentMemory.user_ref == user_ref)
+                    if (await session.execute(dedup_q.limit(1))).first():
+                        logger.info("memory | duplicate skipped for agent=%s", agent_id)
+                        continue
+
                     pg_id = uuid4()
-                    # scope từ policy config, mặc định "user" để tránh leak giữa users
-                    scope   = (condition or {}).get("scope", "user")
+                    # scope đã được set ở dedup check bên trên
 
                     memory = AgentMemory(
                         id=pg_id,

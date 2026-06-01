@@ -8,7 +8,7 @@ DEV_CONFIG = {
     "kb_mode": os.environ.get("KB_MODE", "hybrid"),
     "top_k": int(os.environ.get("KB_TOP_K", "10")),
     "max_depth": int(os.environ.get("KB_MAX_DEPTH", "3")),
-    "planner_model": "planner",
+    "planner_model": "openai/planner",
     "planner_temperature": 0,
     "planner_max_tokens": 256,
     "planner_response_format": {"type": "json_object"},
@@ -20,7 +20,7 @@ DEV_CONFIG = {
     "responder_stream": True,
     "system_prompt": os.environ.get("DEV_SYSTEM_PROMPT", "You are a helpful assistant."),
     "rrf_top_n": 20,
-    "reranker_model": "reranker",
+    "reranker_model": "openai/reranker",
     "reranker_top_n": 5,
     "context_max_chunks": 5,
     "context_max_chars": 4000,
@@ -40,12 +40,12 @@ DEV_CONFIG = {
         {"id": "op4", "pattern": "token"},
     ],
     "guardrail_llm_enabled": True,
-    "guardrail_model": "guardrail",
+    "guardrail_model": "openai/guardrail",
     "guardrail_max_tokens": 64,
     "guardrail_timeout": 5,
     "guardrail_allowed_topics": [],
     "guardrail_id": None,
-    "agent_id": "00000000-0000-0000-0000-000000000030",
+    "agent_id": os.environ.get("DEV_AGENT_ID", "00000000-0000-0000-0000-000000000030"),
 }
 
 
