@@ -1,0 +1,31 @@
+// ⚠️  DEV ONLY — do NOT commit real passwords.
+// Generate this file from kafka-broker-jaas.config.example by substituting
+// passwords from your secrets manager before starting the broker.
+//
+// Issues with this config (acceptable for dev, NOT for production):
+//   1. Passwords are hardcoded — load from a secrets manager in production.
+//   2. PLAIN mechanism sends credentials in cleartext — use SCRAM-SHA-512 for production.
+//   3. The admin user is shared between server (inter-broker) and KafkaClient —
+//      use dedicated service accounts with least-privilege ACLs in production.
+//   4. Define an ACL strategy: each service user should only have access to its own topics.
+KafkaServer {
+    org.apache.kafka.common.security.plain.PlainLoginModule required
+    username="admin"
+    password="REPLACE_WITH_KAFKA_ADMIN_PASSWORD"
+    user_admin="REPLACE_WITH_KAFKA_ADMIN_PASSWORD"
+    user_audit-bridge="REPLACE_WITH_AUDIT_BRIDGE_PASSWORD"
+    user_audit-consumer="REPLACE_WITH_AUDIT_CONSUMER_PASSWORD"
+    user_ci-service="REPLACE_WITH_CI_SERVICE_PASSWORD"
+    user_release-worker="REPLACE_WITH_RELEASE_WORKER_PASSWORD"
+    user_drift-detector="REPLACE_WITH_DRIFT_DETECTOR_PASSWORD"
+    user_scan-runner="REPLACE_WITH_SCAN_RUNNER_PASSWORD"
+    user_notification-consumer="REPLACE_WITH_NOTIFICATION_CONSUMER_PASSWORD";
+};
+
+// KafkaClient uses the same admin account — create a dedicated management
+// account with separate credentials in production.
+KafkaClient {
+    org.apache.kafka.common.security.plain.PlainLoginModule required
+    username="admin"
+    password="REPLACE_WITH_KAFKA_ADMIN_PASSWORD";
+};

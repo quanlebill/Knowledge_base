@@ -180,9 +180,9 @@ Java `EventListenerProvider` build bằng Maven multi-stage Docker, mount vào K
 
 | User | Password | ACL |
 |---|---|---|
-| `admin` | `KafkaAdmin@1234` | Super user — inter-broker, health check |
-| `audit-bridge` *(legacy)* | `AuditBridge@1234` | Write + Describe on `audit.auth.events` |
-| `audit-consumer` | `AuditConsumer@1234` | Read + Describe on `audit.auth.events`, Read on group `audit-consumer-group` |
+| `admin` | see `KAFKA_ADMIN_PASSWORD` in `.env` | Super user — inter-broker, health check |
+| `audit-bridge` *(legacy)* | see `AUDIT_BRIDGE_KAFKA_PASSWORD` in `.env` | Write + Describe on `audit.auth.events` |
+| `audit-consumer` | see `AUDIT_CONSUMER_KAFKA_PASSWORD` in `.env` | Read + Describe on `audit.auth.events`, Read on group `audit-consumer-group` |
 
 > `audit-bridge` user còn trong Kafka config cho tương thích, nhưng service không còn chạy. Keycloak SPI dùng credentials riêng từ env var `KAFKA_SASL_USERNAME=audit-bridge`.
 

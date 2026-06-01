@@ -7,9 +7,11 @@ return {
     { config = {
       type = "record",
       fields = {
-        { jwks_uri            = { type = "string",  required = true  } },
-        { issuer              = { type = "string",  required = false } },
-        { jwks_refresh_interval = { type = "number", default = 300  } },
+        { jwks_uri              = typedefs.url({ required = true })            },
+        { issuer                = { type = "string",  required = false }       },
+        { audience              = { type = "string",  required = false }       },
+        { jwks_refresh_interval = { type = "number",  default = 300  }        },
+        { hide_credentials      = { type = "boolean", default = true  }       },
       },
     }},
   },

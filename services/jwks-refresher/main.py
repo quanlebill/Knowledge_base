@@ -36,7 +36,25 @@ REFRESH_INTERVAL = int(os.environ.get("REFRESH_INTERVAL_SECONDS", "300"))
 JWKS_URL = f"{KC_BASE}/realms/{REALM}/protocol/openid-connect/certs"
 ISSUER = f"{KC_BASE}/realms/{REALM}"
 
-_last_kid: str = ""
+# State file persists _last_kid across restarts so we don't re-register on every boot.
+# Mount the parent directory as a Docker volume (e.g. /data) to survive container restarts.
+_STATE_FILE = os.environ.get("JWKS_STATE_FILE", "/data/last_kid.txt")
+
+
+def _load_last_kid() -> str:
+    try:
+        return open(_STATE_FILE).read().strip()
+    except Exception:
+        return ""
+
+
+def _save_last_kid(kid: str) -> None:
+    try:
+        os.makedirs(os.path.dirname(_STATE_FILE) or ".", exist_ok=True)
+        with open(_STATE_FILE, "w") as f:
+            f.write(kid)
+    except Exception as e:
+        log.warning("Could not persist last_kid to %s: %s", _STATE_FILE, e)
 
 
 def b64url_to_int(s: str) -> int:
@@ -60,12 +78,21 @@ def enc_int(n: int) -> bytes:
 
 
 def jwks_to_pem(jwks_url: str) -> tuple[str, str]:
-    """Returns (kid, pem_public_key)."""
+    """Returns (kid, pem_public_key) for the most recently added signing key.
+
+    Keycloak returns keys in ascending age order; the last sig key is the
+    currently active one.  Passive/old keys are also present but shouldn't
+    be used for new credential registration.  We register only one key here
+    because Kong's JWT plugin maps issuer→credential 1-to-1; for full key
+    overlap (serve tokens signed by older keys until their exp), switch to
+    the aeroflow-jwks plugin which caches the entire JWKS and matches by kid.
+    """
     with urllib.request.urlopen(jwks_url, timeout=10) as r:
         data = json.load(r)
 
     rsa_keys = [k for k in data["keys"] if k["kty"] == "RSA"]
     sig_keys = [k for k in rsa_keys if k.get("use") == "sig"]
+    # Keycloak puts the active key last in the list.
     key = sig_keys[-1] if sig_keys else rsa_keys[-1]
     kid = key["kid"]
 
@@ -87,14 +114,14 @@ def jwks_to_pem(jwks_url: str) -> tuple[str, str]:
 
 
 def update_kong_credential(pem: str) -> None:
+    # Snapshot existing IDs before creating the new credential so we can
+    # delete only the old ones — tokens signed with them are still valid until
+    # their exp claim, and Kong will reject them once the credential is removed.
     existing = requests.get(f"{KONG_ADMIN}/consumers/{CONSUMER}/jwt", timeout=10)
     existing.raise_for_status()
-    for cred in existing.json().get("data", []):
-        requests.delete(
-            f"{KONG_ADMIN}/consumers/{CONSUMER}/jwt/{cred['id']}", timeout=10
-        ).raise_for_status()
-        log.info("Deleted old credential %s", cred["id"])
+    old_ids = [c["id"] for c in existing.json().get("data", [])]
 
+    # Create new credential first so there is no gap in Kong's keystore.
     resp = requests.post(
         f"{KONG_ADMIN}/consumers/{CONSUMER}/jwt",
         json={"algorithm": "RS256", "key": ISSUER, "rsa_public_key": pem},
@@ -104,18 +131,30 @@ def update_kong_credential(pem: str) -> None:
     new_id = resp.json().get("id", "?")
     log.info("Registered new Kong JWT credential %s", new_id)
 
+    # Now remove the old credentials.  Tokens already issued with the old key
+    # will stop being accepted immediately; ensure token TTLs are short enough
+    # (recommended: ≤ jwks_refresh_interval) to avoid disruption.
+    for cred_id in old_ids:
+        try:
+            requests.delete(
+                f"{KONG_ADMIN}/consumers/{CONSUMER}/jwt/{cred_id}", timeout=10
+            ).raise_for_status()
+            log.info("Deleted old credential %s", cred_id)
+        except Exception as e:
+            log.warning("Could not delete old credential %s: %s", cred_id, e)
+
 
 def refresh_once() -> None:
-    global _last_kid
+    last_kid = _load_last_kid()
     kid, pem = jwks_to_pem(JWKS_URL)
 
-    if kid == _last_kid:
+    if kid == last_kid:
         log.debug("JWKS kid unchanged (%s), no update needed", kid)
         return
 
-    log.info("JWKS kid changed: %s → %s — updating Kong", _last_kid or "(first run)", kid)
+    log.info("JWKS kid changed: %s → %s — updating Kong", last_kid or "(first run)", kid)
     update_kong_credential(pem)
-    _last_kid = kid
+    _save_last_kid(kid)
     log.info("Kong credential updated for kid=%s", kid)
 
 

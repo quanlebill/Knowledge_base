@@ -25,6 +25,15 @@ KAFKA_CONTAINER="${KAFKA_CONTAINER:-aeroflow-kafka}"
 BOOTSTRAP="localhost:9092"
 ADMIN_PROPS="/tmp/admin_release.props"
 
+# Require passwords via environment — never hardcoded.
+# Copy .env.example to .env and set these before running.
+: "${KAFKA_ADMIN_PASSWORD:?ERROR: KAFKA_ADMIN_PASSWORD is required}"
+: "${CI_SERVICE_KAFKA_PASSWORD:?ERROR: CI_SERVICE_KAFKA_PASSWORD is required}"
+: "${RELEASE_WORKER_KAFKA_PASSWORD:?ERROR: RELEASE_WORKER_KAFKA_PASSWORD is required}"
+: "${DRIFT_DETECTOR_KAFKA_PASSWORD:?ERROR: DRIFT_DETECTOR_KAFKA_PASSWORD is required}"
+: "${NOTIFICATION_CONSUMER_KAFKA_PASSWORD:?ERROR: NOTIFICATION_CONSUMER_KAFKA_PASSWORD is required}"
+: "${SCAN_RUNNER_KAFKA_PASSWORD:?ERROR: SCAN_RUNNER_KAFKA_PASSWORD is required}"
+
 # ── Màu sắc output ────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 info()    { echo -e "${GREEN}[INFO]${NC} $*"; }
@@ -35,11 +44,7 @@ info "=== Release Kafka Setup ==="
 
 # ── 1. Tạo admin props trong container ───────────────────────────────
 info "Tạo admin client config..."
-docker exec "$KAFKA_CONTAINER" bash -c "cat > $ADMIN_PROPS <<'ADMINEOF'
-security.protocol=SASL_PLAINTEXT
-sasl.mechanism=PLAIN
-sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username=\"admin\" password=\"KafkaAdmin@1234\";
-ADMINEOF"
+docker exec "$KAFKA_CONTAINER" bash -c "printf 'security.protocol=SASL_PLAINTEXT\nsasl.mechanism=PLAIN\nsasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username=\"admin\" password=\"${KAFKA_ADMIN_PASSWORD}\";\n' > $ADMIN_PROPS && chmod 600 $ADMIN_PROPS"
 
 # ── 2. Tạo Kafka users cho release services ──────────────────────────
 info "Tạo Kafka SCRAM users cho release services..."
@@ -55,11 +60,11 @@ create_user() {
   info "  User: $username"
 }
 
-create_user "ci-service"           "CiService@1234"
-create_user "release-worker"       "ReleaseWorker@1234"
-create_user "drift-detector"       "DriftDetector@1234"
-create_user "notification-consumer" "NotificationConsumer@1234"
-create_user "scan-runner"          "ScanRunner@1234"
+create_user "ci-service"            "$CI_SERVICE_KAFKA_PASSWORD"
+create_user "release-worker"        "$RELEASE_WORKER_KAFKA_PASSWORD"
+create_user "drift-detector"        "$DRIFT_DETECTOR_KAFKA_PASSWORD"
+create_user "notification-consumer" "$NOTIFICATION_CONSUMER_KAFKA_PASSWORD"
+create_user "scan-runner"           "$SCAN_RUNNER_KAFKA_PASSWORD"
 
 # ── 3. Tạo topics ─────────────────────────────────────────────────────
 info "Tạo release topics..."
@@ -212,9 +217,5 @@ info "Topics: release.pipeline.triggered, release.pipeline.status,"
 info "        release.drift.detected, release.rollback.initiated, release.scan.completed"
 info "Users:  ci-service, release-worker, drift-detector, scan-runner, notification-consumer"
 info ""
-info "Kafka Users credentials:"
-info "  ci-service            / CiService@1234"
-info "  release-worker        / ReleaseWorker@1234"
-info "  drift-detector        / DriftDetector@1234"
-info "  scan-runner           / ScanRunner@1234"
-info "  notification-consumer / NotificationConsumer@1234"
+info "Kafka Users created: ci-service, release-worker, drift-detector, scan-runner, notification-consumer"
+info "Passwords were read from environment variables — see .env.example for the variable names."

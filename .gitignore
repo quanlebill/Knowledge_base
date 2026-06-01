@@ -6,4 +6,18 @@ coverage/
 *.log
 .env*
 !.env.example
-/docs
+
+
+# Claude Code local settings — contains per-developer tool permissions; not shared
+.claude/settings.local.json
+
+# Generated cert files — run infra/certs/gen-certs.sh to create locally
+infra/certs/*.key
+infra/certs/*.crt
+infra/certs/*.csr
+infra/certs/*.srl
+
+# Kafka credential files — contain real passwords; use *.example templates instead
+infra/kafka/kafka-broker-jaas.config
+infra/kafka/admin_release.props
+infra/kafka/rw.props

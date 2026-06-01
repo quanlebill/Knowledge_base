@@ -60,7 +60,7 @@ export const IAMSection = () => {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-bold text-[#111111]">{u.name}</span>
+              <span className="text-sm font-bold text-white">{u.name}</span>
               {u.isCurrentUser && (
                 <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[#F4E8C3] text-[#B88719] border border-[#BFA66A]">YOU</span>
               )}

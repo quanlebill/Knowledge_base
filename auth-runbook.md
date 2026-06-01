@@ -195,14 +195,14 @@ SASL mechanism: **PLAIN** (không phải SCRAM-SHA-512)
 
 | Username | Password | ACL |
 |---|---|---|
-| `admin` | `KafkaAdmin@1234` | Super user — inter-broker |
-| `audit-bridge` | `AuditBridge@1234` | Write + Describe on `audit.auth.events` |
-| `audit-consumer` | `AuditConsumer@1234` | Read on `audit.auth.events`, Read on group `audit-consumer-group` |
-| `release-worker` | `ReleaseWorker@1234` | Read `release.pipeline.triggered`, Write `release.pipeline.status` |
-| `ci-service` | `CiService@1234` | Write `release.pipeline.triggered` |
-| `drift-detector` | `DriftDetector@1234` | Write `release.drift.detected` |
-| `scan-runner` | `ScanRunner@1234` | Write `release.scan.completed` |
-| `notification-consumer` | `NotificationConsumer@1234` | Read `release.pipeline.status`, `release.drift.detected` |
+| `admin` | see `KAFKA_ADMIN_PASSWORD` in `.env` | Super user — inter-broker |
+| `audit-bridge` | see `AUDIT_BRIDGE_KAFKA_PASSWORD` in `.env` | Write + Describe on `audit.auth.events` |
+| `audit-consumer` | see `AUDIT_CONSUMER_KAFKA_PASSWORD` in `.env` | Read on `audit.auth.events`, Read on group `audit-consumer-group` |
+| `release-worker` | see `RELEASE_WORKER_KAFKA_PASSWORD` in `.env` | Read `release.pipeline.triggered`, Write `release.pipeline.status` |
+| `ci-service` | see `CI_SERVICE_KAFKA_PASSWORD` in `.env` | Write `release.pipeline.triggered` |
+| `drift-detector` | see `DRIFT_DETECTOR_KAFKA_PASSWORD` in `.env` | Write `release.drift.detected` |
+| `scan-runner` | see `SCAN_RUNNER_KAFKA_PASSWORD` in `.env` | Write `release.scan.completed` |
+| `notification-consumer` | see `NOTIFICATION_CONSUMER_KAFKA_PASSWORD` in `.env` | Read `release.pipeline.status`, `release.drift.detected` |
 
 ---
 
@@ -979,7 +979,7 @@ docker exec aeroflow-kafka /opt/kafka/bin/kafka-console-consumer.sh \
 ```bash
 # Thử produce với user audit-consumer (chỉ có quyền Read, không có Write)
 docker exec aeroflow-kafka bash -c "
-printf 'security.protocol=SASL_PLAINTEXT\nsasl.mechanism=PLAIN\nsasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username=\"audit-consumer\" password=\"AuditConsumer@1234\";\n' > /tmp/consumer.props
+printf 'security.protocol=SASL_PLAINTEXT\nsasl.mechanism=PLAIN\nsasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username=\"audit-consumer\" password=\"'\"$AUDIT_CONSUMER_KAFKA_PASSWORD\"'\";\n' > /tmp/consumer.props
 echo 'unauthorized-message' | kafka-console-producer.sh \
   --bootstrap-server localhost:9092 \
   --producer.config /tmp/consumer.props \
@@ -1579,7 +1579,7 @@ curl -sf http://localhost:9000/minio/health/live && echo "MinIO OK"
 
 # ── 14. Kafka topics ──────────────────────────────────────────────────────────
 docker exec aeroflow-kafka bash -c "
-printf 'security.protocol=SASL_PLAINTEXT\nsasl.mechanism=PLAIN\nsasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username=\"admin\" password=\"KafkaAdmin@1234\";\n' > /tmp/a.props
+printf 'security.protocol=SASL_PLAINTEXT\nsasl.mechanism=PLAIN\nsasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username=\"admin\" password=\"'\"$KAFKA_ADMIN_PASSWORD\"'\";\n' > /tmp/a.props
 /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --command-config /tmp/a.props --list
 " | grep -E "audit.auth.events|release.pipeline" | sort
 
@@ -1658,11 +1658,11 @@ release-worker  | INFO:     Application startup complete.
 
 | Username | Password | ACL |
 |----------|----------|-----|
-| `ci-service` | `CiService@1234` | WRITE `release.pipeline.triggered` |
-| `release-worker` | `ReleaseWorker@1234` | READ pipeline.triggered, WRITE pipeline.status |
-| `drift-detector` | `DriftDetector@1234` | WRITE `release.drift.detected` |
-| `scan-runner` | `ScanRunner@1234` | WRITE `release.scan.completed` |
-| `notification-consumer` | `NotificationConsumer@1234` | READ pipeline.status + drift.detected |
+| `ci-service` | see `CI_SERVICE_KAFKA_PASSWORD` in `.env` | WRITE `release.pipeline.triggered` |
+| `release-worker` | see `RELEASE_WORKER_KAFKA_PASSWORD` in `.env` | READ pipeline.triggered, WRITE pipeline.status |
+| `drift-detector` | see `DRIFT_DETECTOR_KAFKA_PASSWORD` in `.env` | WRITE `release.drift.detected` |
+| `scan-runner` | see `SCAN_RUNNER_KAFKA_PASSWORD` in `.env` | WRITE `release.scan.completed` |
+| `notification-consumer` | see `NOTIFICATION_CONSUMER_KAFKA_PASSWORD` in `.env` | READ pipeline.status + drift.detected |
 
 ---
 
@@ -1839,7 +1839,7 @@ docker exec -it aeroflow-postgres psql -U aeroflow -d aeroflow \
 docker exec aeroflow-kafka bash -c "cat > /tmp/ci_service.props <<'EOF'
 security.protocol=SASL_PLAINTEXT
 sasl.mechanism=PLAIN
-sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username=\"ci-service\" password=\"CiService@1234\";
+sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username=\"ci-service\" password=\"${CI_SERVICE_KAFKA_PASSWORD}\";
 EOF"
 
 # Produce trigger event

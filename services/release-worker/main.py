@@ -24,7 +24,9 @@ from typing import Optional
 import psycopg2
 import structlog
 from celery import Celery
-from fastapi import FastAPI, HTTPException, Header, Depends
+import ipaddress
+
+from fastapi import FastAPI, HTTPException, Header, Depends, Request, Response
 from kafka import KafkaConsumer, KafkaProducer
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
@@ -46,26 +48,56 @@ trace.set_tracer_provider(provider)
 tracer = trace.get_tracer("release-worker")
 
 # ── Config ────────────────────────────────────────────────────────────
-PG_DSN = os.getenv("DATABASE_URL", "postgresql://aeroflow:aeroflow_secret@postgres:5432/aeroflow")
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://mongo:27017")
-MONGO_DB = os.getenv("MONGO_DB", "aeroflow")
-KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
-KAFKA_USERNAME = os.getenv("KAFKA_USERNAME", "release-worker")
-KAFKA_PASSWORD = os.getenv("KAFKA_PASSWORD", "ReleaseWorker@1234")
-MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://minio:9000")
-MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
-MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
-CELERY_BROKER = os.getenv("CELERY_BROKER", "redis://redis:6379/0")
+def _require(name: str) -> str:
+    v = os.getenv(name)
+    if not v:
+        raise RuntimeError(f"Required env var {name!r} is not set")
+    return v
+
+
+PG_DSN          = _require("DATABASE_URL")
+KAFKA_BOOTSTRAP = _require("KAFKA_BOOTSTRAP")
+KAFKA_USERNAME  = _require("KAFKA_USERNAME")
+KAFKA_PASSWORD  = _require("KAFKA_PASSWORD")
+MINIO_ENDPOINT  = os.getenv("MINIO_ENDPOINT",  "http://minio:9000")
+MINIO_ACCESS_KEY = _require("MINIO_ACCESS_KEY")
+MINIO_SECRET_KEY = _require("MINIO_SECRET_KEY")
+CELERY_BROKER   = _require("CELERY_BROKER")
+MONGO_URI       = os.getenv("MONGO_URI", "mongodb://mongo:27017")
+MONGO_DB        = os.getenv("MONGO_DB",  "aeroflow")
 
 KAFKA_CONFIG = {
-    "security_protocol": "SASL_PLAINTEXT",
-    "sasl_mechanism": "PLAIN",
+    "security_protocol": os.getenv("KAFKA_SECURITY_PROTOCOL", "SASL_PLAINTEXT"),
+    "sasl_mechanism": os.getenv("KAFKA_SASL_MECHANISM", "PLAIN"),
     "sasl_plain_username": KAFKA_USERNAME,
     "sasl_plain_password": KAFKA_PASSWORD,
 }
 
 # ── FastAPI app ───────────────────────────────────────────────────────
 app = FastAPI(title="Release Worker API", version="1.0.0")
+
+# Enforce internal-network origin — only Kong (Docker bridge) may call this service.
+# §1.2: network segmentation prevents header spoofing by bypassing Kong.
+_ALLOWED_NETWORKS = [
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+]
+
+@app.middleware("http")
+async def enforce_internal_origin(request: Request, call_next):
+    if request.url.path == "/health":
+        return await call_next(request)
+    client_ip = request.client.host if request.client else ""
+    try:
+        addr = ipaddress.ip_address(client_ip)
+        allowed = any(addr in net for net in _ALLOWED_NETWORKS)
+    except ValueError:
+        allowed = False
+    if not allowed:
+        return Response(status_code=403, content="Forbidden: external access not permitted")
+    return await call_next(request)
 
 # ── Celery ────────────────────────────────────────────────────────────
 celery_app = Celery("release-worker", broker=CELERY_BROKER)
@@ -113,21 +145,28 @@ def write_release_history(pipeline_id: str, package_id: str, environment: str,
                 (pipeline_id, package_id, environment, status, triggered_by, duration_ms)
             )
 
-# ── Kafka Producer helper ─────────────────────────────────────────────
+# ── Kafka Producer helper (singleton) ────────────────────────────────
 
-def get_producer():
-    return KafkaProducer(
-        bootstrap_servers=KAFKA_BOOTSTRAP,
-        value_serializer=lambda v: json.dumps(v).encode("utf-8"),
-        **KAFKA_CONFIG,
-    )
+_producer: KafkaProducer = None
+_producer_lock = threading.Lock()
+
+
+def get_producer() -> KafkaProducer:
+    global _producer
+    if _producer is None:
+        with _producer_lock:
+            if _producer is None:
+                _producer = KafkaProducer(
+                    bootstrap_servers=KAFKA_BOOTSTRAP,
+                    value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+                    **KAFKA_CONFIG,
+                )
+    return _producer
 
 
 def produce_event(topic: str, event: dict):
     try:
-        producer = get_producer()
-        producer.send(topic, value=event)
-        producer.flush()
+        get_producer().send(topic, value=event)
         log.info("kafka.produced", topic=topic, event_type=event.get("event"))
     except Exception as e:
         log.error("kafka.produce.failed", topic=topic, error=str(e))
@@ -233,11 +272,12 @@ def _run_pipeline_impl(pipeline_event: dict):
                     )
 
             # ── Bước 5: Deploy to environments ───────────────────────
+            awaiting_envs = []
             for env in target_envs:
                 if env == "dev":
                     _deploy_to_env(pipeline_id, package_id, env, triggered_by)
                 else:
-                    update_pipeline_status(pipeline_id, "AWAITING_APPROVAL")
+                    awaiting_envs.append(env)
                     produce_event("release.pipeline.status", {
                         "event": "pipeline.awaiting_approval",
                         "pipeline_id": pipeline_id,
@@ -248,7 +288,11 @@ def _run_pipeline_impl(pipeline_event: dict):
                     })
                     log.info("pipeline.awaiting_approval",
                              pipeline_id=pipeline_id, environment=env)
-                    return {"status": "AWAITING_APPROVAL", "pipeline_id": pipeline_id}
+
+            if awaiting_envs:
+                update_pipeline_status(pipeline_id, "AWAITING_APPROVAL")
+                return {"status": "AWAITING_APPROVAL", "pipeline_id": pipeline_id,
+                        "awaiting_environments": awaiting_envs}
 
             update_pipeline_status(pipeline_id, "SUCCESS")
             produce_event("release.pipeline.status", {
@@ -563,18 +607,25 @@ def _step1_update_release_pointer(environment: str, version: str):
 
 
 def _step2_reroute_kong(environment: str, version: str):
-    """Step 2: Update Kong upstream route cho environment."""
+    """Step 2: Reroute Kong upstream to rolled-back version.
+    Updates the service URL so traffic is actually redirected.
+    Set BACKEND_URL_<ENV> to override per-environment target.
+    """
     import httpx
     kong_admin = os.getenv("KONG_ADMIN_URL", "http://kong:8001")
-    # Cập nhật upstream target trong Kong
+    backend_url = os.getenv(
+        f"BACKEND_URL_{environment.upper()}",
+        f"http://aeroflow-{environment}:8888",
+    )
     resp = httpx.patch(
         f"{kong_admin}/services/aeroflow-{environment}",
-        json={"tags": [f"version:{version}"]},
+        json={"url": backend_url},
         timeout=10,
     )
     if resp.status_code >= 400:
         raise RuntimeError(f"Kong route update failed: {resp.status_code} {resp.text}")
-    log.info("rollback.step2.done", environment=environment, version=version)
+    log.info("rollback.step2.done", environment=environment, version=version,
+             backend_url=backend_url)
 
 
 def _step3_redeploy_snapshot(environment: str, version: str):
@@ -582,31 +633,36 @@ def _step3_redeploy_snapshot(environment: str, version: str):
     Step 3: Redeploy từ MinIO snapshot (immutable).
     Best-effort: không raise nếu MinIO chưa có snapshot (dev environment).
     Production: MinIO bucket `aeroflow-artifacts`, path `rollback-snapshots/{env}-{version}.tar.gz`.
+    Uses boto3 with configured credentials to avoid 403 on private buckets.
     """
-    import httpx
+    import boto3
+    from botocore.exceptions import ClientError
 
     bucket = "aeroflow-artifacts"
     snapshot_key = f"rollback-snapshots/{environment}-snapshot-{version}.tar.gz"
-    minio_url = f"{MINIO_ENDPOINT}/{bucket}/{snapshot_key}"
 
     try:
-        resp = httpx.head(minio_url, timeout=10)
-        if resp.status_code == 200:
-            # Snapshot tồn tại — trong production: download + extract + deploy
-            log.info("rollback.step3.snapshot.found",
-                     environment=environment, version=version,
-                     snapshot_key=snapshot_key,
-                     note="Snapshot found in MinIO — deploy via deployment system")
-        elif resp.status_code == 404:
-            # Snapshot chưa upload — chấp nhận được; step 1+2 đã xử lý routing
+        s3 = boto3.client(
+            "s3",
+            endpoint_url=MINIO_ENDPOINT,
+            aws_access_key_id=MINIO_ACCESS_KEY,
+            aws_secret_access_key=MINIO_SECRET_KEY,
+        )
+        s3.head_object(Bucket=bucket, Key=snapshot_key)
+        log.info("rollback.step3.snapshot.found",
+                 environment=environment, version=version,
+                 snapshot_key=snapshot_key,
+                 note="Snapshot found in MinIO — deploy via deployment system")
+    except ClientError as e:
+        error_code = e.response["Error"]["Code"]
+        if error_code in ("404", "NoSuchKey"):
             log.warning("rollback.step3.snapshot.not_found",
                         environment=environment, version=version,
                         note="No snapshot in MinIO — DB pointer + Kong already rolled back")
         else:
             log.warning("rollback.step3.minio.check_failed",
-                        status=resp.status_code, key=snapshot_key)
+                        error_code=error_code, key=snapshot_key)
     except Exception as e:
-        # MinIO chưa khởi động hoặc network unreachable trong dev — không fail rollback
         log.warning("rollback.step3.minio.unreachable",
                     error=str(e),
                     note="MinIO unreachable — steps 1+2 (DB+Kong) completed successfully")
@@ -718,7 +774,7 @@ def start_kafka_consumer():
         bootstrap_servers=KAFKA_BOOTSTRAP,
         group_id="release-worker-group",
         auto_offset_reset="earliest",
-        enable_auto_commit=True,
+        enable_auto_commit=False,
         value_deserializer=lambda v: _safe_json(v),
         **KAFKA_CONFIG,
     )
@@ -727,6 +783,7 @@ def start_kafka_consumer():
 
     for message in consumer:
         if not isinstance(message.value, dict):
+            consumer.commit()
             continue
         topic = message.topic
         event = message.value
@@ -747,6 +804,10 @@ def start_kafka_consumer():
                 daemon=True
             )
             t.start()
+        # Commit after the thread is started — not after it completes.
+        # This is at-most-once for the thread but prevents the consumer from
+        # stalling; the Celery path (.delay) provides the durable retry guarantee.
+        consumer.commit()
 
 
 def _safe_json(raw: bytes) -> dict:
@@ -787,8 +848,11 @@ class DriftResolveRequest(BaseModel):
 def get_current_user(
     x_user_id: str = Header(..., alias="X-User-Id"),
     x_user_roles: str = Header(..., alias="X-User-Roles"),
+    x_kong_verified: str = Header(default="", alias="X-Kong-Verified"),
 ) -> dict:
-    """Đọc user identity từ header Kong inject — không verify JWT lại."""
+    """Accept identity only when Kong has verified the JWT."""
+    if x_kong_verified != "true":
+        raise HTTPException(status_code=401, detail="Request not verified by Kong gateway")
     return {"user_id": x_user_id, "roles": x_user_roles.split(",")}
 
 
@@ -888,7 +952,8 @@ def trigger_rollback(
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     produce_event("release.rollback.initiated", event)
-    execute_rollback.delay(event)
+    # The Kafka consumer (start_kafka_consumer) picks up release.rollback.initiated
+    # and calls _run_rollback_impl in a thread — no separate .delay() needed here.
     log.info("api.rollback.triggered", rollback_id=rollback_id, user=user["user_id"])
     return {"rollback_id": rollback_id, "status": "initiated"}
 

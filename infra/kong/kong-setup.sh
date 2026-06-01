@@ -149,32 +149,132 @@ curl -sf -X PUT "$KONG_ADMIN/services/aeroflow-backend/routes/api-route" \
     "methods": ["GET","POST","PUT","PATCH","DELETE","OPTIONS"]
   }' | json_field name | xargs -I{} echo "  → route: {}"
 
-# Helper: upsert a plugin (delete existing by name, then create)
+# ── 3b. Create auth-api service + route ────────────────────────────────
+echo "📡 Creating auth-api service..."
+curl -sf -X PUT "$KONG_ADMIN/services/auth-api" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "auth-api",
+    "url": "http://auth-api:8200",
+    "connect_timeout": 5000,
+    "read_timeout": 30000
+  }' | json_field name | xargs -I{} echo "  → service: {}"
+
+echo "🛣️  Creating auth-api route (ip-allowlist mgmt — no IP restriction)..."
+curl -sf -X PUT "$KONG_ADMIN/services/auth-api/routes/auth-api-route" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "auth-api-route",
+    "paths": ["/api/auth"],
+    "strip_path": false,
+    "methods": ["GET","POST","PUT","PATCH","DELETE","OPTIONS"]
+  }' | json_field name | xargs -I{} echo "  → route: {}"
+
+echo "🛣️  Creating auth-api-keys route (API key mgmt — IP restricted)..."
+curl -sf -X PUT "$KONG_ADMIN/services/auth-api/routes/auth-api-keys-route" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "auth-api-keys-route",
+    "paths": ["/api/auth/api-keys"],
+    "strip_path": false,
+    "methods": ["GET","POST","PUT","PATCH","DELETE","OPTIONS"]
+  }' | json_field name | xargs -I{} echo "  → route: {}"
+
+echo "🛣️  Creating auth-api-secrets route (Secrets Vault — IP restricted)..."
+curl -sf -X PUT "$KONG_ADMIN/services/auth-api/routes/auth-api-secrets-route" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "auth-api-secrets-route",
+    "paths": ["/api/auth/secrets"],
+    "strip_path": false,
+    "methods": ["GET","POST","PUT","PATCH","DELETE","OPTIONS"]
+  }' | json_field name | xargs -I{} echo "  → route: {}"
+
+# ── 3c. Create release-worker service + route ──────────────────────────
+echo "📡 Creating release-worker service..."
+curl -sf -X PUT "$KONG_ADMIN/services/release-worker" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "release-worker",
+    "url": "http://release-worker:8100",
+    "connect_timeout": 5000,
+    "read_timeout": 60000
+  }' | json_field name | xargs -I{} echo "  → service: {}"
+
+echo "🛣️  Creating release route..."
+curl -sf -X PUT "$KONG_ADMIN/services/release-worker/routes/release-route" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "release-route",
+    "paths": ["/api/release"],
+    "strip_path": false,
+    "methods": ["GET","POST","PUT","PATCH","DELETE","OPTIONS"]
+  }' | json_field name | xargs -I{} echo "  → route: {}"
+
+# Helper: upsert a plugin scoped to a specific service/route/global endpoint.
+# Queries at scope level so it won't accidentally delete a same-named plugin on a different service.
 upsert_plugin() {
   local scope_url="$1" body="$2" plugin_name="$3"
   local existing_id
-  existing_id=$(curl -sf "$KONG_ADMIN/plugins?name=$plugin_name" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4 || true)
+  existing_id=$(curl -sf "${scope_url}?name=${plugin_name}" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4 || true)
   [ -n "$existing_id" ] && curl -sf -X DELETE "$KONG_ADMIN/plugins/$existing_id" || true
   curl -sf -X POST "$scope_url" -H "Content-Type: application/json" -d "$body" \
     | json_field name | xargs -I{} echo "  → plugin: {}"
 }
 
 ISSUER="$KC_BASE/realms/$REALM"
-JWKS_URI="$KC_BASE/realms/$REALM/protocol/openid-connect/certs"
+# JWKS_URI must use the Docker-internal hostname so Kong (running inside Docker) can reach Keycloak.
+# KC_BASE (localhost:8080) works from the host but not from inside the Kong container.
+KONG_KC_HOST="http://aeroflow-keycloak-lb:8080"
+JWKS_URI="$KONG_KC_HOST/realms/$REALM/protocol/openid-connect/certs"
 
 # ── 4. aeroflow-jwks plugin — JWKS-based RS256 verify + header inject ──
 # Replaces jwt built-in plugin + pre-function + jwks-refresher service.
 # Uses kong.cache with 300s TTL; invalidates and refetches on kid change.
-echo "🔐 Enabling aeroflow-jwks plugin (JWKS RS256 + 300s cache)..."
+echo "🔐 Enabling aeroflow-jwks plugin on aeroflow-backend (JWKS RS256 + 300s cache)..."
 upsert_plugin "$KONG_ADMIN/services/aeroflow-backend/plugins" \
   "{\"name\":\"aeroflow-jwks\",\"config\":{\"jwks_uri\":\"$JWKS_URI\",\"issuer\":\"$ISSUER\",\"jwks_refresh_interval\":300}}" \
   "aeroflow-jwks"
 
-# ── 5. IP restriction (allow private networks) ─────────────────────────
-echo "🛡️  Enabling IP restriction..."
-upsert_plugin "$KONG_ADMIN/plugins" \
-  '{"name":"ip-restriction","config":{"allow":["127.0.0.1/32","10.0.0.0/8","172.16.0.0/12","192.168.0.0/16"]}}' \
-  "ip-restriction"
+# ── 4b. aeroflow-jwks on release-worker ────────────────────────────────
+echo "🔐 Enabling aeroflow-jwks plugin on release-worker..."
+upsert_plugin "$KONG_ADMIN/services/release-worker/plugins" \
+  "{\"name\":\"aeroflow-jwks\",\"config\":{\"jwks_uri\":\"$JWKS_URI\",\"issuer\":\"$ISSUER\",\"jwks_refresh_interval\":300}}" \
+  "aeroflow-jwks"
+
+# ── 4c. aeroflow-jwks on auth-api ──────────────────────────────────────
+echo "🔐 Enabling aeroflow-jwks plugin on auth-api..."
+upsert_plugin "$KONG_ADMIN/services/auth-api/plugins" \
+  "{\"name\":\"aeroflow-jwks\",\"config\":{\"jwks_uri\":\"$JWKS_URI\",\"issuer\":\"$ISSUER\",\"jwks_refresh_interval\":300}}" \
+  "aeroflow-jwks"
+
+# ── 5. IP restriction ─────────────────────────────────────────────────
+# Applied to: aeroflow-backend (data API), release-worker, auth-api-keys-route.
+# auth-api ip-allowlist routes are intentionally EXCLUDED so admin can always
+# manage the allowlist regardless of the current IP policy.
+_IP_DEFAULT='{"name":"ip-restriction","config":{"allow":["127.0.0.1/32","10.0.0.0/8","172.16.0.0/12","192.168.0.0/16"]}}'
+
+echo "🛡️  Enabling IP restriction on aeroflow-backend..."
+upsert_plugin "$KONG_ADMIN/services/aeroflow-backend/plugins" "$_IP_DEFAULT" "ip-restriction"
+
+echo "🛡️  Enabling IP restriction on release-worker..."
+upsert_plugin "$KONG_ADMIN/services/release-worker/plugins" "$_IP_DEFAULT" "ip-restriction"
+
+echo "🛡️  Enabling IP restriction on auth-api-keys-route..."
+upsert_plugin "$KONG_ADMIN/routes/auth-api-keys-route/plugins" "$_IP_DEFAULT" "ip-restriction"
+
+echo "🛡️  Enabling IP restriction on auth-api-secrets-route..."
+upsert_plugin "$KONG_ADMIN/routes/auth-api-secrets-route/plugins" "$_IP_DEFAULT" "ip-restriction"
+
+# Remove any leftover global ip-restriction plugin (from previous setup runs)
+echo "🧹 Removing any global ip-restriction plugin..."
+GLOBAL_IP_ID=$(curl -sf "$KONG_ADMIN/plugins" \
+  | python3 -c "import sys,json; [print(p['id']) for p in json.load(sys.stdin).get('data',[]) if p['name']=='ip-restriction' and not p.get('service') and not p.get('route')]" 2>/dev/null || true)
+if [ -n "$GLOBAL_IP_ID" ]; then
+  curl -sf -X DELETE "$KONG_ADMIN/plugins/$GLOBAL_IP_ID" && echo "  → removed global plugin $GLOBAL_IP_ID"
+else
+  echo "  → no global ip-restriction found"
+fi
 
 # ── 8. Correlation ID (tracing) ────────────────────────────────────────
 echo "📝 Enabling correlation-id..."

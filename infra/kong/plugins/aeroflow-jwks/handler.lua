@@ -59,10 +59,15 @@ end
 
 -- ── JWKS cache loader ──────────────────────────────────────────────────
 
-local function load_jwks(_, _, jwks_uri)
+local function load_jwks(jwks_uri)
   local httpc = http.new()
   httpc:set_timeout(5000)
-  local res, err = httpc:request_uri(jwks_uri)
+  -- ssl_verify=true rejects self-signed certs; set ssl_capath to the system bundle
+  -- or a custom CA file if Keycloak uses an internal PKI.
+  local res, err = httpc:request_uri(jwks_uri, {
+    ssl_verify = true,
+    ssl_capath = "/etc/ssl/certs",
+  })
   if not res then return nil, "JWKS HTTP error: " .. (err or "?") end
   if res.status ~= 200 then return nil, "JWKS status: " .. res.status end
 
@@ -88,7 +93,7 @@ local function fetch_keys(conf)
   return kong.cache:get(
     "aeroflow_jwks|" .. conf.jwks_uri,
     { ttl = conf.jwks_refresh_interval },
-    load_jwks, nil, nil, conf.jwks_uri
+    load_jwks, conf.jwks_uri
   )
 end
 
@@ -109,6 +114,16 @@ end
 -- ── access handler ──────────────────────────────────────────────────────
 
 function AeroflowJwks:access(conf)
+  -- Clear any client-supplied identity headers to prevent spoofing on routes
+  -- that don't go through this plugin.
+  kong.service.request.clear_header("X-User-Id")
+  kong.service.request.clear_header("X-User-Email")
+  kong.service.request.clear_header("X-User-Name")
+  kong.service.request.clear_header("X-User-Roles")
+  kong.service.request.clear_header("X-Tenant-Id")
+  kong.service.request.clear_header("X-Role-Id")
+  kong.service.request.clear_header("X-Kong-Verified")
+
   -- 1. Bearer token
   local auth = kong.request.get_header("Authorization")
   if not auth then
@@ -176,15 +191,49 @@ function AeroflowJwks:access(conf)
     return kong.response.exit(401, { message = "Issuer mismatch" })
   end
 
-  -- 8. Inject headers for backend
-  local roles = ""
-  if payload.realm_access and type(payload.realm_access.roles) == "table" then
-    roles = table.concat(payload.realm_access.roles, ",")
+  -- 8. Audience validation (optional — only enforced when conf.audience is set)
+  if conf.audience then
+    local aud = payload.aud
+    local ok_aud = false
+    if type(aud) == "string" then
+      ok_aud = aud == conf.audience
+    elseif type(aud) == "table" then
+      for _, v in ipairs(aud) do
+        if v == conf.audience then ok_aud = true; break end
+      end
+    end
+    if not ok_aud then
+      return kong.response.exit(401, { message = "Audience mismatch" })
+    end
   end
-  kong.service.request.set_header("X-User-Id",      payload.sub   or "")
-  kong.service.request.set_header("X-User-Email",   payload.email or "")
-  kong.service.request.set_header("X-User-Roles",   roles)
+
+  -- 9. Inject headers for backend; headers were cleared above so these are authoritative.
+  -- X-User-Roles: prefer custom role_id claim (single role, from user attribute mapper),
+  -- fall back to realm_access.roles (standard Keycloak JWT claim, comma-joined).
+  local roles_str = payload.role_id or ""
+  if roles_str == "" and payload.realm_access and type(payload.realm_access.roles) == "table" then
+    local app_roles = {}
+    for _, r in ipairs(payload.realm_access.roles) do
+      -- Filter out Keycloak system roles
+      if not r:match("^default%-roles%-") and r ~= "offline_access" and r ~= "uma_authorization" then
+        app_roles[#app_roles + 1] = r
+      end
+    end
+    roles_str = table.concat(app_roles, ",")
+  end
+
+  kong.service.request.set_header("X-User-Id",      payload.sub               or "")
+  kong.service.request.set_header("X-User-Email",   payload.email             or "")
+  kong.service.request.set_header("X-User-Name",    payload.preferred_username or "")
+  kong.service.request.set_header("X-User-Roles",   roles_str)
+  kong.service.request.set_header("X-Tenant-Id",    payload.tenant_id         or "")
+  kong.service.request.set_header("X-Role-Id",      payload.role_id           or "")
   kong.service.request.set_header("X-Kong-Verified", "true")
+
+  -- Strip the Authorization header from the upstream request when hide_credentials is enabled.
+  if conf.hide_credentials then
+    kong.service.request.clear_header("Authorization")
+  end
 end
 
 return AeroflowJwks

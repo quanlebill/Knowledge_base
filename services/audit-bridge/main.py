@@ -30,9 +30,12 @@ KC_PASS = os.environ.get("KEYCLOAK_ADMIN_PASSWORD", "admin")
 KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 KAFKA_SASL_USER = os.environ.get("KAFKA_SASL_USERNAME", "")
 KAFKA_SASL_PASS = os.environ.get("KAFKA_SASL_PASSWORD", "")
+KAFKA_SECURITY_PROTOCOL = os.environ.get("KAFKA_SECURITY_PROTOCOL", "SASL_PLAINTEXT")
+KAFKA_SASL_MECHANISM = os.environ.get("KAFKA_SASL_MECHANISM", "PLAIN")
 TOPIC = os.environ.get("KAFKA_TOPIC", "audit.auth.events")
 POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL_SECONDS", "10"))
-STATE_FILE = "/tmp/last_event_time.txt"
+# Mount /data as a Docker volume so state survives container restarts.
+STATE_FILE = os.environ.get("STATE_FILE", "/data/last_event_time.txt")
 
 
 def wait_for_kafka(bootstrap: str, retries: int = 30, delay: int = 5) -> KafkaProducer:
@@ -46,8 +49,8 @@ def wait_for_kafka(bootstrap: str, retries: int = 30, delay: int = 5) -> KafkaPr
             )
             if KAFKA_SASL_USER:
                 kwargs.update(
-                    security_protocol="SASL_PLAINTEXT",
-                    sasl_mechanism="SCRAM-SHA-256",
+                    security_protocol=KAFKA_SECURITY_PROTOCOL,
+                    sasl_mechanism=KAFKA_SASL_MECHANISM,
                     sasl_plain_username=KAFKA_SASL_USER,
                     sasl_plain_password=KAFKA_SASL_PASS,
                 )
@@ -89,10 +92,17 @@ def save_last_ts(ts: int) -> None:
 
 
 def poll_events(token: str, since_ms: int) -> list:
+    # dateFrom narrows the server-side query so we don't fetch events we'll filter out anyway.
+    # Keycloak expects a date string; subtract 1 minute to avoid dropping events at boundary.
+    from datetime import datetime, timezone, timedelta
+    date_from = datetime.fromtimestamp(
+        max(0, since_ms / 1000 - 60), tz=timezone.utc
+    ).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
     r = requests.get(
         f"{KC_BASE}/admin/realms/{REALM}/events",
         headers={"Authorization": f"Bearer {token}"},
-        params={"first": 0, "max": 200},
+        params={"first": 0, "max": 200, "dateFrom": date_from},
         timeout=10,
     )
     r.raise_for_status()
@@ -110,7 +120,10 @@ def main():
 
             if new_events:
                 for event in sorted(new_events, key=lambda e: e.get("time", 0)):
-                    producer.send(TOPIC, value=event)
+                    # Partition by userId for ordered per-user delivery; use event id when
+                    # available so the consumer can deduplicate on source_event_id.
+                    msg_key = (event.get("id") or event.get("userId") or "")
+                    producer.send(TOPIC, key=msg_key.encode("utf-8"), value=event)
                     log.info(
                         "published type=%-30s user=%s",
                         event.get("type", "?"),

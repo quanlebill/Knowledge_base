@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Info, History, Shield, Maximize2, Minimize2, GripVertical } from 'lucide-react';
 import { cn } from '../../lib/utils';
@@ -143,7 +144,7 @@ export const DetailDrawer = ({
       ? 'calc(100vw - 24px)'
       : `${width}px`;
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
         <>
@@ -163,7 +164,7 @@ export const DetailDrawer = ({
             transition={{ type: 'spring', damping: 28, stiffness: 220 }}
             style={{ width: renderedWidth }}
             className={cn(
-              'fixed top-0 bottom-0 right-0',
+              '!fixed top-0 bottom-0 right-0',
               !isMobile && 'lg:top-3 lg:bottom-3 lg:right-3',
               'drawer-shell',
               'z-[101] flex flex-col',
@@ -265,6 +266,7 @@ export const DetailDrawer = ({
           </motion.div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 };

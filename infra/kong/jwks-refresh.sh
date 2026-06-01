@@ -1,17 +1,25 @@
 #!/usr/bin/env bash
-# ─── Kong JWKS Key Refresh ─────────────────────────────────────────────
-# Run this script after Keycloak rotates its signing key to keep Kong in sync.
+# ─── Kong JWKS Key Refresh (LEGACY helper) ────────────────────────────
 #
-# Design doc §1.4: Kong should use OIDC plugin with jwks_uri_refresh_interval=300
-# for automatic refresh. Current setup uses the built-in JWT plugin (community edition)
-# which requires manual key refresh on rotation.
+# ⚠️  DESIGN NOTE — read before using:
 #
-# Usage:
+#   The primary JWT verification mechanism is now the aeroflow-jwks Kong plugin
+#   (infra/kong/plugins/aeroflow-jwks/).  That plugin:
+#     - Fetches the entire JWKS from Keycloak on every request (cached via kong.cache,
+#       TTL = jwks_refresh_interval, default 300s).
+#     - Matches tokens by kid — supports key overlap automatically.
+#     - Invalidates and re-fetches the cache when an unknown kid is encountered.
+#
+#   This script only makes sense if you are using Kong's BUILT-IN jwt plugin
+#   (community edition) instead of aeroflow-jwks.  Do NOT run both — they
+#   conflict.  Check which plugin is active with:
+#     curl http://localhost:8001/plugins | jq '[.data[].name]'
+#
+# Usage (built-in jwt plugin only):
 #   bash infra/kong/jwks-refresh.sh
 #
 # Can be triggered automatically via Keycloak Event Listener SPI:
 #   Keycloak Admin → Realm Settings → Events → Event Listeners → key-rotation-hook
-#   → calls this script (or Kong Admin API directly) when KEY_ROTATION event fires
 
 set -uo pipefail
 
@@ -61,22 +69,31 @@ print('-----BEGIN PUBLIC KEY-----\n'+'\n'.join(b64[i:i+64]for i in range(0,len(b
 [ -z "$PEM_KEY" ] && { echo "❌ Could not fetch new public key from Keycloak JWKS"; exit 1; }
 echo "  → New public key extracted (${#PEM_KEY} chars)"
 
-# ── Delete old JWT credentials, register new key ───────────────────────
+# ── Register new key first, then remove old credentials ───────────────
+# Create-before-delete: Kong always has at least one valid credential during rotation.
+# Tokens signed with the old key will stop being accepted once the old credential
+# is deleted — keep token TTLs short (≤ jwks_refresh_interval) to avoid disruption.
 ISSUER="$KC_BASE/realms/$REALM"
 echo "🔁 Rotating JWT credential on Kong consumer 'keycloak-users'..."
 
+# Snapshot existing IDs before creating the new one
 EXISTING_IDS=$(curl -sf "$KONG_ADMIN/consumers/keycloak-users/jwt" \
   | grep -o '"id":"[^"]*"' | cut -d'"' -f4 || true)
+
+# Create new credential first
+PEM_JSON=$("$PYTHON" -c 'import json,sys; print(json.dumps(sys.stdin.read()))' <<< "$PEM_KEY")
+NEW_ID=$(curl -sf -X POST "$KONG_ADMIN/consumers/keycloak-users/jwt" \
+  -H "Content-Type: application/json" \
+  -d "{\"algorithm\":\"RS256\",\"key\":\"$ISSUER\",\"rsa_public_key\":$PEM_JSON}" \
+  | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4 || true)
+echo "  → new credential: $NEW_ID"
+
+# Now delete old credentials
 for cid in $EXISTING_IDS; do
+  [ "$cid" = "$NEW_ID" ] && continue
   curl -sf -X DELETE "$KONG_ADMIN/consumers/keycloak-users/jwt/$cid" \
     && echo "  → deleted old credential $cid"
 done
-
-PEM_JSON=$("$PYTHON" -c 'import json,sys; print(json.dumps(sys.stdin.read()))' <<< "$PEM_KEY")
-curl -sf -X POST "$KONG_ADMIN/consumers/keycloak-users/jwt" \
-  -H "Content-Type: application/json" \
-  -d "{\"algorithm\":\"RS256\",\"key\":\"$ISSUER\",\"rsa_public_key\":$PEM_JSON}" \
-  | grep -o '"id":"[^"]*"' | head -1 | xargs -I{} echo "  → new credential: {}"
 
 echo ""
 echo "✅ JWKS rotation complete. Kong is now using the new Keycloak signing key."
