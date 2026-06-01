@@ -4,16 +4,19 @@ load_dotenv(find_dotenv())
 import os
 import time
 import logging
-
-logger = logging.getLogger(__name__)
+import base64
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
 from typing import Optional, List
 
+import httpx
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel
+
 from graph import build_graph
+
+logger = logging.getLogger(__name__)
 from config_loader import load_agent_config
 from observability import get_langfuse_handler
 from node_registry import NODE_REGISTRY
@@ -47,6 +50,7 @@ app.add_middleware(
     allow_origins=_CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Conversation-Id"],
 )
 
 _graph = build_graph()
@@ -114,7 +118,6 @@ async def run_conversation(req: RunRequest, request: Request):
     tenant_id = request.headers.get("X-Tenant-ID", _DEV_TENANT_ID)
 
     if not await validate_agent_tenant(agent_id, tenant_id):
-        from fastapi.responses import JSONResponse
         return JSONResponse(status_code=403, content={"detail": "Agent not found or access denied"})
 
     user_ref = request.headers.get("X-User-ID", "anonymous")
@@ -152,7 +155,17 @@ async def run_conversation(req: RunRequest, request: Request):
         "config": cfg,
     }
 
-    handler = get_langfuse_handler(run_name=f"conv-{conv_id or 'new'}")
+    handler = get_langfuse_handler(
+        run_name=f"conv-{conv_id or 'new'}",
+        session_id=conv_id,
+        user_id=user_ref,
+        metadata={
+            "agent_id":        agent_id,
+            "tenant_id":       tenant_id,
+            "responder_model": cfg.get("responder_model"),
+            "planner_model":   cfg.get("planner_model"),
+        },
+    )
     callbacks = [handler] if handler else []
 
     # If output patterns are configured we must buffer the response before streaming,
@@ -232,3 +245,46 @@ async def run_conversation(req: RunRequest, request: Request):
     response = StreamingResponse(event_stream(), media_type="text/event-stream")
     response.headers["X-Conversation-Id"] = conv_id or ""
     return response
+
+
+@app.get("/api/traces/{conv_id}")
+async def get_traces_by_conv(conv_id: str):
+    """Proxy: lấy Langfuse observations theo session (conv_id) rồi trả về frontend."""
+    public_key = os.environ.get("LANGFUSE_PUBLIC_KEY")
+    secret_key  = os.environ.get("LANGFUSE_SECRET_KEY")
+    host        = os.environ.get("LANGFUSE_HOST", "http://localhost:3001")
+
+    if not public_key or not secret_key:
+        return JSONResponse(status_code=503, content={"detail": "Langfuse not configured"})
+
+    token        = base64.b64encode(f"{public_key}:{secret_key}".encode()).decode()
+    auth_headers = {"Authorization": f"Basic {token}"}
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get(
+                f"{host}/api/public/traces",
+                params={"sessionId": conv_id},
+                headers=auth_headers,
+            )
+            r.raise_for_status()
+            traces = r.json().get("data", [])
+
+            if not traces:
+                return {"observations": []}
+
+            trace_id = traces[0]["id"]
+            r2 = await client.get(
+                f"{host}/api/public/observations",
+                params={"traceId": trace_id},
+                headers=auth_headers,
+            )
+            r2.raise_for_status()
+            return {"observations": r2.json().get("data", [])}
+
+    except httpx.HTTPStatusError as e:
+        logger.error("langfuse proxy HTTP error: %s", e.response.status_code)
+        return JSONResponse(status_code=502, content={"detail": f"Langfuse HTTP {e.response.status_code}"})
+    except Exception as e:
+        logger.exception("langfuse proxy error: %s", e)
+        return JSONResponse(status_code=502, content={"detail": "Langfuse unavailable"})

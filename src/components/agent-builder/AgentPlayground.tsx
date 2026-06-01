@@ -47,6 +47,77 @@ interface AgentOption {
   type: 'agent' | 'workflow';
 }
 
+/* ─── Helpers ───────────────────────────────────────────────── */
+
+const _SKIP_NODES = new Set(['LangGraph', '_route_after_guardrail_input', 'route_after_planner', 'join_retrieval_node']);
+
+function nodeIcon(name: string): React.ReactNode {
+  if (name.includes('guardrail'))  return <AlertCircle size={14} />;
+  if (name.includes('planner'))    return <Brain size={14} />;
+  if (name.includes('kb_search'))  return <Search size={14} />;
+  if (name.includes('reranker') || name.includes('rrf')) return <Layers size={14} />;
+  if (name.includes('responder'))  return <FileOutput size={14} />;
+  return <Zap size={14} />;
+}
+
+function trimInput(name: string, raw: any): string {
+  if (!raw || typeof raw !== 'object') return String(raw ?? '');
+  const q = raw.query ?? '';
+  const cfg = raw.config ?? {};
+  switch (true) {
+    case name.includes('guardrail'):
+      return JSON.stringify({ query: q }, null, 2);
+    case name.includes('planner'):
+      return JSON.stringify({
+        query: q,
+        memory_context: (raw.memory_context ?? []).length + ' items',
+      }, null, 2);
+    case name.includes('kb_search'):
+      return JSON.stringify({
+        query: q,
+        mode: cfg.kb_mode,
+        top_k: cfg.top_k,
+      }, null, 2);
+    case name.includes('rrf'):
+      return JSON.stringify({
+        kb_chunks: (raw.kb_chunks ?? []).length + ' chunks',
+        mcp_results: (raw.mcp_results ?? []).length + ' results',
+      }, null, 2);
+    case name.includes('reranker'):
+      return JSON.stringify({
+        rrf_results: (raw.rrf_results ?? []).length + ' items',
+        top_n: cfg.reranker_top_n,
+      }, null, 2);
+    case name.includes('responder'):
+      return JSON.stringify({
+        query: q,
+        reranked_chunks: (raw.reranked_chunks ?? []).length + ' chunks',
+      }, null, 2);
+    default:
+      return JSON.stringify({ query: q }, null, 2);
+  }
+}
+
+function mapObservations(obs: any[]): TraceStep[] {
+  return obs
+    .filter(o => !_SKIP_NODES.has(o.name) && o.type === 'SPAN')
+    .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+    .map(o => ({
+      id: o.id,
+      node: o.name,
+      icon: nodeIcon(o.name),
+      status: o.level === 'ERROR' ? 'error' : 'success',
+      latencyMs: o.endTime
+        ? Math.round(new Date(o.endTime).getTime() - new Date(o.startTime).getTime())
+        : 0,
+      tokens: o.usage ? ((o.usage.input ?? 0) + (o.usage.output ?? 0)) : 0,
+      input:  trimInput(o.name, o.input),
+      output: o.level === 'ERROR' && o.statusMessage
+        ? o.statusMessage
+        : typeof o.output === 'object' ? JSON.stringify(o.output, null, 2) : String(o.output ?? ''),
+    }));
+}
+
 /* ─── Mock data ─────────────────────────────────────────────── */
 
 const AGENTS: AgentOption[] = [
@@ -56,79 +127,6 @@ const AGENTS: AgentOption[] = [
   { id: 'wf-compliance',    label: 'Compliance Check Workflow',   type: 'workflow' },
 ];
 
-const MOCK_TRACE: TraceStep[] = [
-  {
-    id: 'planner',
-    node: 'Planner',
-    icon: <Brain size={14} />,
-    status: 'success',
-    latencyMs: 312,
-    tokens: 284,
-    input: 'User query: "What are the penalty regulations for late tender submissions?"',
-    output: 'Plan: [1] Search KB for tender penalty regulations [2] Rerank results [3] Generate answer via Responder',
-  },
-  {
-    id: 'kb-search',
-    node: 'KB Search',
-    icon: <Search size={14} />,
-    status: 'success',
-    latencyMs: 88,
-    tokens: 0,
-    input: 'Query vector embedding: "penalty regulations late tender submission"',
-    output: '5 chunks retrieved from chroma_kb_tenderbid (cosine sim > 0.78)',
-  },
-  {
-    id: 'reranker',
-    node: 'Reranker',
-    icon: <Layers size={14} />,
-    status: 'success',
-    latencyMs: 54,
-    tokens: 0,
-    input: '5 candidate chunks',
-    output: 'Top 3 chunks selected (cross-encoder scores: 0.93, 0.87, 0.81)',
-  },
-  {
-    id: 'responder',
-    node: 'Responder',
-    icon: <Brain size={14} />,
-    status: 'success',
-    latencyMs: 1140,
-    tokens: 812,
-    input: 'Context: [3 chunks] + User query',
-    output: 'According to Article 11, Section 3 of Circular 09/2023/TT-BKHDT, contractors submitting bids after the deadline will be penalized 0.05% of the contract value per day of delay, up to a maximum of 5%.',
-  },
-  {
-    id: 'output',
-    node: 'Output',
-    icon: <FileOutput size={14} />,
-    status: 'success',
-    latencyMs: 12,
-    tokens: 0,
-    input: 'Responder response',
-    output: 'Formatted response sent to user.',
-  },
-];
-
-const INITIAL_MESSAGES: Message[] = [
-  {
-    id: '1',
-    role: 'assistant',
-    content: 'Hello! I am the GTEL RAG Agent. Ask me anything about regulations, tender procedures, or compliance requirements.',
-    timestamp: '09:14',
-  },
-  {
-    id: '2',
-    role: 'user',
-    content: 'What are the penalty regulations for late tender submissions?',
-    timestamp: '09:15',
-  },
-  {
-    id: '3',
-    role: 'assistant',
-    content: 'According to **Article 11, Section 3 of Circular 09/2023/TT-BKHDT**, contractors submitting bids after the deadline will be penalized **0.05% of the contract value per day** of delay, up to a maximum of **5%** of the total contract value.\n\nThis applies to all public procurement contracts governed by the Law on Bidding 2023.',
-    timestamp: '09:15',
-  },
-];
 
 /* ─── Sub-components ────────────────────────────────────────── */
 
@@ -235,9 +233,12 @@ export default function AgentPlayground({ embedded = false }: { embedded?: boole
   const [debugOn, setDebugOn] = useState(true);
   const [selectedAgent, setSelectedAgent] = useState(AGENTS[0].id);
   const [selectorOpen, setSelectorOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [traceSteps, setTraceSteps] = useState<TraceStep[]>([]);
+  const [traceMeta, setTraceMeta] = useState({ latency: 0, tokens: 0 });
+  const [traceLoading, setTraceLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const selectorRef = useRef<HTMLDivElement>(null);
 
@@ -251,8 +252,6 @@ export default function AgentPlayground({ embedded = false }: { embedded?: boole
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const totalLatency = MOCK_TRACE.reduce((s, t) => s + t.latencyMs, 0);
-  const totalTokens  = MOCK_TRACE.reduce((s, t) => s + t.tokens, 0);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -283,6 +282,31 @@ export default function AgentPlayground({ embedded = false }: { embedded?: boole
         }),
       });
 
+      const convId = res.headers.get('X-Conversation-Id');
+
+      if (convId) {
+        setTraceLoading(true);
+        (async () => {
+          for (let i = 0; i < 5; i++) {
+            await new Promise(r => setTimeout(r, 2000));
+            try {
+              const tr = await fetch(`${API_BASE}/api/traces/${convId}`);
+              const { observations } = await tr.json();
+              const steps = mapObservations(observations ?? []);
+              if (steps.length > 0) {
+                setTraceSteps(steps);
+                setTraceMeta({
+                  latency: steps.reduce((s, t) => s + t.latencyMs, 0),
+                  tokens:  steps.reduce((s, t) => s + t.tokens, 0),
+                });
+                break;
+              }
+            } catch { break; }
+          }
+          setTraceLoading(false);
+        })();
+      }
+
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let fullText = '';
@@ -308,6 +332,7 @@ export default function AgentPlayground({ embedded = false }: { embedded?: boole
           ));
         }
       }
+
     } catch {
       setMessages(prev => prev.map(m =>
         m.id === placeholderId ? { ...m, content: 'Lỗi: không kết nối được backend.' } : m,
@@ -484,14 +509,24 @@ export default function AgentPlayground({ embedded = false }: { embedded?: boole
             >
               <div className="flex items-center justify-between px-4 py-2 border-b border-white/[0.06] shrink-0">
                 <span className="text-xs font-medium text-white/50">Trace — last run</span>
-                <span className="text-[11px] text-white/30">mock data</span>
+                <span className="text-[11px] text-white/30">
+                  {traceLoading ? 'loading…' : traceSteps.length > 0 ? `${traceSteps.length} steps` : 'no trace yet'}
+                </span>
               </div>
 
               {/* Steps */}
               <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
-                {MOCK_TRACE.map((step, i) => (
+                {traceLoading ? (
+                  <div className="flex flex-col items-center gap-2 mt-8">
+                    {[0,1,2].map(i => (
+                      <div key={i} className="w-full h-9 rounded-lg bg-white/[0.04] animate-pulse" style={{ opacity: 1 - i * 0.25 }} />
+                    ))}
+                  </div>
+                ) : traceSteps.length === 0 ? (
+                  <p className="text-[12px] text-white/25 text-center mt-8">Send a message to see trace</p>
+                ) : traceSteps.map((step, i) => (
                   <div key={step.id} className="relative">
-                    {i < MOCK_TRACE.length - 1 && (
+                    {i < traceSteps.length - 1 && (
                       <div className="absolute left-[22px] top-[38px] w-px h-[calc(100%-10px)] bg-white/10 z-0" />
                     )}
                     <TraceStepCard step={step} />
@@ -503,15 +538,15 @@ export default function AgentPlayground({ embedded = false }: { embedded?: boole
               <div className="px-4 py-3 border-t border-white/10 shrink-0 grid grid-cols-3 gap-3">
                 <div className="bg-white/[0.04] rounded-lg p-2.5 text-center">
                   <p className="text-[10px] text-white/30 mb-0.5">Total Latency</p>
-                  <p className="text-sm font-semibold text-white/80">{totalLatency}ms</p>
+                  <p className="text-sm font-semibold text-white/80">{traceMeta.latency}ms</p>
                 </div>
                 <div className="bg-white/[0.04] rounded-lg p-2.5 text-center">
                   <p className="text-[10px] text-white/30 mb-0.5">Total Tokens</p>
-                  <p className="text-sm font-semibold text-white/80">{totalTokens.toLocaleString()}</p>
+                  <p className="text-sm font-semibold text-white/80">{traceMeta.tokens.toLocaleString()}</p>
                 </div>
                 <div className="bg-white/[0.04] rounded-lg p-2.5 text-center">
-                  <p className="text-[10px] text-white/30 mb-0.5">Model</p>
-                  <p className="text-[11px] font-semibold text-white/80 truncate">Qwen3-4B</p>
+                  <p className="text-[10px] text-white/30 mb-0.5">Steps</p>
+                  <p className="text-[11px] font-semibold text-white/80">{traceSteps.length}</p>
                 </div>
               </div>
             </motion.div>

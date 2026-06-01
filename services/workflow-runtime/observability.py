@@ -16,7 +16,7 @@ except (ImportError, ModuleNotFoundError):
 
 
 class LangfuseHandlerParams(BaseModel):
-    run_name:   str         = "agent-run"
+    trace_name: str         = "agent-run"
     session_id: str | None  = None
     user_id:    str | None  = None
     metadata:   dict | None = None
@@ -57,7 +57,7 @@ def get_langfuse_handler(
         return None
 
     params = LangfuseHandlerParams(
-        run_name=run_name,
+        trace_name=run_name,
         session_id=session_id,
         user_id=user_id,
         metadata=metadata,
@@ -68,7 +68,7 @@ def get_langfuse_handler(
             public_key=cfg["public_key"],
             secret_key=cfg["secret_key"],
             host=cfg["host"],
-            run_name=params.run_name,
+            trace_name=params.trace_name,
             session_id=params.session_id,
             user_id=params.user_id,
             metadata=params.metadata or {},
