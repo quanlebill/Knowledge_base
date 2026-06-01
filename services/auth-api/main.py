@@ -22,7 +22,7 @@ import hvac
 import psycopg2
 import psycopg2.extras
 import structlog
-from fastapi import Depends, FastAPI, Header, HTTPException, Path
+from fastapi import Depends, FastAPI, Header, HTTPException, Path, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -85,6 +85,14 @@ def _ensure_settings_table():
                 ALTER TABLE key_rotations ADD CONSTRAINT key_rotations_triggered_by_check
                   CHECK (triggered_by IN ('SCHEDULED','MANUAL','PANIC','REVEAL'))
             """)
+            # Seed default: allow_all so fresh deployments are not locked out
+            cur.execute("""
+                INSERT INTO platform_settings (key, value, updated_at)
+                VALUES ('ip_allowlist_mode', 'allow_all', now())
+                ON CONFLICT (key) DO NOTHING
+            """)
+            # Add access_reason column to key_rotations (idempotent)
+            cur.execute("ALTER TABLE key_rotations ADD COLUMN IF NOT EXISTS access_reason text")
         conn.commit()
     except Exception as e:
         log.warning("schema_migration_failed", error=str(e))
@@ -177,10 +185,21 @@ async def _auto_rotation_loop():
         await asyncio.sleep(86400)  # run every 24 hours
 
 
+async def _sync_kong_on_startup():
+    # Wait for Kong to finish setup before syncing
+    await asyncio.sleep(15)
+    try:
+        _sync_kong("")
+        log.info("startup_kong_sync_done")
+    except Exception as e:
+        log.warning("startup_kong_sync_failed", error=str(e))
+
+
 @app.on_event("startup")
 async def startup():
     _ensure_settings_table()
     asyncio.create_task(_auto_rotation_loop())
+    asyncio.create_task(_sync_kong_on_startup())
 
 
 def require_admin(roles: str):
@@ -197,7 +216,7 @@ def _get_ip_mode() -> str:
         with conn.cursor() as cur:
             cur.execute("SELECT value FROM platform_settings WHERE key = 'ip_allowlist_mode'")
             row = cur.fetchone()
-            return row[0] if row else "allowlist"
+            return row[0] if row else "allow_all"
     finally:
         conn.close()
 
@@ -840,10 +859,11 @@ def rotate_secret(
 
 @app.get("/api/auth/secrets/{secret_id}/reveal")
 def reveal_secret(
-    secret_id:    str = Path(...),
-    x_tenant_id:  str = Header(..., alias="X-Tenant-Id"),
-    x_user_id:    str = Header(..., alias="X-User-Id"),
-    x_user_roles: str = Header(..., alias="X-User-Roles"),
+    secret_id:     str = Path(...),
+    access_reason: str | None = Query(None),
+    x_tenant_id:   str = Header(..., alias="X-Tenant-Id"),
+    x_user_id:     str = Header(..., alias="X-User-Id"),
+    x_user_roles:  str = Header(..., alias="X-User-Roles"),
     _panic: None = Depends(_vault_panic_check),
 ):
     require_admin(x_user_roles)
@@ -862,11 +882,17 @@ def reveal_secret(
             pii_log = _get_gov_setting(cur, "vault_pii_access_log")
 
         if pii_log:
+            if not access_reason or not access_reason.strip():
+                raise HTTPException(
+                    status_code=422,
+                    detail="access_reason is required when PII Access Log is enabled",
+                )
             with conn.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO key_rotations (secret_id, triggered_by, actor_id, old_version, new_version, status) "
-                    "VALUES (%s,'REVEAL',%s,%s,%s,'SUCCESS')",
-                    (secret_id, x_user_id, row["version"], row["version"]),
+                    "INSERT INTO key_rotations "
+                    "(secret_id, triggered_by, actor_id, old_version, new_version, status, access_reason) "
+                    "VALUES (%s,'REVEAL',%s,%s,%s,'SUCCESS',%s)",
+                    (secret_id, x_user_id, row["version"], row["version"], access_reason.strip()),
                 )
             conn.commit()
     finally:
@@ -1141,7 +1167,8 @@ def secrets_pii_log(
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
-                "SELECT kr.id, kr.actor_id, kr.old_version, kr.rotated_at, sv.key_name, sv.key_type "
+                "SELECT kr.id, kr.actor_id, kr.old_version, kr.rotated_at, "
+                "       kr.access_reason, sv.key_name, sv.key_type "
                 "FROM key_rotations kr "
                 "JOIN secrets_vault sv ON sv.id = kr.secret_id "
                 "WHERE sv.tenant_id = %s AND kr.triggered_by = 'REVEAL' "
@@ -1151,12 +1178,13 @@ def secrets_pii_log(
             rows = cur.fetchall()
         return [
             {
-                "id":       str(r["id"]),
-                "key_name": r["key_name"],
-                "key_type": r["key_type"],
-                "actor_id": r["actor_id"],
-                "version":  r["old_version"],
-                "time":     r["rotated_at"].isoformat() if r["rotated_at"] else None,
+                "id":            str(r["id"]),
+                "key_name":      r["key_name"],
+                "key_type":      r["key_type"],
+                "actor_id":      r["actor_id"],
+                "version":       r["old_version"],
+                "access_reason": r["access_reason"],
+                "time":          r["rotated_at"].isoformat() if r["rotated_at"] else None,
             }
             for r in rows
         ]

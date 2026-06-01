@@ -161,9 +161,9 @@ aeroflow-frontend                  Up
 
 | Username | Password | Role | Email |
 |---|---|---|---|
-| `platform-admin` | `Admin123456!` | `platform-admin` | admin@aeroflow.local |
-| `ai-engineer` | *(reset via Keycloak admin)* | `ai-engineer` | engineer@aeroflow.local |
-| `executive-viewer` | *(reset via Keycloak admin)* | `executive-viewer` | viewer@aeroflow.local |
+| `platform-admin` | `Admin@123456` | `platform-admin` | admin@aeroflow.local |
+| `ai-engineer` | `Engineer@1234` | `ai-engineer` | engineer@aeroflow.local |
+| `executive-viewer` | `Viewer@123456` | `executive-viewer` | viewer@aeroflow.local |
 
 **Tenant 2: Helios Corp** (`b0000000-0000-0000-0000-000000000002`)
 
@@ -173,10 +173,42 @@ aeroflow-frontend                  Up
 | `helios-engineer` | `H3lios@Eng001!` | `ai-engineer` | helios-engineer@helios.corp |
 | `helios-viewer` | `H3lios@View01!` | `executive-viewer` | helios-viewer@helios.corp |
 
-> **Realm import:** `--import-realm` chỉ chạy khi realm chưa tồn tại trong PostgreSQL. Sau lần đầu, users tồn tại trong DB và persist qua restarts.  
-> **Password policy:** min 12 chars, upper+lower+digit+special, notUsername, history(5).  
-> **JWT claims:** Kong `aeroflow-jwks` plugin inject `X-User-Roles`, `X-Tenant-Id`, `X-Role-Id` từ JWT claims. Role và tenant_id là user attributes trong Keycloak.  
-> **Keycloak User Profile:** `unmanagedAttributePolicy: ENABLED` required để lưu `tenant_id` và `role_id` attributes (đã cấu hình trong `realm-export.json → userProfileConfig`).
+> **Login flow (Browser MFA bắt buộc):**
+> 1. Truy cập http://localhost:5173 → redirect sang Keycloak login
+> 2. Nhập username + password
+> 3. **Nhập mã TOTP 6 chữ số** từ authenticator app (Google Authenticator / Authy)
+> 4. Lần đầu chưa có TOTP → Keycloak redirect sang trang **cài đặt TOTP**: quét QR bằng app, nhập mã xác nhận
+>
+> **Realm import:** `--import-realm` chỉ chạy khi realm chưa tồn tại trong PostgreSQL. Sau lần đầu, users persist qua restarts.  
+> **Password policy:** min 12 chars, upper+lower+digit+special, notUsername, history(5). Admin API không bypass được history — password reset qua `keycloak-setup.py` sẽ bị skip nếu password chưa đổi.  
+> **JWT claims:** Kong `aeroflow-jwks` plugin inject `X-User-Roles`, `X-Tenant-Id`, `X-Role-Id` từ JWT claims.  
+> **Keycloak User Profile:** `unmanagedAttributePolicy: ENABLED` required để lưu `tenant_id` và `role_id` attributes.
+>
+> **Xử lý khi không login được:**
+>
+> | Triệu chứng | Nguyên nhân | Fix |
+> |---|---|---|
+> | Sai password | Password history policy | Password hiện tại VẪN là `Admin@123456` (reset bị skip = đúng rồi) |
+> | Sai TOTP / app mất sync | TOTP credential lỗi | Xóa credential + re-setup (xem bên dưới) |
+> | Bị lock sau 5 lần sai | Brute-force protection | Clear counter (xem bên dưới) |
+>
+> ```bash
+> # Xóa TOTP credential (lấy ID từ lệnh get credentials):
+> docker exec aeroflow-keycloak-1 /opt/keycloak/bin/kcadm.sh \
+>   get users/<USER_ID>/credentials -r aeroflow \
+>   --no-config --server http://localhost:8080 --realm master --user admin --password admin
+>
+> docker exec aeroflow-keycloak-1 /opt/keycloak/bin/kcadm.sh \
+>   delete users/<USER_ID>/credentials/<OTP_CREDENTIAL_ID> -r aeroflow \
+>   --no-config --server http://localhost:8080 --realm master --user admin --password admin
+>
+> # Clear brute-force counter:
+> docker exec aeroflow-keycloak-1 /opt/keycloak/bin/kcadm.sh \
+>   delete "attack-detection/brute-force/users/<USER_ID>" -r aeroflow \
+>   --no-config --server http://localhost:8080 --realm master --user admin --password admin
+>
+> # platform-admin USER_ID: 12f1c4b5-d6b9-4556-b13b-2ff585a6c440
+> ```
 
 ---
 

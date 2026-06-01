@@ -610,6 +610,7 @@ def _step2_reroute_kong(environment: str, version: str):
     """Step 2: Reroute Kong upstream to rolled-back version.
     Updates the service URL so traffic is actually redirected.
     Set BACKEND_URL_<ENV> to override per-environment target.
+    Skips gracefully when the per-environment Kong service doesn't exist (dev setup).
     """
     import httpx
     kong_admin = os.getenv("KONG_ADMIN_URL", "http://kong:8001")
@@ -622,6 +623,11 @@ def _step2_reroute_kong(environment: str, version: str):
         json={"url": backend_url},
         timeout=10,
     )
+    if resp.status_code == 404:
+        log.warning("rollback.step2.skipped",
+                    environment=environment,
+                    reason=f"Kong service 'aeroflow-{environment}' not found — skipping reroute")
+        return
     if resp.status_code >= 400:
         raise RuntimeError(f"Kong route update failed: {resp.status_code} {resp.text}")
     log.info("rollback.step2.done", environment=environment, version=version,
@@ -1242,11 +1248,24 @@ def create_next_partition(user: dict = Depends(get_current_user)):
 
 
 # ── Entry point ───────────────────────────────────────────────────────
+def _consumer_supervisor():
+    """Restart Kafka consumer whenever it crashes — handles broker unavailable,
+    ACL errors on first boot, and transient network issues."""
+    import time
+    delay = 5
+    while True:
+        try:
+            start_kafka_consumer()
+        except Exception as e:
+            log.error("kafka.consumer.crashed", error=str(e), retry_in=delay)
+        time.sleep(delay)
+        delay = min(delay * 2, 60)  # exponential backoff, cap at 60s
+
+
 if __name__ == "__main__":
     import uvicorn
 
-    # Chạy Kafka consumer trong background thread
-    consumer_thread = threading.Thread(target=start_kafka_consumer, daemon=True)
+    consumer_thread = threading.Thread(target=_consumer_supervisor, daemon=True)
     consumer_thread.start()
 
     uvicorn.run(app, host="0.0.0.0", port=8100, log_level="info")

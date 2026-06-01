@@ -212,14 +212,26 @@ curl -sf -X PUT "$KONG_ADMIN/services/release-worker/routes/release-route" \
   }' | json_field name | xargs -I{} echo "  → route: {}"
 
 # Helper: upsert a plugin scoped to a specific service/route/global endpoint.
-# Queries at scope level so it won't accidentally delete a same-named plugin on a different service.
+# Fetches all plugins at the scope, finds one matching plugin_name by parsing
+# JSON properly (Kong's ?name= filter is unreliable — returns all plugins).
+# PATCH if found (update in-place), POST if not (create). Never deletes first.
 upsert_plugin() {
   local scope_url="$1" body="$2" plugin_name="$3"
   local existing_id
-  existing_id=$(curl -sf "${scope_url}?name=${plugin_name}" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4 || true)
-  [ -n "$existing_id" ] && curl -sf -X DELETE "$KONG_ADMIN/plugins/$existing_id" || true
-  curl -sf -X POST "$scope_url" -H "Content-Type: application/json" -d "$body" \
-    | json_field name | xargs -I{} echo "  → plugin: {}"
+  existing_id=$(curl -sf "$scope_url" | \
+    python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+matches = [p['id'] for p in data.get('data', []) if p.get('name') == '$plugin_name']
+print(matches[0] if matches else '')
+" 2>/dev/null || true)
+  if [ -n "$existing_id" ]; then
+    curl -sf -X PATCH "$KONG_ADMIN/plugins/$existing_id" -H "Content-Type: application/json" -d "$body" \
+      | json_field name | xargs -I{} echo "  → plugin (updated): {}"
+  else
+    curl -sf -X POST "$scope_url" -H "Content-Type: application/json" -d "$body" \
+      | json_field name | xargs -I{} echo "  → plugin (created): {}"
+  fi
 }
 
 ISSUER="$KC_BASE/realms/$REALM"
@@ -252,7 +264,9 @@ upsert_plugin "$KONG_ADMIN/services/auth-api/plugins" \
 # Applied to: aeroflow-backend (data API), release-worker, auth-api-keys-route.
 # auth-api ip-allowlist routes are intentionally EXCLUDED so admin can always
 # manage the allowlist regardless of the current IP policy.
-_IP_DEFAULT='{"name":"ip-restriction","config":{"allow":["127.0.0.1/32","10.0.0.0/8","172.16.0.0/12","192.168.0.0/16"]}}'
+# Default: allow_all — auth-api syncs Kong to the DB mode on startup.
+# Switch to restricted via PUT /api/auth/ip-allowlist/config {"mode":"allowlist"}.
+_IP_DEFAULT='{"name":"ip-restriction","config":{"allow":["0.0.0.0/0","::/0"]}}'
 
 echo "🛡️  Enabling IP restriction on aeroflow-backend..."
 upsert_plugin "$KONG_ADMIN/services/aeroflow-backend/plugins" "$_IP_DEFAULT" "ip-restriction"

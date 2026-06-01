@@ -10,6 +10,16 @@
 
 set -uo pipefail
 
+# Load .env from repo root (two levels up from infra/kafka/) if not already set
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="$SCRIPT_DIR/../../.env"
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  # shellcheck source=/dev/null
+  source "$ENV_FILE"
+  set +a
+fi
+
 KAFKA_CONTAINER="${KAFKA_CONTAINER:-aeroflow-kafka}"
 BOOTSTRAP="localhost:9092"
 

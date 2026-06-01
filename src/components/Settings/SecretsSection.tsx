@@ -24,6 +24,7 @@ import { StatusBadge } from '../shared/StatusBadge';
 import { DetailDrawer } from '../shared/DetailDrawer';
 import { cn } from '../../lib/utils';
 import { useSecrets, CreateSecretPayload, Secret, TRANSIT_TYPES } from '../../lib/useSecrets';
+import keycloak from '../../lib/keycloak';
 
 const KEY_TYPES = ['BEARER_TOKEN', 'SIGNING_KEY', 'HMAC_KEY', 'ENCRYPTION_KEY', 'MCP_TOKEN', 'KB_API_KEY'];
 const ALGORITHMS = ['AES-256', 'RSA-4096', 'HMAC-SHA256', 'BEARER', 'EC-P256', 'ChaCha20'];
@@ -64,10 +65,16 @@ export const SecretsSection = () => {
   const [injecting, setInjecting]   = useState(false);
   const [injectErr, setInjectErr]   = useState<string | null>(null);
 
+  const isAdmin = keycloak.hasRealmRole('platform-admin');
+
   // Reveal state: id → value (or null = loading)
   const [revealed, setRevealed]     = useState<Record<string, string | null>>({});
   const [revealErr, setRevealErr]   = useState<Record<string, string>>({});
   const [copied, setCopied]         = useState<string | null>(null);
+
+  // Access reason dialog (shown when PII Access Log is enabled)
+  const [revealDialogId, setRevealDialogId] = useState<string | null>(null);
+  const [revealReason, setRevealReason]     = useState('');
 
   // Rotate form
   const [rotateVal, setRotateVal]   = useState('');
@@ -102,16 +109,36 @@ export const SecretsSection = () => {
       setRevealed(prev => { const n = { ...prev }; delete n[id]; return n; });
       return;
     }
+    // If PII logging enabled, require access reason before revealing
+    if (governance.vault_pii_access_log) {
+      setRevealDialogId(id);
+      setRevealReason('');
+      return;
+    }
+    await doReveal(id);
+  };
+
+  const doReveal = async (id: string, reason?: string) => {
     setRevealErr(prev => { const n = { ...prev }; delete n[id]; return n; });
     setRevealed(prev => ({ ...prev, [id]: null }));
     try {
-      const val = await revealSecret(id);
+      const val = await revealSecret(id, reason);
       setRevealed(prev => ({ ...prev, [id]: val }));
       setTimeout(() => setRevealed(prev => { const n = { ...prev }; delete n[id]; return n; }), 30000);
+      // Refresh PII log so the new entry (with reason) appears immediately
+      if (governance.vault_pii_access_log) refetch();
     } catch (e) {
       setRevealed(prev => { const n = { ...prev }; delete n[id]; return n; });
       setRevealErr(prev => ({ ...prev, [id]: e instanceof Error ? e.message : 'Failed to reveal' }));
     }
+  };
+
+  const handleRevealConfirm = async () => {
+    if (!revealDialogId || !revealReason.trim()) return;
+    const id = revealDialogId;
+    setRevealDialogId(null);
+    await doReveal(id, revealReason.trim());
+    setRevealReason('');
   };
 
   const handleCopy = (id: string, val: string) => {
@@ -300,19 +327,30 @@ export const SecretsSection = () => {
                 Vault Governance Controls
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {!isAdmin && (
+                  <div className="col-span-full p-3 bg-amber-50 border border-amber-200 rounded-2xl flex items-center gap-2 mb-2">
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                    <span className="text-[10px] text-amber-700">Governance controls require Platform Admin role.</span>
+                  </div>
+                )}
                 {([
                   { key: 'vault_auto_rotation' as const, label: 'Auto-Rotation', desc: 'Schedules key swap every 90 days' },
                   { key: 'vault_panic_mode' as const,    label: 'Panic Mode',    desc: 'Instant revocation of all non-core keys' },
-                  { key: 'vault_pii_access_log' as const, label: 'PII Access Log', desc: 'Record every secret retrieval event' },
+                  { key: 'vault_pii_access_log' as const, label: 'PII Access Log', desc: 'Record every secret retrieval event + require access reason' },
                 ] as const).map(ctl => {
                   const enabled = governance[ctl.key];
                   const isLoading = govLoading === ctl.key;
                   return (
                     <button
                       key={ctl.key}
-                      onClick={() => handleGovToggle(ctl.key)}
-                      disabled={isLoading}
-                      className="p-6 bg-[#FAF8F5] border border-[#E8DFC9] rounded-3xl hover:border-brand-500 transition-all flex flex-col justify-between group text-left disabled:opacity-50"
+                      onClick={() => isAdmin && handleGovToggle(ctl.key)}
+                      disabled={isLoading || !isAdmin}
+                      title={!isAdmin ? 'Requires Platform Admin role' : undefined}
+                      className={cn(
+                        'p-6 bg-[#FAF8F5] border border-[#E8DFC9] rounded-3xl transition-all flex flex-col justify-between group text-left',
+                        isAdmin ? 'hover:border-brand-500 cursor-pointer' : 'cursor-not-allowed opacity-60',
+                        'disabled:opacity-50',
+                      )}
                     >
                       <div>
                         <h4 className="text-sm font-bold text-[#111111] mb-2 uppercase tracking-tight italic group-hover:text-brand-700">{ctl.label}</h4>
@@ -361,18 +399,33 @@ export const SecretsSection = () => {
               ) : (
                 <div className="space-y-2">
                   {piiLog.slice(0, 10).map(entry => (
-                    <div key={entry.id} className="flex items-center justify-between px-4 py-3 bg-[#FAF8F5] border border-[#E8DFC9] rounded-2xl">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <Eye className="w-3.5 h-3.5 text-violet-500 shrink-0" />
-                        <div className="min-w-0">
-                          <span className="text-[10px] font-bold font-mono text-[#111111] block truncate">{entry.key_name}</span>
-                          <span className="text-[9px] text-[#888888] truncate block">{entry.actor_id}</span>
+                    <div key={entry.id} className="px-4 py-4 bg-[#FAF8F5] border border-[#E8DFC9] rounded-2xl space-y-3">
+
+                      {/* Header row: secret name + version + timestamp */}
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <Eye className="w-3.5 h-3.5 text-violet-500 shrink-0" />
+                          <span className="text-[11px] font-bold font-mono text-[#111111] truncate">{entry.key_name}</span>
+                          <span className="text-[8px] font-black text-violet-600 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded-md uppercase shrink-0">v{entry.version}</span>
                         </div>
+                        <span className="text-[9px] text-[#888888] shrink-0">{entry.time ? new Date(entry.time).toLocaleString() : '—'}</span>
                       </div>
-                      <div className="text-right shrink-0 ml-3">
-                        <span className="text-[8px] font-black text-violet-600 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded-md uppercase">v{entry.version}</span>
-                        <div className="text-[9px] text-[#888888] mt-0.5">{entry.time ? new Date(entry.time).toLocaleString() : '—'}</div>
+
+                      {/* User ID */}
+                      <div className="flex items-start gap-2">
+                        <span className="text-[8px] font-black text-[#888888] uppercase tracking-widest w-14 shrink-0 mt-0.5">User ID</span>
+                        <span className="text-[10px] font-mono text-[#333333] break-all">{entry.actor_id}</span>
                       </div>
+
+                      {/* Reason */}
+                      <div className="flex items-start gap-2">
+                        <span className="text-[8px] font-black text-[#888888] uppercase tracking-widest w-14 shrink-0 mt-0.5">Reason</span>
+                        {entry.access_reason
+                          ? <span className="text-[10px] text-violet-700 italic leading-relaxed">"{entry.access_reason}"</span>
+                          : <span className="text-[10px] text-[#AAAAAA] italic">—</span>
+                        }
+                      </div>
+
                     </div>
                   ))}
                 </div>
@@ -598,6 +651,58 @@ export const SecretsSection = () => {
           )}
         </div>
       </DetailDrawer>
+
+      {/* Access Reason Dialog — shown when PII Access Log is enabled */}
+      {revealDialogId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="w-full max-w-sm bg-white rounded-[2rem] shadow-2xl border border-[#E8DFC9] p-8 space-y-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-violet-500/10 rounded-xl border border-violet-500/20 text-violet-600">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-[#111111] italic">Access Reason Required</h3>
+                <p className="text-[10px] text-[#888888] uppercase font-black tracking-widest mt-0.5">PII Access Log is recording</p>
+              </div>
+            </div>
+            <p className="text-xs text-[#5A5A5A] leading-relaxed">
+              PII Access Log is enabled. Please provide a reason for accessing this secret — it will be recorded in the audit trail.
+            </p>
+            <div>
+              <label className="block text-[10px] font-bold text-[#5A5A5A] uppercase tracking-wider mb-1.5">
+                Reason for Access <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                autoFocus
+                value={revealReason}
+                onChange={e => setRevealReason(e.target.value)}
+                placeholder="e.g. Debugging production incident #1234, rotating credentials for deployment…"
+                rows={3}
+                className="w-full px-3 py-2 bg-[#FAF8F5] border border-[#D6C79F] rounded-xl text-sm text-[#111111] placeholder:text-[#AAAAAA] focus:outline-none focus:border-violet-400 resize-none"
+              />
+              {revealReason.trim().length > 0 && revealReason.trim().length < 10 && (
+                <p className="text-[9px] text-amber-600 mt-1">Please provide a more descriptive reason (min 10 chars).</p>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setRevealDialogId(null); setRevealReason(''); }}
+                className="btn-secondary flex-1"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRevealConfirm}
+                disabled={revealReason.trim().length < 10}
+                className="btn-primary flex-1 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                Reveal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Rotation History Drawer */}
       <DetailDrawer

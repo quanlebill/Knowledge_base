@@ -151,13 +151,15 @@ CREATE TABLE IF NOT EXISTS secrets_vault (
 CREATE TABLE IF NOT EXISTS key_rotations (
   id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   secret_id    uuid REFERENCES secrets_vault(id),
-  triggered_by varchar(20) DEFAULT 'MANUAL' CHECK (triggered_by IN ('SCHEDULED','MANUAL','PANIC')),
+  triggered_by varchar(20) DEFAULT 'MANUAL' CHECK (triggered_by IN ('SCHEDULED','MANUAL','PANIC','REVEAL')),
   actor_id     varchar(255),                 -- Keycloak sub (X-User-Id)
   old_version  smallint,
   new_version  smallint,
   status       varchar(10) DEFAULT 'SUCCESS' CHECK (status IN ('SUCCESS','FAILED')),
   error        text,
-  rotated_at   timestamptz DEFAULT now()
+  access_reason text,
+  rotated_at   timestamptz DEFAULT now(),
+  CONSTRAINT kr_reveal_needs_reason CHECK (triggered_by <> 'REVEAL' OR access_reason IS NOT NULL)
 );
 
 CREATE TABLE IF NOT EXISTS webhooks (

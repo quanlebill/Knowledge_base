@@ -47,6 +47,7 @@ export interface PiiLogEntry {
   key_type: string;
   actor_id: string;
   version: number;
+  access_reason: string | null;
   time: string | null;
 }
 
@@ -73,7 +74,7 @@ interface Result {
   createSecret: (payload: CreateSecretPayload) => Promise<Secret>;
   deleteSecret: (id: string) => Promise<void>;
   rotateSecret: (id: string, newValue: string) => Promise<Secret>;
-  revealSecret: (id: string) => Promise<string>;
+  revealSecret: (id: string, accessReason?: string) => Promise<string>;
   signData: (id: string, data: string) => Promise<{ signature: string; key_version: number }>;
   verifyData: (id: string, data: string, signature: string) => Promise<{ valid: boolean }>;
   updateGovernance: (patch: Partial<GovernanceConfig>) => Promise<void>;
@@ -165,8 +166,11 @@ export const useSecrets = (): Result => {
     return updated;
   }, [fetch_]);
 
-  const revealSecret = useCallback(async (id: string): Promise<string> => {
-    const res = await apiFetch(`${API}/secrets/${id}/reveal`);
+  const revealSecret = useCallback(async (id: string, accessReason?: string): Promise<string> => {
+    const url = accessReason
+      ? `${API}/secrets/${id}/reveal?access_reason=${encodeURIComponent(accessReason)}`
+      : `${API}/secrets/${id}/reveal`;
+    const res = await apiFetch(url);
     const data = await res.json();
     return data.value as string;
   }, []);
