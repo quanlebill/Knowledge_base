@@ -1,0 +1,42 @@
+[
+  {
+    "version_number": 1,
+    "content": "RAG combines a retrieval system with a large language model. [draft]",
+    "created_by": "test.user",
+    "is_active": false,
+    "table_involved": false,
+    "payload": { "summary": "Draft version", "entities": [], "intents": [] }
+  },
+  {
+    "version_number": 2,
+    "content": "Retrieval-Augmented Generation (RAG) is an architecture that combines a retrieval system with an LLM to generate grounded responses.",
+    "created_by": "test.user",
+    "is_active": true,
+    "table_involved": false,
+    "payload": {
+      "summary": "Overview of RAG architecture.",
+      "entities": ["RAG", "LLM", "Knowledge Base"],
+      "intents": ["understand", "overview"]
+    }
+  },
+  {
+    "version_number": 1,
+    "content": "Embedding models convert text into dense vector representations. [draft]",
+    "created_by": "test.user",
+    "is_active": false,
+    "table_involved": false,
+    "payload": { "summary": "Draft version", "entities": [], "intents": [] }
+  },
+  {
+    "version_number": 2,
+    "content": "Embedding models convert raw text into dense vectors enabling semantic search beyond keyword matching.",
+    "created_by": "test.user",
+    "is_active": true,
+    "table_involved": false,
+    "payload": {
+      "summary": "How text becomes vectors for semantic search.",
+      "entities": ["Embedding Model", "Vector Space", "Semantic Search"],
+      "intents": ["implement", "encode"]
+    }
+  }
+]
