@@ -1,9 +1,9 @@
-# Local development — chạy migrate + seed tự động
+﻿# Local development â€” cháº¡y migrate + seed tá»± Ä‘á»™ng
 # Usage: docker-compose -f docker-compose.yml -f docker-compose.local.yml up
 
 services:
   migrate:
-    build: ./services/workflow-runtime
+    build: ../services/workflow-runtime
     restart: "no"
     working_dir: /app
     command: alembic upgrade head
@@ -18,7 +18,7 @@ services:
     restart: "no"
     command: psql postgresql://admin:dev123@postgres:5432/dataagent -f /seed.sql
     volumes:
-      - ./services/workflow-runtime/migrations/seed.sql:/seed.sql:ro
+      - ../services/workflow-runtime/migrations/seed.sql:/seed.sql:ro
     depends_on:
       migrate:
         condition: service_completed_successfully

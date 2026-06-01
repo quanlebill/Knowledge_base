@@ -4,13 +4,13 @@ import { Bot, Layers, History, Plus, Zap, Activity, Terminal, Sliders, MessageSq
 import AgentPlayground from './AgentPlayground';
 import Conversations from './Conversations';
 import SystemLogs from './SystemLogs';
-import { cn } from '../lib/utils';
-import { useAppState } from '../AppStateContext';
-import { MODULE_SUB_ITEMS } from '../constants';
-import { OperationalHeader } from './shared/OperationalHeader';
-import { StatusBadge } from './shared/StatusBadge';
-import { AgentRuntimeView, RegistryView } from './AgentRuntime';
-import WorkflowEngine from './WorkflowEngine/Overview';
+import { cn } from '../../lib/utils';
+import { useAppState } from '../../AppStateContext';
+import { MODULE_SUB_ITEMS } from '../../constants';
+import { OperationalHeader } from '../shared/OperationalHeader';
+import { StatusBadge } from '../shared/StatusBadge';
+import { AgentRuntimeView, RegistryView } from './agents/AgentRuntime';
+import WorkflowEngine from './workflow/Overview';
 
 const SUB_ITEMS = MODULE_SUB_ITEMS['ai-runtime'];
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { 
   Plus, 
   ChevronRight, 
@@ -25,7 +25,7 @@ import {
   Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '../../lib/utils';
+import { cn } from '../../../lib/utils';
 
 interface WizardProps {
   onCancel: () => void;

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { 
   History as HistoryIcon, 
   Search, 
@@ -29,9 +29,9 @@ import {
   Maximize2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '../../lib/utils';
-import { MOCK_TRACES } from '../../constants/agentMock';
-import { Trace } from '../../types/agent';
+import { cn } from '../../../lib/utils';
+import { MOCK_TRACES } from '../../../constants/agentMock';
+import { Trace } from '../../../types/agent';
 
 export const TraceExplorer = () => {
   const [selectedTrace, setSelectedTrace] = useState<Trace | null>(null);
@@ -94,7 +94,7 @@ export const TraceExplorer = () => {
                   <div className="flex justify-between items-start mb-4">
                      <div className="flex items-center gap-2 text-[10px] font-black text-slate-500 uppercase tracking-widest">
                         {trace.agentName}
-                        <span className="opacity-30">•</span>
+                        <span className="opacity-30">â€¢</span>
                         <span className="font-mono text-brand-400/70">{trace.id}</span>
                      </div>
                      {getStatusIcon(trace.status)}

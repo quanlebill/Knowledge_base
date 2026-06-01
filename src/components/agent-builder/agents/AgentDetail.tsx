@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { 
   Bot, 
   Cpu, 
@@ -44,13 +44,13 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '../../lib/utils';
-import { Agent, AgentStatus } from '../../types/agent';
+import { cn } from '../../../lib/utils';
+import { Agent, AgentStatus } from '../../../types/agent';
 import { 
   MOCK_AGENTS, 
   MOCK_TRACES, 
   MOCK_RUNS 
-} from '../../constants/agentMock';
+} from '../../../constants/agentMock';
 
 interface AgentDetailProps {
   agentId: string;

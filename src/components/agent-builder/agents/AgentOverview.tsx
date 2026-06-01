@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import {
   Bot, Cpu, Plus, Terminal, Search, Filter, Zap,
   MoreHorizontal, Database, Network, Wrench, GitBranch,
@@ -6,9 +6,9 @@ import {
 } from 'lucide-react';
 import ReactDOM from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '../../lib/utils';
-import { AgentType, AgentStatus } from '../../types/agent';
-import { MOCK_AGENTS } from '../../constants/agentMock';
+import { cn } from '../../../lib/utils';
+import { AgentType, AgentStatus } from '../../../types/agent';
+import { MOCK_AGENTS } from '../../../constants/agentMock';
 
 interface OverviewProps {
   onNewAgent: () => void;
@@ -181,7 +181,7 @@ export const AgentRegistryOverview: React.FC<OverviewProps> = ({
                         <div className="font-semibold text-[#111111] text-sm leading-snug">{agent.name}</div>
                         <div className="flex items-center gap-1 mt-0.5">
                           <span className="text-[10px] font-mono text-[#B88719]">{agent.id}</span>
-                          <span className="text-[#BFA66A]/50">·</span>
+                          <span className="text-[#BFA66A]/50">Â·</span>
                           <span className="text-[10px] font-mono text-[#8A8A7A]">v{agent.version}</span>
                         </div>
                         <div className="text-[10px] text-[#8A8A7A] italic mt-0.5 truncate max-w-[180px]">{agent.owner}</div>
@@ -202,7 +202,7 @@ export const AgentRegistryOverview: React.FC<OverviewProps> = ({
                     <div className="flex items-center gap-1.5">
                       <Database className="w-3 h-3 text-[#B88719] shrink-0" />
                       <span className="text-[11px] font-mono text-[#2A2A2A] truncate max-w-[120px]">
-                        {agent.kbConnection === 'none' ? <span className="text-[#8A8A7A] italic">—</span> : agent.kbConnection}
+                        {agent.kbConnection === 'none' ? <span className="text-[#8A8A7A] italic">â€”</span> : agent.kbConnection}
                       </span>
                     </div>
                   </td>
@@ -311,7 +311,7 @@ export const AgentRegistryOverview: React.FC<OverviewProps> = ({
                   </div>
                   <div>
                     <div className="font-semibold text-[#111111]">{agent.name}</div>
-                    <div className="text-[10px] text-[#5A5A5A] font-mono">{agent.id} · {agent.environment}</div>
+                    <div className="text-[10px] text-[#5A5A5A] font-mono">{agent.id} Â· {agent.environment}</div>
                   </div>
                 </div>
                 <span className={cn('px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide border', getStatusStyle(agent.status))}>
@@ -372,7 +372,7 @@ export const AgentRegistryOverview: React.FC<OverviewProps> = ({
                   <X className="w-4 h-4" />
                 </button>
               </div>
-              <p className="text-xs text-[#8A8A7A] mb-4">Nhập tên cho agent mới được clone từ <span className="font-semibold text-[#2A2A2A]">{cloneTarget.name}</span></p>
+              <p className="text-xs text-[#8A8A7A] mb-4">Nháº­p tÃªn cho agent má»›i Ä‘Æ°á»£c clone tá»« <span className="font-semibold text-[#2A2A2A]">{cloneTarget.name}</span></p>
               <input
                 autoFocus
                 type="text"

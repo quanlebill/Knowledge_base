@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus,
   Search,
@@ -27,13 +27,13 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactDOM from 'react-dom';
-import { WorkflowStatus, WorkflowType, Workflow } from '../../types/workflow';
+import { WorkflowStatus, WorkflowType, Workflow } from '../../../types/workflow';
 import WorkflowBuilder, { type TemplateId } from './Builder';
 import ExecutionCenter from './ExecutionCenter';
 import SchedulingCenter from './SchedulingCenter';
 import WorkflowObservability from './Observability';
 
-// ─── Mock Data ────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Mock Data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const MOCK_WORKFLOWS: Workflow[] = [
   {
@@ -89,7 +89,7 @@ const MOCK_WORKFLOWS: Workflow[] = [
   },
 ];
 
-// ─── Template Definitions ─────────────────────────────────────────────────────
+// â”€â”€â”€ Template Definitions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type TemplateCategory = 'ALL' | 'RAG' | 'MULTI_AGENT' | 'HITL' | 'AUTOMATION' | 'KNOWLEDGE';
 
@@ -103,26 +103,26 @@ const TEMPLATE_LIBRARY: Array<{
   category: TemplateCategory;
   isPopular?: boolean;
 }> = [
-  { builderTemplate: 'blank',        name: 'Blank Canvas',             desc: 'Bắt đầu từ canvas trống — chỉ có Trigger node.',                       nodeCount: 1,  Icon: LayoutGrid, color: '#64748b', category: 'AUTOMATION' },
-  { builderTemplate: 'multi-agent',  name: 'Full RAG Agent',           desc: 'KB Search + Reranker + Responder — flow chuẩn cho hỏi đáp tài liệu.',    nodeCount: 8,  Icon: Bot,        color: '#3b82f6', category: 'RAG',        isPopular: true },
-  { builderTemplate: 'hitl',         name: 'Human-in-the-Loop',        desc: 'Cần người review và phê duyệt trước khi trả kết quả.',                   nodeCount: 9,  Icon: ShieldCheck, color: '#f97316', category: 'HITL',       isPopular: true },
-  { builderTemplate: 'multi-agent',  name: 'GraphRAG Pipeline',        desc: 'Kết hợp vector search và knowledge graph để trả lời phức tạp.',          nodeCount: 12, Icon: Activity,   color: '#10b981', category: 'KNOWLEDGE',  isPopular: true },
-  { builderTemplate: 'multi-agent',  name: 'Multi-Agent Triage',       desc: 'Planner phân loại câu hỏi và điều phối sang agent chuyên biệt.',         nodeCount: 10, Icon: Bot,        color: '#8b5cf6', category: 'MULTI_AGENT' },
-  { builderTemplate: 'blank',        name: 'Document Processing',      desc: 'Extract, chunk, embed và index tài liệu vào knowledge base.',            nodeCount: 7,  Icon: Code,       color: '#6366f1', category: 'RAG' },
-  { builderTemplate: 'blank',        name: 'Scheduled KB Sync',        desc: 'Tự động cập nhật knowledge base theo lịch CRON.',                       nodeCount: 6,  Icon: Clock,      color: '#06b6d4', category: 'AUTOMATION' },
-  { builderTemplate: 'hitl',         name: 'Compliance Review Bot',    desc: 'Review tài liệu pháp lý với Human-in-the-Loop và audit trail đầy đủ.',   nodeCount: 11, Icon: ShieldCheck, color: '#ef4444', category: 'HITL' },
-  { builderTemplate: 'multi-agent',  name: 'Customer Support',         desc: 'Bot hỗ trợ khách hàng — tích hợp CRM, KB và escalation tự động.',       nodeCount: 9,  Icon: Bot,        color: '#22c55e', category: 'MULTI_AGENT' },
-  { builderTemplate: 'multi-agent',  name: 'Code Review Agent',        desc: 'Phân tích code, kiểm tra security và đề xuất refactor.',                 nodeCount: 8,  Icon: Code,       color: '#a855f7', category: 'MULTI_AGENT' },
-  { builderTemplate: 'blank',        name: 'Data Extraction Pipeline', desc: 'Trích xuất dữ liệu có cấu trúc từ tài liệu phi cấu trúc.',              nodeCount: 5,  Icon: Database,   color: '#f59e0b', category: 'RAG' },
-  { builderTemplate: 'blank',        name: 'Event-Driven Orchestrator',desc: 'Trigger workflow từ webhook, message queue hoặc database event.',        nodeCount: 7,  Icon: Zap,        color: '#ec4899', category: 'AUTOMATION' },
+  { builderTemplate: 'blank',        name: 'Blank Canvas',             desc: 'Báº¯t Ä‘áº§u tá»« canvas trá»‘ng â€” chá»‰ cÃ³ Trigger node.',                       nodeCount: 1,  Icon: LayoutGrid, color: '#64748b', category: 'AUTOMATION' },
+  { builderTemplate: 'multi-agent',  name: 'Full RAG Agent',           desc: 'KB Search + Reranker + Responder â€” flow chuáº©n cho há»i Ä‘Ã¡p tÃ i liá»‡u.',    nodeCount: 8,  Icon: Bot,        color: '#3b82f6', category: 'RAG',        isPopular: true },
+  { builderTemplate: 'hitl',         name: 'Human-in-the-Loop',        desc: 'Cáº§n ngÆ°á»i review vÃ  phÃª duyá»‡t trÆ°á»›c khi tráº£ káº¿t quáº£.',                   nodeCount: 9,  Icon: ShieldCheck, color: '#f97316', category: 'HITL',       isPopular: true },
+  { builderTemplate: 'multi-agent',  name: 'GraphRAG Pipeline',        desc: 'Káº¿t há»£p vector search vÃ  knowledge graph Ä‘á»ƒ tráº£ lá»i phá»©c táº¡p.',          nodeCount: 12, Icon: Activity,   color: '#10b981', category: 'KNOWLEDGE',  isPopular: true },
+  { builderTemplate: 'multi-agent',  name: 'Multi-Agent Triage',       desc: 'Planner phÃ¢n loáº¡i cÃ¢u há»i vÃ  Ä‘iá»u phá»‘i sang agent chuyÃªn biá»‡t.',         nodeCount: 10, Icon: Bot,        color: '#8b5cf6', category: 'MULTI_AGENT' },
+  { builderTemplate: 'blank',        name: 'Document Processing',      desc: 'Extract, chunk, embed vÃ  index tÃ i liá»‡u vÃ o knowledge base.',            nodeCount: 7,  Icon: Code,       color: '#6366f1', category: 'RAG' },
+  { builderTemplate: 'blank',        name: 'Scheduled KB Sync',        desc: 'Tá»± Ä‘á»™ng cáº­p nháº­t knowledge base theo lá»‹ch CRON.',                       nodeCount: 6,  Icon: Clock,      color: '#06b6d4', category: 'AUTOMATION' },
+  { builderTemplate: 'hitl',         name: 'Compliance Review Bot',    desc: 'Review tÃ i liá»‡u phÃ¡p lÃ½ vá»›i Human-in-the-Loop vÃ  audit trail Ä‘áº§y Ä‘á»§.',   nodeCount: 11, Icon: ShieldCheck, color: '#ef4444', category: 'HITL' },
+  { builderTemplate: 'multi-agent',  name: 'Customer Support',         desc: 'Bot há»— trá»£ khÃ¡ch hÃ ng â€” tÃ­ch há»£p CRM, KB vÃ  escalation tá»± Ä‘á»™ng.',       nodeCount: 9,  Icon: Bot,        color: '#22c55e', category: 'MULTI_AGENT' },
+  { builderTemplate: 'multi-agent',  name: 'Code Review Agent',        desc: 'PhÃ¢n tÃ­ch code, kiá»ƒm tra security vÃ  Ä‘á» xuáº¥t refactor.',                 nodeCount: 8,  Icon: Code,       color: '#a855f7', category: 'MULTI_AGENT' },
+  { builderTemplate: 'blank',        name: 'Data Extraction Pipeline', desc: 'TrÃ­ch xuáº¥t dá»¯ liá»‡u cÃ³ cáº¥u trÃºc tá»« tÃ i liá»‡u phi cáº¥u trÃºc.',              nodeCount: 5,  Icon: Database,   color: '#f59e0b', category: 'RAG' },
+  { builderTemplate: 'blank',        name: 'Event-Driven Orchestrator',desc: 'Trigger workflow tá»« webhook, message queue hoáº·c database event.',        nodeCount: 7,  Icon: Zap,        color: '#ec4899', category: 'AUTOMATION' },
 ];
 
 const CATEGORY_LABELS: Record<TemplateCategory, string> = {
-  ALL: 'Tất cả', RAG: 'RAG', MULTI_AGENT: 'Multi-Agent',
+  ALL: 'Táº¥t cáº£', RAG: 'RAG', MULTI_AGENT: 'Multi-Agent',
   HITL: 'Human-in-Loop', AUTOMATION: 'Automation', KNOWLEDGE: 'Knowledge',
 };
 
-// ─── Template Picker (full-page) ──────────────────────────────────────────────
+// â”€â”€â”€ Template Picker (full-page) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface TemplatePickerProps {
   onSelect: (t: TemplateId) => void;
@@ -157,15 +157,15 @@ const TemplatePicker = ({ onSelect, onClose }: TemplatePickerProps) => {
               <ArrowRight className="w-4 h-4 rotate-180" />
             </button>
             <div>
-              <h2 className="text-lg font-display font-bold text-[#111111]">Chọn Template</h2>
-              <p className="text-xs text-[#8A8A7A] mt-0.5">Bắt đầu từ template có sẵn hoặc tạo workflow trống</p>
+              <h2 className="text-lg font-display font-bold text-[#111111]">Chá»n Template</h2>
+              <p className="text-xs text-[#8A8A7A] mt-0.5">Báº¯t Ä‘áº§u tá»« template cÃ³ sáºµn hoáº·c táº¡o workflow trá»‘ng</p>
             </div>
           </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8A8A7A]" />
             <input
               type="text"
-              placeholder="Tìm template..."
+              placeholder="TÃ¬m template..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="w-56 bg-[#FAFAF5] border border-[#ECE7DA] rounded-xl py-2 pl-10 pr-4 text-sm text-[#111111] placeholder-[#8A8A7A] focus:outline-none focus:border-[#BFA66A]"
@@ -224,7 +224,7 @@ const TemplatePicker = ({ onSelect, onClose }: TemplatePickerProps) => {
                 {CATEGORY_LABELS[t.category]}
               </span>
               <span className="text-[10px] font-semibold text-[#B88719] opacity-0 group-hover:opacity-100 transition-opacity">
-                Dùng template →
+                DÃ¹ng template â†’
               </span>
             </div>
           </motion.button>
@@ -234,7 +234,7 @@ const TemplatePicker = ({ onSelect, onClose }: TemplatePickerProps) => {
   );
 };
 
-// ─── Workflow Engine ──────────────────────────────────────────────────────────
+// â”€â”€â”€ Workflow Engine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type ActiveTab = 'REGISTRY' | 'BUILDER' | 'TEMPLATE_PICKER' | 'EXECUTIONS' | 'SCHEDULING' | 'OBSERVABILITY';
 
@@ -278,7 +278,7 @@ const WorkflowEngine = () => {
 
   const handleRunWorkflow = (wf: Workflow) => {
     setFilterWorkflowName(wf.name);
-    setToast(`✓ "${wf.name}" triggered`);
+    setToast(`âœ“ "${wf.name}" triggered`);
     setActiveTab('EXECUTIONS');
   };
 
@@ -428,7 +428,7 @@ const WorkflowEngine = () => {
         </table>
       </div>
 
-      {/* Portal dropdown — rendered outside overflow containers */}
+      {/* Portal dropdown â€” rendered outside overflow containers */}
       {openMenuId && ReactDOM.createPortal(
         <div
           onMouseDown={(e) => e.stopPropagation()}
@@ -546,7 +546,7 @@ const WorkflowEngine = () => {
           </div>
         </div>
 
-        {/* Search + filters — Registry only */}
+        {/* Search + filters â€” Registry only */}
         {activeTab === 'REGISTRY' && (
           <div className="px-6 pt-4 pb-4 flex items-center gap-3">
             <div className="flex-1 relative">
@@ -601,7 +601,7 @@ const WorkflowEngine = () => {
                   <X className="w-4 h-4" />
                 </button>
               </div>
-              <p className="text-xs text-[#8A8A7A] mb-4">Nhập tên cho workflow mới được clone từ <span className="font-semibold text-[#2A2A2A]">{cloneTarget.name}</span></p>
+              <p className="text-xs text-[#8A8A7A] mb-4">Nháº­p tÃªn cho workflow má»›i Ä‘Æ°á»£c clone tá»« <span className="font-semibold text-[#2A2A2A]">{cloneTarget.name}</span></p>
               <input
                 autoFocus
                 type="text"
@@ -613,7 +613,7 @@ const WorkflowEngine = () => {
                 <button onClick={() => setCloneTarget(null)} className="btn-secondary">Cancel</button>
                 <button
                   onClick={() => {
-                    setToast(`✓ Workflow "${cloneModalName}" cloned successfully`);
+                    setToast(`âœ“ Workflow "${cloneModalName}" cloned successfully`);
                     setCloneTarget(null);
                   }}
                   disabled={!cloneModalName.trim()}

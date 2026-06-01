@@ -10,7 +10,7 @@ services:
       POSTGRES_PASSWORD: dev123
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./services/postgres/init.sql:/docker-entrypoint-initdb.d/01_databases.sql:ro
+      - ../infra/postgres/init.sql:/docker-entrypoint-initdb.d/01_databases.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U admin -d dataagent"]
       interval: 5s
@@ -37,8 +37,8 @@ services:
     ports:
       - "4000:4000"
     volumes:
-      - ./services/litellm/config.yaml:/app/config.yaml:ro
-    env_file: .env
+      - ../infra/litellm/config.yaml:/app/config.yaml:ro
+    env_file: ../.env
     environment:
       REDIS_URL: redis://redis:6379
       DATABASE_URL: postgresql://admin:dev123@postgres:5432/litellm
@@ -71,11 +71,11 @@ services:
         condition: service_healthy
 
   workflow-runtime:
-    build: ./services/workflow-runtime
+    build: ../services/workflow-runtime
     restart: unless-stopped
     ports:
       - "8001:8001"
-    env_file: .env
+    env_file: ../.env
     environment:
       DATABASE_URL: postgresql://admin:dev123@postgres:5432/dataagent
       RUNTIME_DB_URL: postgresql+asyncpg://runtime_writer:${RUNTIME_DB_PASSWORD:-runtime_dev_pw}@postgres:5432/dataagent

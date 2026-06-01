@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { 
   Plus, 
   FileCode, 
@@ -27,9 +27,9 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '../../lib/utils';
-import { MOCK_CONFIGS } from '../../constants/agentMock';
-import { ConfigItem } from '../../types/agent';
+import { cn } from '../../../lib/utils';
+import { MOCK_CONFIGS } from '../../../constants/agentMock';
+import { ConfigItem } from '../../../types/agent';
 
 export const ConfigRegistry = () => {
   const [selectedConfig, setSelectedConfig] = useState<ConfigItem | null>(null);
@@ -95,7 +95,7 @@ export const ConfigRegistry = () => {
                         </div>
                         <div>
                            <div className="text-sm font-bold text-white group-hover:text-brand-400 transition-colors uppercase tracking-tight">{config.name}</div>
-                           <div className="text-[9px] text-slate-600 font-black uppercase tracking-widest mt-0.5">{config.type} • {config.version}</div>
+                           <div className="text-[9px] text-slate-600 font-black uppercase tracking-widest mt-0.5">{config.type} â€¢ {config.version}</div>
                         </div>
                      </div>
                      <div className={cn(

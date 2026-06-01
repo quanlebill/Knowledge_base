@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, X, RefreshCw, AlertTriangle, Info, AlertCircle, ScrollText, Copy } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn } from '../../lib/utils';
 
 /* ─── Types ─────────────────────────────────────────────── */
 type LogLevel = 'INFO' | 'WARN' | 'ERROR';

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import {
   Search,
   Filter,
@@ -21,7 +21,7 @@ import {
   Code
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ExecutionStatus, WorkflowExecution } from '../../types/workflow';
+import { ExecutionStatus, WorkflowExecution } from '../../../types/workflow';
 import { cn } from '../../lib/utils';
 
 const MOCK_EXECUTIONS: WorkflowExecution[] = [

@@ -1,16 +1,16 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { AnimatePresence } from 'motion/react';
-import { AgentRegistryOverview } from './AgentRegistry/Overview';
-import { NewAgentWizard } from './AgentRegistry/Wizard';
-import { CLIScreen } from './AgentRegistry/CLI';
-import { ConfigRegistry } from './AgentRegistry/ConfigRegistry';
-import { TraceExplorer } from './AgentRegistry/TraceExplorer';
-import { ProvisioningView } from './AgentRegistry/Provisioning';
-import { RunRegistry } from './AgentRegistry/RunRegistry';
-import { AgentDetailView } from './AgentRegistry/AgentDetail';
-import { DetailDrawer } from './shared/DetailDrawer';
+import { AgentRegistryOverview } from './AgentOverview';
+import { NewAgentWizard } from './AgentWizard';
+import { CLIScreen } from './AgentCLI';
+import { ConfigRegistry } from './AgentConfig';
+import { TraceExplorer } from './AgentTraces';
+import { ProvisioningView } from './AgentProvisioning';
+import { RunRegistry } from './AgentRuns';
+import { AgentDetailView } from './AgentDetail';
+import { DetailDrawer } from '../../shared/DetailDrawer';
 import { Bot, Terminal, Sliders, Activity, Zap, Plus, Settings } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn } from '../../../lib/utils';
 
 export type RegistryView = 'OVERVIEW' | 'CLI' | 'CONFIG' | 'TRACES' | 'RUNS';
 
@@ -78,7 +78,7 @@ export const AgentRuntimeView = ({
 
   return (
     <div className="flex flex-col relative">
-      {/* Internal view tabs — kept as a fallback so the component still works standalone */}
+      {/* Internal view tabs â€” kept as a fallback so the component still works standalone */}
       {!externalView && (
         <div className="sub-tab-bar mb-6">
           {[
@@ -131,7 +131,7 @@ export const AgentRuntimeView = ({
         isOpen={!!selectedAgentId}
         onClose={() => setSelectedAgentId(null)}
         title={selectedAgentId ? `Agent: ${selectedAgentId}` : 'Agent Detail'}
-        subtitle="Control Plane • Production Runtime • V2.0"
+        subtitle="Control Plane â€¢ Production Runtime â€¢ V2.0"
         icon={Bot}
         size="xwide"
         persistKey="agent-detail"

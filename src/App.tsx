@@ -3,7 +3,7 @@ import { AppStateProvider, useAppState } from './AppStateContext';
 import { AppLayout } from './components/Layout';
 import { ExecutiveDashboard } from './components/ExecutiveDashboard';
 import KnowledgeOpsCenter from './components/KnowledgeOpsCenter';
-import AIRuntimeCenter from './components/AIRuntimeCenter';
+import AIRuntimeCenter from './components/agent-builder/AIRuntimeCenter';
 import OperationsCenter from './components/OperationsCenter';
 import ReleaseManagementCenter from './components/ReleaseManagementCenter';
 import GovernanceCenter from './components/GovernanceCenter';

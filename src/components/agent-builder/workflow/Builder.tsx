@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef, useContext, useEffect } from 'react';
+﻿import React, { useState, useCallback, useMemo, useRef, useContext, useEffect } from 'react';
 import {
   Save, Play, Layout, Code as CodeIcon, CheckCircle2, Terminal,
   ArrowLeft, ChevronDown, Bot, Database, Activity, Zap, Cpu,
@@ -6,7 +6,7 @@ import {
   GitBranch, Bell, RefreshCw, GripVertical, X, Copy,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import type { Workflow } from '../../types/workflow';
+import type { Workflow } from '../../../types/workflow';
 import {
   ReactFlow,
   addEdge,
@@ -31,7 +31,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export type TemplateId = 'blank' | 'rag' | 'multi-agent' | 'hitl';
 
@@ -56,11 +56,11 @@ export interface FlowNodeData extends Record<string, unknown> {
   approverRole?: string;
 }
 
-// ─── Toast Context (shared with custom edge) ──────────────────────────────────
+// â”€â”€â”€ Toast Context (shared with custom edge) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const BuilderToastCtx = React.createContext<(msg: string) => void>(() => {});
 
-// ─── Node Style Map ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Node Style Map â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const NODE_STYLE: Record<string, { typeLabel: string; Icon: any; color: string }> = {
   trigger:           { typeLabel: 'Trigger',        Icon: Zap,         color: '#6B7280' },
@@ -78,7 +78,7 @@ const NODE_STYLE: Record<string, { typeLabel: string; Icon: any; color: string }
   loop:              { typeLabel: 'Loop',           Icon: RefreshCw,   color: '#3B82F6' },
 };
 
-// ─── Custom Node ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ Custom Node â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const CustomFlowNode = (props: NodeProps) => {
   const data      = props.data as FlowNodeData;
@@ -117,7 +117,7 @@ const CustomFlowNode = (props: NodeProps) => {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* X delete button — shows on hover or select */}
+      {/* X delete button â€” shows on hover or select */}
       {(hovered || selected) && (
         <button
           onClick={handleDelete}
@@ -181,7 +181,7 @@ const CustomFlowNode = (props: NodeProps) => {
   );
 };
 
-// ─── Custom Edge with Delete Button ──────────────────────────────────────────
+// â”€â”€â”€ Custom Edge with Delete Button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const EdgeWithDelete = (props: EdgeProps) => {
   const {
@@ -272,7 +272,7 @@ const EdgeWithDelete = (props: EdgeProps) => {
 const nodeTypes = { flowNode: CustomFlowNode };
 const edgeTypes = { wfEdge: EdgeWithDelete };
 
-// ─── Edge Helpers (all use type 'wfEdge') ─────────────────────────────────────
+// â”€â”€â”€ Edge Helpers (all use type 'wfEdge') â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const solidEdge = (id: string, src: string, tgt: string, color = '#ffffff22'): Edge => ({
   id, source: src, target: tgt,
@@ -296,7 +296,7 @@ const dashedEdge = (id: string, src: string, tgt: string, label: string, color: 
   labelStyle: { fill: color, fontSize: 9, fontWeight: 700, fontFamily: 'monospace' },
 });
 
-// ─── Node Factory ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ Node Factory â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const mkNode = (
   id: string, nodeType: FlowNodeType, label: string,
@@ -306,13 +306,13 @@ const mkNode = (
   data: { nodeType, label, ...extra },
 });
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const PLANNER_MODEL  = 'Qwen3-9B (hardcoded)' as const;
 const RESPONDER_MODEL = 'Qwen3-35B (local)' as const;
 const RRF_K_DEFAULT  = 60 as const;
 
-// ─── Workflow → React Flow transform ─────────────────────────────────────────
+// â”€â”€â”€ Workflow â†’ React Flow transform â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function transformWorkflowToFlow(workflow: Workflow): { nodes: Node<FlowNodeData>[]; edges: Edge[] } {
   const nodes: Node<FlowNodeData>[] = workflow.nodes.map(wn => ({
@@ -333,7 +333,7 @@ function transformWorkflowToFlow(workflow: Workflow): { nodes: Node<FlowNodeData
   return { nodes, edges };
 }
 
-// ─── Template Flows ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Template Flows â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const TEMPLATE_FLOWS: Record<TemplateId, { nodes: Node<FlowNodeData>[]; edges: Edge[] }> = {
 
@@ -411,7 +411,7 @@ const TEMPLATE_FLOWS: Record<TemplateId, { nodes: Node<FlowNodeData>[]; edges: E
   },
 };
 
-// ─── Config Panel Sub-components ──────────────────────────────────────────────
+// â”€â”€â”€ Config Panel Sub-components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
   <div>
@@ -487,7 +487,7 @@ const InfoNote = ({ text }: { text: string }) => (
 
 const MCP_TOOLS = ['tra_cuu_phat_nguoi', 'query_dashboard', 'send_alert', 'export_report'];
 
-// ─── Config Panel ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ Config Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface ConfigPanelProps {
   node: Node<FlowNodeData> | null;
@@ -523,19 +523,19 @@ const ConfigPanel = ({ node, onClose, onUpdate }: ConfigPanelProps) => {
           </div>
         </div>
         <button onClick={onClose} className="w-7 h-7 flex items-center justify-center hover:bg-white/10 rounded-lg text-slate-500 hover:text-white transition-all text-xs">
-          ✕
+          âœ•
         </button>
       </div>
 
       <div className="flex-1 overflow-auto custom-scrollbar p-5 space-y-5">
         {d.nodeType === 'trigger' && (
-          <InfoNote text="Nhận tất cả loại input từ user" />
+          <InfoNote text="Nháº­n táº¥t cáº£ loáº¡i input tá»« user" />
         )}
 
         {d.nodeType === 'planner' && (
           <>
             <Field label="Model"><Readonly value={PLANNER_MODEL} /></Field>
-            <InfoNote text="Tự động đọc allowed_tools từ MCP Tool node" />
+            <InfoNote text="Tá»± Ä‘á»™ng Ä‘á»c allowed_tools tá»« MCP Tool node" />
           </>
         )}
 
@@ -547,7 +547,7 @@ const ConfigPanel = ({ node, onClose, onUpdate }: ConfigPanelProps) => {
             <Field label="KB Name">
               <TextInput value={(d.kbName as string) || ''} onChange={v => upd('kbName', v)} placeholder="kb_a05_violations" />
             </Field>
-            <InfoNote text="Knowledge Space API tự biết search mode" />
+            <InfoNote text="Knowledge Space API tá»± biáº¿t search mode" />
           </>
         )}
 
@@ -575,7 +575,7 @@ const ConfigPanel = ({ node, onClose, onUpdate }: ConfigPanelProps) => {
                 })}
               </div>
             </Field>
-            <InfoNote text="Planner đọc danh sách này để quyết định" />
+            <InfoNote text="Planner Ä‘á»c danh sÃ¡ch nÃ y Ä‘á»ƒ quyáº¿t Ä‘á»‹nh" />
           </>
         )}
 
@@ -612,7 +612,7 @@ const ConfigPanel = ({ node, onClose, onUpdate }: ConfigPanelProps) => {
         )}
 
         {d.nodeType === 'output' && (
-          <InfoNote text="Trả structured data về Chat UI" />
+          <InfoNote text="Tráº£ structured data vá» Chat UI" />
         )}
 
         {d.nodeType === 'human_approval' && (
@@ -622,14 +622,14 @@ const ConfigPanel = ({ node, onClose, onUpdate }: ConfigPanelProps) => {
         )}
 
         {['condition', 'db_query', 'send_notification', 'loop'].includes(d.nodeType) && (
-          <InfoNote text="Node này chưa có config. Kéo vào canvas và kết nối với các node khác." />
+          <InfoNote text="Node nÃ y chÆ°a cÃ³ config. KÃ©o vÃ o canvas vÃ  káº¿t ná»‘i vá»›i cÃ¡c node khÃ¡c." />
         )}
       </div>
     </motion.div>
   );
 };
 
-// ─── All Library Nodes (all non-trigger types — 12 items) ─────────────────────
+// â”€â”€â”€ All Library Nodes (all non-trigger types â€” 12 items) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const ALL_LIBRARY_NODES: Array<{
   nodeType: FlowNodeType; label: string; color: string; Icon: any; allowMultiple: boolean;
@@ -647,7 +647,7 @@ const ALL_LIBRARY_NODES: Array<{
   { nodeType: 'loop',              label: 'Loop',              color: '#3B82F6', Icon: RefreshCw,   allowMultiple: false },
 ];
 
-// ─── Node Library ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ Node Library â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const NodeLibrary = ({ usedTypes }: { usedTypes: Set<FlowNodeType> }) => {
   const [query, setQuery] = useState('');
@@ -666,7 +666,7 @@ const NodeLibrary = ({ usedTypes }: { usedTypes: Set<FlowNodeType> }) => {
             type="text"
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="Find node…"
+            placeholder="Find nodeâ€¦"
             className="w-full bg-white/5 border border-white/10 rounded-xl py-1.5 pl-8 pr-3 text-[11px] focus:outline-none focus:ring-1 focus:ring-white/10 text-slate-400 placeholder:text-slate-700"
           />
         </div>
@@ -708,14 +708,14 @@ const NodeLibrary = ({ usedTypes }: { usedTypes: Set<FlowNodeType> }) => {
 
       <div className="p-3 border-t border-white/10">
         <p className="text-[9px] text-slate-700 leading-relaxed">
-          Kéo node vào canvas để thêm vào workflow
+          KÃ©o node vÃ o canvas Ä‘á»ƒ thÃªm vÃ o workflow
         </p>
       </div>
     </div>
   );
 };
 
-// ─── Context Menu ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ Context Menu â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface CtxMenuState { x: number; y: number; node: Node<FlowNodeData> }
 
@@ -755,7 +755,7 @@ const ContextMenu = ({
   </div>
 );
 
-// ─── Confirm Exit Dialog ──────────────────────────────────────────────────────
+// â”€â”€â”€ Confirm Exit Dialog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const ConfirmExitModal = ({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) => (
   <div className="fixed inset-0 z-[200] flex items-center justify-center">
@@ -789,7 +789,7 @@ const ConfirmExitModal = ({ onConfirm, onCancel }: { onConfirm: () => void; onCa
   </div>
 );
 
-// ─── Main Builder ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ Main Builder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface BuilderProps {
   onClose: () => void;
@@ -814,7 +814,7 @@ const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent' }: Builde
     return () => window.removeEventListener('keydown', handler);
   }, [showExitConfirm]);
 
-  // ── Toasts ───────────────────────────────────────────────────────────────────
+  // â”€â”€ Toasts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [toasts, setToasts] = useState<{ id: number; msg: string }[]>([]);
   const addToast = useCallback((msg: string) => {
     const id = Date.now();
@@ -822,7 +822,7 @@ const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent' }: Builde
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 2500);
   }, []);
 
-  // ── Flow state ────────────────────────────────────────────────────────────────
+  // â”€â”€ Flow state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const initFlow = useMemo(() => {
     if (workflow && workflow.nodes.length > 0) return transformWorkflowToFlow(workflow);
     return TEMPLATE_FLOWS[template] ?? TEMPLATE_FLOWS['multi-agent'];
@@ -836,7 +836,7 @@ const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent' }: Builde
     [nodes],
   );
 
-  // ── Connect ───────────────────────────────────────────────────────────────────
+  // â”€â”€ Connect â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const onConnect = useCallback<OnConnect>(
     conn => setEdges(eds => addEdge(
       {
@@ -851,7 +851,7 @@ const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent' }: Builde
     [setEdges],
   );
 
-  // ── Drag & drop ───────────────────────────────────────────────────────────────
+  // â”€â”€ Drag & drop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const onDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
@@ -869,7 +869,7 @@ const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent' }: Builde
     addToast(`Added: ${cfg.typeLabel}`);
   }, [setNodes, addToast]);
 
-  // ── Node interactions ─────────────────────────────────────────────────────────
+  // â”€â”€ Node interactions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     setSelectedNode(node as Node<FlowNodeData>);
     setCtxMenu(null);
@@ -885,7 +885,7 @@ const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent' }: Builde
     setCtxMenu({ x: e.clientX, y: e.clientY, node: node as Node<FlowNodeData> });
   }, []);
 
-  // ── Config update ─────────────────────────────────────────────────────────────
+  // â”€â”€ Config update â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const updateNodeConfig = useCallback((id: string, key: string, value: unknown) => {
     setNodes(nds => nds.map(n => n.id === id ? { ...n, data: { ...n.data, [key]: value } } : n));
     setSelectedNode(prev =>
@@ -893,7 +893,7 @@ const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent' }: Builde
     );
   }, [setNodes]);
 
-  // ── Delete node (context menu) ────────────────────────────────────────────────
+  // â”€â”€ Delete node (context menu) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const deleteNode = useCallback((nodeId: string) => {
     const node = nodes.find(n => n.id === nodeId);
     if (node) addToast(`Node removed: ${(node.data as FlowNodeData).label}`);
@@ -902,17 +902,17 @@ const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent' }: Builde
     if (selectedNode?.id === nodeId) setSelectedNode(null);
   }, [nodes, setNodes, setEdges, selectedNode, addToast]);
 
-  // ── Delete node (Delete key — fired by React Flow's onNodesDelete) ────────────
+  // â”€â”€ Delete node (Delete key â€” fired by React Flow's onNodesDelete) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const onNodesDelete = useCallback((deleted: Node[]) => {
     deleted.forEach(n => addToast(`Node removed: ${(n.data as FlowNodeData).label}`));
   }, [addToast]);
 
-  // ── Delete edge (Delete key) ───────────────────────────────────────────────────
+  // â”€â”€ Delete edge (Delete key) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const onEdgesDelete = useCallback((deleted: Edge[]) => {
     if (deleted.length > 0) addToast(`Edge${deleted.length > 1 ? 's' : ''} removed`);
   }, [addToast]);
 
-  // ── Duplicate node (context menu) ────────────────────────────────────────────
+  // â”€â”€ Duplicate node (context menu) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const duplicateNode = useCallback((node: Node<FlowNodeData>) => {
     const id   = `${node.data.nodeType}-${Date.now()}`;
     const copy = mkNode(id, node.data.nodeType, node.data.label, node.position.x + 40, node.position.y + 40, { ...node.data });
@@ -920,7 +920,7 @@ const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent' }: Builde
     addToast(`Duplicated: ${node.data.label}`);
   }, [setNodes, addToast]);
 
-  // ── YAML preview ──────────────────────────────────────────────────────────────
+  // â”€â”€ YAML preview â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const yamlPreview = `name: "${workflow?.name ?? 'New Workflow'}"
 version: "${workflow?.version ?? 'v1.0.0-draft'}"
 template: "${template}"
@@ -936,7 +936,7 @@ ${nodes.map(n => {
 edges:
 ${edges.map(e => `  - from: "${e.source}"  to: "${e.target}"`).join('\n')}`;
 
-  // ─────────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   return (
     <BuilderToastCtx.Provider value={addToast}>
@@ -944,7 +944,7 @@ ${edges.map(e => `  - from: "${e.source}"  to: "${e.target}"`).join('\n')}`;
         className="fixed inset-0 z-[100] flex flex-col bg-[#0d1117] text-slate-200"
         onClick={() => setCtxMenu(null)}
       >
-        {/* ── Toolbar ─────────────────────────────────────────────────────────── */}
+        {/* â”€â”€ Toolbar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         <div className="h-14 border-b border-white/10 bg-[#0d1117] flex items-center justify-between px-5 shrink-0">
           <div className="flex items-center gap-4">
             <button
@@ -962,7 +962,7 @@ ${edges.map(e => `  - from: "${e.source}"  to: "${e.target}"`).join('\n')}`;
                 {workflow?.name ?? 'New Workflow'}
               </div>
               <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-0.5">
-                {workflow?.version ?? 'v1.0.0-draft'} · {nodes.length} nodes · {edges.length} edges
+                {workflow?.version ?? 'v1.0.0-draft'} Â· {nodes.length} nodes Â· {edges.length} edges
               </div>
             </div>
           </div>
@@ -995,7 +995,7 @@ ${edges.map(e => `  - from: "${e.source}"  to: "${e.target}"`).join('\n')}`;
           </div>
         </div>
 
-        {/* ── Body ──────────────────────────────────────────────────────────────── */}
+        {/* â”€â”€ Body â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         <div className="flex-1 flex overflow-hidden">
 
           <NodeLibrary usedTypes={usedTypes} />
@@ -1081,7 +1081,7 @@ ${edges.map(e => `  - from: "${e.source}"  to: "${e.target}"`).join('\n')}`;
           </AnimatePresence>
         </div>
 
-        {/* ── Status Bar ───────────────────────────────────────────────────────── */}
+        {/* â”€â”€ Status Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         <div className="h-9 bg-[#111827] border-t border-white/10 px-5 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-5">
             <div className="flex items-center gap-1.5">
@@ -1091,7 +1091,7 @@ ${edges.map(e => `  - from: "${e.source}"  to: "${e.target}"`).join('\n')}`;
             <div className="flex items-center gap-1.5">
               <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
               <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">
-                {nodes.length} nodes · {edges.length} edges
+                {nodes.length} nodes Â· {edges.length} edges
               </span>
             </div>
           </div>
@@ -1101,7 +1101,7 @@ ${edges.map(e => `  - from: "${e.source}"  to: "${e.target}"`).join('\n')}`;
           </button>
         </div>
 
-        {/* ── Exit Confirm ─────────────────────────────────────────────────────── */}
+        {/* â”€â”€ Exit Confirm â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         <AnimatePresence>
           {showExitConfirm && (
             <ConfirmExitModal
@@ -1111,7 +1111,7 @@ ${edges.map(e => `  - from: "${e.source}"  to: "${e.target}"`).join('\n')}`;
           )}
         </AnimatePresence>
 
-        {/* ── Context Menu ─────────────────────────────────────────────────────── */}
+        {/* â”€â”€ Context Menu â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         {ctxMenu && (
           <ContextMenu
             menu={ctxMenu}
@@ -1122,7 +1122,7 @@ ${edges.map(e => `  - from: "${e.source}"  to: "${e.target}"`).join('\n')}`;
           />
         )}
 
-        {/* ── Toasts ───────────────────────────────────────────────────────────── */}
+        {/* â”€â”€ Toasts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         <div className="fixed bottom-12 right-4 z-[300] flex flex-col gap-2 pointer-events-none">
           <AnimatePresence>
             {toasts.map(t => (

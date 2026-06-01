@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { 
   History as HistoryIcon, 
   Search, 
@@ -26,9 +26,9 @@ import {
   MoreHorizontal
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '../../lib/utils';
-import { MOCK_RUNS } from '../../constants/agentMock';
-import { AgentRun, AgentStatus } from '../../types/agent';
+import { cn } from '../../../lib/utils';
+import { MOCK_RUNS } from '../../../constants/agentMock';
+import { AgentRun, AgentStatus } from '../../../types/agent';
 
 export const RunRegistry = () => {
   const [selectedRun, setSelectedRun] = useState<AgentRun | null>(null);
@@ -114,7 +114,7 @@ export const RunRegistry = () => {
                              <div className="font-bold text-white mb-0.5">{run.agentName}</div>
                              <div className="flex items-center gap-2 text-[10px] text-slate-500 font-mono italic">
                                 <span>{run.id}</span>
-                                <span className="opacity-30">•</span>
+                                <span className="opacity-30">â€¢</span>
                                 <span>{run.tenant}</span>
                              </div>
                           </div>

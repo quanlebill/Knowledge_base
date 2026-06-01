@@ -17,7 +17,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '../lib/utils';
+import { cn } from '../../lib/utils';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8001';
 

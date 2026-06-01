@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { 
   Terminal, 
   Copy, 
@@ -16,7 +16,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { cn } from '../../lib/utils';
+import { cn } from '../../../lib/utils';
 
 export const CLIScreen = () => {
   const [copied, setCopied] = useState<string | null>(null);
