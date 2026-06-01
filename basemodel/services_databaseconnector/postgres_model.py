@@ -7,6 +7,7 @@ from typing import Any, Annotated, Literal, Optional, Type, Union
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 _ROLES = frozenset({"create", "read", "update", "delete", "orm"})
+_SUFFIXES = ("ORM", "Create", "Read", "Update", "Delete")
 _partial: dict[str, dict] = {}
 
 Method = Literal["create", "read", "update", "delete", "orm"]
@@ -25,8 +26,13 @@ REGISTRY: dict[str, OperationSchema] = {}
 MODEL_TO_TABLE: dict[type, str] = {}
 
 
-def register(table: str, method: Method):
+def register(method: Method):
     def decorator(cls: type) -> type:
+        table = cls.__name__
+        for suffix in _SUFFIXES:
+            if table.endswith(suffix):
+                table = table[:-len(suffix)]
+                break
         if table not in _partial:
             _partial[table] = {}
         _partial[table][method] = cls
@@ -222,14 +228,14 @@ class TenantModel(BaseModel):
 
 
 
-@register("KBModel", "create")
+@register("create")
 class KBModelCreate(TenantModel):
     model_name: str
     task_type: TaskType
     model_config = ConfigDict(use_enum_values=True)
 
 
-@register("KBModelVersion", "create")
+@register("create")
 class KBModelVersionCreate(TenantModel):
     model_id: str
     version_number: int
@@ -238,7 +244,7 @@ class KBModelVersionCreate(TenantModel):
     is_active: bool = False
 
 
-@register("KBData", "create")
+@register("create")
 class KBDataCreate(TenantModel):
     role_id: str
     name: str
@@ -253,7 +259,7 @@ class KBDataCreate(TenantModel):
     model_config = ConfigDict(use_enum_values=True)
 
 
-@register("KBLifecycleHistory", "create")
+@register("create")
 class KBLifecycleHistoryCreate(TenantModel):
     data_id: str
     to_tier: Tier
@@ -263,7 +269,7 @@ class KBLifecycleHistoryCreate(TenantModel):
     model_config = ConfigDict(use_enum_values=True)
 
 
-@register("KBFilterPolicy", "create")
+@register("create")
 class KBFilterPolicyCreate(TenantModel):
     policy_name: str
     configformat: PolicyFormat
@@ -274,7 +280,7 @@ class KBFilterPolicyCreate(TenantModel):
     model_config = ConfigDict(use_enum_values=True)
 
 
-@register("KBExtractionPolicy", "create")
+@register("create")
 class KBExtractionPolicyCreate(TenantModel):
     policy_name: str
     policy_type: PolicyType
@@ -284,14 +290,14 @@ class KBExtractionPolicyCreate(TenantModel):
     model_config = ConfigDict(use_enum_values=True)
 
 
-@register("KBConflictBatch", "create")
+@register("create")
 class KBConflictBatchCreate(TenantModel):
     batch_title: str
     status: ConflictStatus = ConflictStatus.PENDING
     model_config = ConfigDict(use_enum_values=True)
 
 
-@register("KBConflict", "create")
+@register("create")
 class KBConflictCreate(TenantModel):
     conflict_type: ConflictType
     severity: ConflictSeverity
@@ -304,13 +310,13 @@ class KBConflictCreate(TenantModel):
     model_config = ConfigDict(use_enum_values=True)
 
 
-@register("KBWarehouse", "create")
+@register("create")
 class KBWarehouseCreate(TenantModel):
     service: str
     description: Optional[str] = None
 
 
-@register("KBWarehouse_Config", "create")
+@register("create")
 class KBWarehouseConfigCreate(TenantModel):
     warehouse_id: str
     version_number: int
@@ -319,7 +325,7 @@ class KBWarehouseConfigCreate(TenantModel):
     created_by: Optional[str] = None
 
 
-@register("KBTable", "create")
+@register("create")
 class KBTableCreate(TenantModel):
     owner_id: str
     table_name: str
@@ -328,13 +334,13 @@ class KBTableCreate(TenantModel):
     created_by: Optional[str] = None
 
 
-@register("KBTextBlock", "create")
+@register("create")
 class KBTextBlockCreate(TenantModel):
     owner_id: str
     block_index: int
 
 
-@register("KBTextBlockVersion", "create")
+@register("create")
 class KBTextBlockVersionCreate(TenantModel):
     block_id: str
     version_number: int
@@ -345,7 +351,7 @@ class KBTextBlockVersionCreate(TenantModel):
     payload: Optional[dict[str, Any]] = None
 
 
-@register("KBTextTable", "create")
+@register("create")
 class KBTextTableCreate(TenantModel):
     version_id: str
     table_name: str
@@ -353,13 +359,13 @@ class KBTextTableCreate(TenantModel):
     data: Optional[dict[str, Any]] = None
 
 
-@register("KBQdrantConnection", "create")
+@register("create")
 class KBQdrantConnectionCreate(TenantModel):
     is_active: bool = False
     total_collection: int = 0
 
 
-@register("KBQdrantCollection", "create")
+@register("create")
 class KBQdrantCollectionCreate(TenantModel):
     connection_id: str
     collection_name: str
@@ -371,7 +377,7 @@ class KBQdrantCollectionCreate(TenantModel):
     model_config = ConfigDict(use_enum_values=True)
 
 
-@register("KBNeo4jConnection", "create")
+@register("create")
 class KBNeo4jConnectionCreate(TenantModel):
     is_connected: bool = False
     total_node: int = 0
@@ -379,14 +385,14 @@ class KBNeo4jConnectionCreate(TenantModel):
     embedding_model_id: Optional[str] = None
 
 
-@register("KBNeo4jNode", "create")
+@register("create")
 class KBNeo4jNodeCreate(TenantModel):
     connection_id: str
     node_name: str
     node_description: Optional[str] = None
 
 
-@register("KBNeo4jRelationship", "create")
+@register("create")
 class KBNeo4jRelationshipCreate(TenantModel):
     from_node: str
     to_node: str
@@ -394,13 +400,13 @@ class KBNeo4jRelationshipCreate(TenantModel):
     description: Optional[str] = None
 
 
-@register("KBEntityLookup", "create")
+@register("create")
 class KBEntityLookupCreate(TenantModel):
     alias_name: str
     canonical_name: str
 
 
-@register("KBPublishAPI", "create")
+@register("create")
 class KBPublishAPICreate(TenantModel):
     name: str
     type: APIType
@@ -409,9 +415,7 @@ class KBPublishAPICreate(TenantModel):
     is_published: bool = False
     model_config = ConfigDict(use_enum_values=True)
 
-
-
-@register("KBModel", "read")
+@register("read")
 class KBModelRead(TenantModel):
     task_type: Optional[TaskType] = None
     limit: int = 10
@@ -419,7 +423,7 @@ class KBModelRead(TenantModel):
     model_config = ConfigDict(use_enum_values=True)
 
 
-@register("KBModelVersion", "read")
+@register("read")
 class KBModelVersionRead(TenantModel):
     model_id: str
     is_active: Optional[bool] = None
@@ -427,7 +431,7 @@ class KBModelVersionRead(TenantModel):
     pagination_cursor: datetime.datetime | None = None
 
 
-@register("KBData", "read")
+@register("read")
 class KBDataRead(TenantModel):
     data_id: Optional[str] = None
     source_type: Optional[SourceType] = None
@@ -438,14 +442,14 @@ class KBDataRead(TenantModel):
     model_config = ConfigDict(use_enum_values=True)
 
 
-@register("KBLifecycleHistory", "read")
+@register("read")
 class KBLifecycleHistoryRead(TenantModel):
     data_id: str
     limit: int = 10
     pagination_cursor: datetime.datetime | None = None
 
 
-@register("KBFilterPolicy", "read")
+@register("read")
 class KBFilterPolicyRead(TenantModel):
     language: Optional[Language] = None
     limit: int = 10
@@ -453,7 +457,7 @@ class KBFilterPolicyRead(TenantModel):
     model_config = ConfigDict(use_enum_values=True)
 
 
-@register("KBExtractionPolicy", "read")
+@register("read")
 class KBExtractionPolicyRead(TenantModel):
     language: Optional[Language] = None
     limit: int = 10
@@ -461,7 +465,7 @@ class KBExtractionPolicyRead(TenantModel):
     model_config = ConfigDict(use_enum_values=True)
 
 
-@register("KBConflictBatch", "read")
+@register("read")
 class KBConflictBatchRead(TenantModel):
     status: Optional[ConflictStatus] = None
     limit: int = 10
@@ -469,7 +473,7 @@ class KBConflictBatchRead(TenantModel):
     model_config = ConfigDict(use_enum_values=True)
 
 
-@register("KBConflict", "read")
+@register("read")
 class KBConflictRead(TenantModel):
     batch_id: Optional[str] = None
     status: Optional[ConflictStatus] = None
@@ -479,13 +483,13 @@ class KBConflictRead(TenantModel):
     model_config = ConfigDict(use_enum_values=True)
 
 
-@register("KBWarehouse", "read")
+@register("read")
 class KBWarehouseRead(TenantModel):
     limit: int = 10
     pagination_cursor: datetime.datetime | None = None
 
 
-@register("KBWarehouse_Config", "read")
+@register("read")
 class KBWarehouseConfigRead(TenantModel):
     warehouse_id: str
     is_active: Optional[bool] = None
@@ -493,7 +497,7 @@ class KBWarehouseConfigRead(TenantModel):
     pagination_cursor: datetime.datetime | None = None
 
 
-@register("KBTable", "read")
+@register("read")
 class KBTableRead(TenantModel):
     owner_id: Optional[str] = None
     table_name: Optional[str] = None
@@ -501,14 +505,14 @@ class KBTableRead(TenantModel):
     pagination_cursor: datetime.datetime | None = None
 
 
-@register("KBTextBlock", "read")
+@register("read")
 class KBTextBlockRead(TenantModel):
     owner_id: str
     limit: int = 10
     pagination_cursor: datetime.datetime | None = None
 
 
-@register("KBTextBlockVersion", "read")
+@register("read")
 class KBTextBlockVersionRead(TenantModel):
     block_id: str
     is_active: Optional[bool] = None
@@ -516,21 +520,21 @@ class KBTextBlockVersionRead(TenantModel):
     pagination_cursor: datetime.datetime | None = None
 
 
-@register("KBTextTable", "read")
+@register("read")
 class KBTextTableRead(TenantModel):
     version_id: str
     limit: int = 10
     pagination_cursor: datetime.datetime | None = None
 
 
-@register("KBQdrantConnection", "read")
+@register("read")
 class KBQdrantConnectionRead(TenantModel):
     is_active: Optional[bool] = None
     limit: int = 10
     pagination_cursor: datetime.datetime | None = None
 
 
-@register("KBQdrantCollection", "read")
+@register("read")
 class KBQdrantCollectionRead(TenantModel):
     connection_id: str
     is_active: Optional[bool] = None
@@ -538,21 +542,21 @@ class KBQdrantCollectionRead(TenantModel):
     pagination_cursor: datetime.datetime | None = None
 
 
-@register("KBNeo4jConnection", "read")
+@register("read")
 class KBNeo4jConnectionRead(TenantModel):
     is_connected: Optional[bool] = None
     limit: int = 10
     pagination_cursor: datetime.datetime | None = None
 
 
-@register("KBNeo4jNode", "read")
+@register("read")
 class KBNeo4jNodeRead(TenantModel):
     connection_id: str
     limit: int = 10
     pagination_cursor: datetime.datetime | None = None
 
 
-@register("KBNeo4jRelationship", "read")
+@register("read")
 class KBNeo4jRelationshipRead(TenantModel):
     from_node: Optional[str] = None
     to_node: Optional[str] = None
@@ -560,7 +564,7 @@ class KBNeo4jRelationshipRead(TenantModel):
     pagination_cursor: datetime.datetime | None = None
 
 
-@register("KBEntityLookup", "read")
+@register("read")
 class KBEntityLookupRead(TenantModel):
     alias_name: Optional[str] = None
     canonical_name: Optional[str] = None
@@ -568,7 +572,7 @@ class KBEntityLookupRead(TenantModel):
     pagination_cursor: datetime.datetime | None = None
 
 
-@register("KBPublishAPI", "read")
+@register("read")
 class KBPublishAPIRead(TenantModel):
     is_published: Optional[bool] = None
     limit: int = 10
@@ -578,21 +582,21 @@ class KBPublishAPIRead(TenantModel):
 
 
 
-@register("KBModel", "update")
+@register("update")
 class KBModelUpdate(TenantModel):
     model_id: str
     model_name: Optional[str] = None
     model_config = ConfigDict(use_enum_values=True)
 
 
-@register("KBModelVersion", "update")
+@register("update")
 class KBModelVersionUpdate(TenantModel):
     version_id: int
     config: Optional[ModelConfig] = None
     is_active: Optional[bool] = None
 
 
-@register("KBData", "update")
+@register("update")
 class KBDataUpdate(TenantModel):
     data_id: str
     name: Optional[str] = None
@@ -605,13 +609,13 @@ class KBDataUpdate(TenantModel):
     model_config = ConfigDict(use_enum_values=True)
 
 
-@register("KBLifecycleHistory", "update")
+@register("update")
 class KBLifecycleHistoryUpdate(TenantModel):
     history_id: str
     notes: Optional[str] = None
 
 
-@register("KBFilterPolicy", "update")
+@register("update")
 class KBFilterPolicyUpdate(TenantModel):
     policy_id: str
     policy_name: Optional[str] = None
@@ -622,7 +626,7 @@ class KBFilterPolicyUpdate(TenantModel):
     model_config = ConfigDict(use_enum_values=True)
 
 
-@register("KBExtractionPolicy", "update")
+@register("update")
 class KBExtractionPolicyUpdate(TenantModel):
     policy_id: str
     policy_name: Optional[str] = None
@@ -632,7 +636,7 @@ class KBExtractionPolicyUpdate(TenantModel):
     model_config = ConfigDict(use_enum_values=True)
 
 
-@register("KBConflictBatch", "update")
+@register("update")
 class KBConflictBatchUpdate(TenantModel):
     batch_id: str
     batch_title: Optional[str] = None
@@ -640,7 +644,7 @@ class KBConflictBatchUpdate(TenantModel):
     model_config = ConfigDict(use_enum_values=True)
 
 
-@register("KBConflict", "update")
+@register("update")
 class KBConflictUpdate(TenantModel):
     conflict_id: str
     batch_id: Optional[str] = None
@@ -650,21 +654,21 @@ class KBConflictUpdate(TenantModel):
     model_config = ConfigDict(use_enum_values=True)
 
 
-@register("KBWarehouse", "update")
+@register("update")
 class KBWarehouseUpdate(TenantModel):
     warehouse_id: str
     service: Optional[str] = None
     description: Optional[str] = None
 
 
-@register("KBWarehouse_Config", "update")
+@register("update")
 class KBWarehouseConfigUpdate(TenantModel):
     config_id: str
     config: Optional[WarehouseConfigPayload] = None
     is_active: Optional[bool] = None
 
 
-@register("KBTable", "update")
+@register("update")
 class KBTableUpdate(TenantModel):
     table_id: str
     table_name: Optional[str] = None
@@ -672,13 +676,13 @@ class KBTableUpdate(TenantModel):
     table_schema: Optional[dict[str, Any]] = None
 
 
-@register("KBTextBlock", "update")
+@register("update")
 class KBTextBlockUpdate(TenantModel):
     block_id: str
     block_index: Optional[int] = None
 
 
-@register("KBTextBlockVersion", "update")
+@register("update")
 class KBTextBlockVersionUpdate(TenantModel):
     version_id: str
     is_active: Optional[bool] = None
@@ -688,7 +692,7 @@ class KBTextBlockVersionUpdate(TenantModel):
     payload: Optional[dict[str, Any]] = None
 
 
-@register("KBTextTable", "update")
+@register("update")
 class KBTextTableUpdate(TenantModel):
     version_id: str
     table_name: Optional[str] = None
@@ -696,14 +700,14 @@ class KBTextTableUpdate(TenantModel):
     data: Optional[dict[str, Any]] = None
 
 
-@register("KBQdrantConnection", "update")
+@register("update")
 class KBQdrantConnectionUpdate(TenantModel):
     connection_id: str
     is_active: Optional[bool] = None
     total_collection: Optional[int] = None
 
 
-@register("KBQdrantCollection", "update")
+@register("update")
 class KBQdrantCollectionUpdate(TenantModel):
     collection_id: str
     is_active: Optional[bool] = None
@@ -714,7 +718,7 @@ class KBQdrantCollectionUpdate(TenantModel):
     model_config = ConfigDict(use_enum_values=True)
 
 
-@register("KBNeo4jConnection", "update")
+@register("update")
 class KBNeo4jConnectionUpdate(TenantModel):
     connection_id: str
     is_connected: Optional[bool] = None
@@ -723,14 +727,14 @@ class KBNeo4jConnectionUpdate(TenantModel):
     embedding_model_id: Optional[str] = None
 
 
-@register("KBNeo4jNode", "update")
+@register("update")
 class KBNeo4jNodeUpdate(TenantModel):
     node_id: str
     node_name: Optional[str] = None
     node_description: Optional[str] = None
 
 
-@register("KBNeo4jRelationship", "update")
+@register("update")
 class KBNeo4jRelationshipUpdate(TenantModel):
     from_node: str
     to_node: str
@@ -738,14 +742,14 @@ class KBNeo4jRelationshipUpdate(TenantModel):
     description: Optional[str] = None
 
 
-@register("KBEntityLookup", "update")
+@register("update")
 class KBEntityLookupUpdate(TenantModel):
     lookup_id: str
     alias_name: Optional[str] = None
     canonical_name: Optional[str] = None
 
 
-@register("KBPublishAPI", "update")
+@register("update")
 class KBPublishAPIUpdate(TenantModel):
     id: str
     name: Optional[str] = None
@@ -757,107 +761,107 @@ class KBPublishAPIUpdate(TenantModel):
 
 
 
-@register("KBModel", "delete")
+@register("delete")
 class KBModelDelete(TenantModel):
     model_id: str
 
 
-@register("KBModelVersion", "delete")
+@register("delete")
 class KBModelVersionDelete(TenantModel):
     version_id: int
 
 
-@register("KBData", "delete")
+@register("delete")
 class KBDataDelete(TenantModel):
     data_id: str
 
 
-@register("KBLifecycleHistory", "delete")
+@register("delete")
 class KBLifecycleHistoryDelete(TenantModel):
     history_id: str
 
 
-@register("KBFilterPolicy", "delete")
+@register("delete")
 class KBFilterPolicyDelete(TenantModel):
     policy_id: str
 
 
-@register("KBExtractionPolicy", "delete")
+@register("delete")
 class KBExtractionPolicyDelete(TenantModel):
     policy_id: str
 
 
-@register("KBConflictBatch", "delete")
+@register("delete")
 class KBConflictBatchDelete(TenantModel):
     batch_id: str
 
 
-@register("KBConflict", "delete")
+@register("delete")
 class KBConflictDelete(TenantModel):
     conflict_id: str
 
 
-@register("KBWarehouse", "delete")
+@register("delete")
 class KBWarehouseDelete(TenantModel):
     warehouse_id: str
 
 
-@register("KBWarehouse_Config", "delete")
+@register("delete")
 class KBWarehouseConfigDelete(TenantModel):
     config_id: str
 
 
-@register("KBTable", "delete")
+@register("delete")
 class KBTableDelete(TenantModel):
     table_id: str
 
 
-@register("KBTextBlock", "delete")
+@register("delete")
 class KBTextBlockDelete(TenantModel):
     block_id: str
 
 
-@register("KBTextBlockVersion", "delete")
+@register("delete")
 class KBTextBlockVersionDelete(TenantModel):
     version_id: str
 
 
-@register("KBTextTable", "delete")
+@register("delete")
 class KBTextTableDelete(TenantModel):
     version_id: str
 
 
-@register("KBQdrantConnection", "delete")
+@register("delete")
 class KBQdrantConnectionDelete(TenantModel):
     connection_id: str
 
 
-@register("KBQdrantCollection", "delete")
+@register("delete")
 class KBQdrantCollectionDelete(TenantModel):
     collection_id: str
 
 
-@register("KBNeo4jConnection", "delete")
+@register("delete")
 class KBNeo4jConnectionDelete(TenantModel):
     connection_id: str
 
-@register("KBNeo4jNode", "delete")
+@register("delete")
 class KBNeo4jNodeDelete(TenantModel):
     node_id: str
 
 
-@register("KBNeo4jRelationship", "delete")
+@register("delete")
 class KBNeo4jRelationshipDelete(TenantModel):
     from_node: str
     to_node: str
 
 
-@register("KBEntityLookup", "delete")
+@register("delete")
 class KBEntityLookupDelete(TenantModel):
     lookup_id: str
 
 
-@register("KBPublishAPI", "delete")
+@register("delete")
 class KBPublishAPIDelete(TenantModel):
     id: str
 

@@ -218,15 +218,12 @@ def _prepare_read_join(data: ReadJoinRequest) -> DQLPreparation:
 
 
 # CRUD method
-
 async def create(client: PostgresClient, data: TenantModel) -> ResponseModel:
     try:
         prep = _prepare_create(data)
     except IntegrityError as e:
         return ResponseModel(code=404, error=f"Violate Data Integrity. Error: {e}")
 
-    if isinstance(prep, ResponseModel):
-        return prep
     async with client.session() as session:
         session.add(prep.instance)
         try:
