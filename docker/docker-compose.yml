@@ -4,8 +4,8 @@ services:
 
   frontend:
     build:
-      context: .
-      dockerfile: Dockerfile.frontend
+      context: ..
+      dockerfile: ../Dockerfile.frontend
       args:
         VITE_API_URL: http://localhost:8000
     container_name: aeroflow-frontend
@@ -19,8 +19,8 @@ services:
 
   backend:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: ../Dockerfile
     container_name: aeroflow-backend
     ports:
       - "8000:8000"

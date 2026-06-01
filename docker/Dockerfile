@@ -5,10 +5,10 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends gcc \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml ./
-COPY services/ ./services/
+COPY ../pyproject.toml ./
+COPY ../services ./services/
 COPY server/ ./server/
-COPY testing/ ./testing/
+COPY ../testing ./testing/
 
 RUN pip install --no-cache-dir -e . \
     && pip install --no-cache-dir -r server/requirements.txt
