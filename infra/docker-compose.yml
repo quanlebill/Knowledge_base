@@ -1,0 +1,76 @@
+services:
+  neo4j:
+    build:
+      context: ./Neo4j
+    container_name: aeroflow-neo4j
+    hostname: aeroflow-neo4j
+    ports:
+      - "7475:7474"
+      - "7688:7687"
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-password}
+    extra_hosts:
+      - "aeroflow-neo4j:127.0.0.1"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    networks:
+      - aeroflow-db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://localhost:7474"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  qdrant:
+    build:
+      context: ./Qdrant
+    container_name: aeroflow-qdrant
+    ports:
+      - "6335:6333"
+      - "6336:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - aeroflow-db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:6333/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  postgres:
+    build:
+      context: ./Postgres
+    container_name: aeroflow-postgres
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-aeroflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-aeroflow_kb}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - aeroflow-db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aeroflow}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  neo4j_data:
+  neo4j_logs:
+  qdrant_data:
+  postgres_data:
+
+networks:
+  aeroflow-db:
+    driver: bridge
