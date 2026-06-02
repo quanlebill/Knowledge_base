@@ -23,6 +23,7 @@ import psycopg2
 import psycopg2.extras
 import structlog
 from fastapi import Depends, FastAPI, Header, HTTPException, Path, Query
+from shared.auth import get_current_user, require_role
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -202,11 +203,6 @@ async def startup():
     asyncio.create_task(_sync_kong_on_startup())
 
 
-def require_admin(roles: str):
-    role_list = [r.strip().upper().replace("-", "_") for r in roles.split(",")]
-    if "PLATFORM_ADMIN" not in role_list:
-        raise HTTPException(status_code=403, detail="Requires PLATFORM_ADMIN role")
-
 
 # ── Kong sync ─────────────────────────────────────────────────────────────────
 
@@ -282,9 +278,8 @@ def health():
 
 @app.get("/api/auth/ip-allowlist/config")
 def get_ip_config(
-    x_user_roles: str = Header(..., alias="X-User-Roles"),
+    user: dict = Depends(require_role("platform-admin")),
 ):
-    require_admin(x_user_roles)
     return {"mode": _get_ip_mode()}
 
 
@@ -292,9 +287,8 @@ def get_ip_config(
 def set_ip_config(
     body: dict,
     x_tenant_id: str = Header(..., alias="X-Tenant-Id"),
-    x_user_roles: str = Header(..., alias="X-User-Roles"),
+    user: dict = Depends(require_role("platform-admin")),
 ):
-    require_admin(x_user_roles)
     mode = body.get("mode", "allowlist")
     if mode not in ("allowlist", "allow_all"):
         raise HTTPException(status_code=422, detail="mode must be 'allowlist' or 'allow_all'")
@@ -328,9 +322,8 @@ class IPRuleIn(BaseModel):
 @app.get("/api/auth/ip-allowlists")
 def list_ip_allowlists(
     x_tenant_id: str = Header(..., alias="X-Tenant-Id"),
-    x_user_roles: str = Header(..., alias="X-User-Roles"),
+    user: dict = Depends(require_role("platform-admin")),
 ):
-    require_admin(x_user_roles)
     conn = get_db()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -348,10 +341,8 @@ def list_ip_allowlists(
 def create_ip_rule(
     body: IPRuleIn,
     x_tenant_id: str = Header(..., alias="X-Tenant-Id"),
-    x_user_id: str   = Header(..., alias="X-User-Id"),
-    x_user_roles: str = Header(..., alias="X-User-Roles"),
+    user: dict = Depends(require_role("platform-admin")),
 ):
-    require_admin(x_user_roles)
     try:
         ipaddress.ip_network(body.cidr, strict=False)
     except ValueError:
@@ -362,7 +353,7 @@ def create_ip_rule(
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 "INSERT INTO ip_allowlists (tenant_id, cidr, label, is_active, created_by) VALUES (%s,%s,%s,%s,%s) RETURNING id, cidr, label, is_active, created_by, created_at",
-                (x_tenant_id, body.cidr, body.label, body.is_active, x_user_id),
+                (x_tenant_id, body.cidr, body.label, body.is_active, user["user_id"]),
             )
             row = cur.fetchone()
         conn.commit()
@@ -380,9 +371,8 @@ def create_ip_rule(
 def toggle_ip_rule(
     rule_id: str = Path(...),
     x_tenant_id: str = Header(..., alias="X-Tenant-Id"),
-    x_user_roles: str = Header(..., alias="X-User-Roles"),
+    user: dict = Depends(require_role("platform-admin")),
 ):
-    require_admin(x_user_roles)
     conn = get_db()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -406,9 +396,8 @@ def toggle_ip_rule(
 def delete_ip_rule(
     rule_id: str = Path(...),
     x_tenant_id: str = Header(..., alias="X-Tenant-Id"),
-    x_user_roles: str = Header(..., alias="X-User-Roles"),
+    user: dict = Depends(require_role("platform-admin")),
 ):
-    require_admin(x_user_roles)
     conn = get_db()
     try:
         with conn.cursor() as cur:
@@ -461,9 +450,8 @@ class APIKeyIn(BaseModel):
 @app.get("/api/auth/api-keys")
 def list_api_keys(
     x_tenant_id: str = Header(..., alias="X-Tenant-Id"),
-    x_user_roles: str = Header(..., alias="X-User-Roles"),
+    user: dict = Depends(require_role("platform-admin")),
 ):
-    require_admin(x_user_roles)
     conn = get_db()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -480,10 +468,8 @@ def list_api_keys(
 def create_api_key(
     body: APIKeyIn,
     x_tenant_id: str = Header(..., alias="X-Tenant-Id"),
-    x_user_id: str   = Header(..., alias="X-User-Id"),
-    x_user_roles: str = Header(..., alias="X-User-Roles"),
+    user: dict = Depends(require_role("platform-admin")),
 ):
-    require_admin(x_user_roles)
     if body.scope not in VALID_SCOPES:
         raise HTTPException(status_code=422, detail=f"Invalid scope: {body.scope}")
 
@@ -501,7 +487,7 @@ def create_api_key(
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 "INSERT INTO api_keys (tenant_id, created_by, name, key_hash, key_prefix, scope, expires_at) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id, name, key_prefix, scope, created_by, last_used_at, expires_at, revoked_at, rotated_from, created_at",
-                (x_tenant_id, x_user_id, body.name, key_hash, prefix, body.scope, expires_at),
+                (x_tenant_id, user["user_id"], body.name, key_hash, prefix, body.scope, expires_at),
             )
             row = cur.fetchone()
         conn.commit()
@@ -514,9 +500,8 @@ def create_api_key(
 def revoke_api_key(
     key_id: str = Path(...),
     x_tenant_id: str = Header(..., alias="X-Tenant-Id"),
-    x_user_roles: str = Header(..., alias="X-User-Roles"),
+    user: dict = Depends(require_role("platform-admin")),
 ):
-    require_admin(x_user_roles)
     conn = get_db()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -538,10 +523,8 @@ def revoke_api_key(
 def rotate_api_key(
     key_id: str = Path(...),
     x_tenant_id: str = Header(..., alias="X-Tenant-Id"),
-    x_user_id: str   = Header(..., alias="X-User-Id"),
-    x_user_roles: str = Header(..., alias="X-User-Roles"),
+    user: dict = Depends(require_role("platform-admin")),
 ):
-    require_admin(x_user_roles)
     conn = get_db()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -556,7 +539,7 @@ def rotate_api_key(
             raw_key, prefix = _gen_key(old["scope"])
             cur.execute(
                 "INSERT INTO api_keys (tenant_id, created_by, name, key_hash, key_prefix, scope, expires_at, rotated_from) VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id, name, key_prefix, scope, created_by, last_used_at, expires_at, revoked_at, rotated_from, created_at",
-                (x_tenant_id, x_user_id, old["name"], _hash_key(raw_key), prefix, old["scope"], old["expires_at"], old["id"]),
+                (x_tenant_id, user["user_id"], old["name"], _hash_key(raw_key), prefix, old["scope"], old["expires_at"], old["id"]),
             )
             new_row = cur.fetchone()
         conn.commit()
@@ -649,10 +632,9 @@ class SecretIn(BaseModel):
 @app.get("/api/auth/secrets")
 def list_secrets(
     x_tenant_id:  str = Header(..., alias="X-Tenant-Id"),
-    x_user_roles: str = Header(..., alias="X-User-Roles"),
+    user: dict = Depends(require_role("platform-admin")),
     _panic: None = Depends(_vault_panic_check),
 ):
-    require_admin(x_user_roles)
     conn = get_db()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -671,11 +653,9 @@ def list_secrets(
 def create_secret(
     body: SecretIn,
     x_tenant_id:  str = Header(..., alias="X-Tenant-Id"),
-    x_user_id:    str = Header(..., alias="X-User-Id"),
-    x_user_roles: str = Header(..., alias="X-User-Roles"),
+    user: dict = Depends(require_role("platform-admin")),
     _panic: None = Depends(_vault_panic_check),
 ):
-    require_admin(x_user_roles)
     if body.key_type not in VALID_KEY_TYPES:
         raise HTTPException(status_code=422, detail=f"Invalid key_type: {body.key_type}")
     if body.key_type not in _TRANSIT_TYPES and not body.value:
@@ -729,7 +709,7 @@ def create_secret(
                 "RETURNING id, key_name, key_type, algorithm, realm, version, is_active, "
                 "rotation_due_at, last_rotated_at, created_by, created_at",
                 (x_tenant_id, body.key_name, body.key_type, body.algorithm,
-                 body.realm, openbao_path, rotation_due, x_user_id),
+                 body.realm, openbao_path, rotation_due, user["user_id"]),
             )
             row = cur.fetchone()
         conn.commit()
@@ -745,10 +725,9 @@ def create_secret(
 def delete_secret(
     secret_id:    str = Path(...),
     x_tenant_id:  str = Header(..., alias="X-Tenant-Id"),
-    x_user_roles: str = Header(..., alias="X-User-Roles"),
+    user: dict = Depends(require_role("platform-admin")),
     _panic: None = Depends(_vault_panic_check),
 ):
-    require_admin(x_user_roles)
     conn = get_db()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -786,12 +765,10 @@ def delete_secret(
 def rotate_secret(
     secret_id:    str = Path(...),
     x_tenant_id:  str = Header(..., alias="X-Tenant-Id"),
-    x_user_id:    str = Header(..., alias="X-User-Id"),
-    x_user_roles: str = Header(..., alias="X-User-Roles"),
+    user: dict = Depends(require_role("platform-admin")),
     body: dict = None,
     _panic: None = Depends(_vault_panic_check),
 ):
-    require_admin(x_user_roles)
     new_value = (body or {}).get("value", "")
 
     conn = get_db()
@@ -842,14 +819,14 @@ def rotate_secret(
                 "RETURNING id, key_name, key_type, algorithm, realm, version, is_active, "
                 "rotation_due_at, last_rotated_at, created_by, created_at",
                 (x_tenant_id, old["key_name"], old["key_type"], old["algorithm"],
-                 old["realm"], openbao_path, new_version, rotation_due, x_user_id),
+                 old["realm"], openbao_path, new_version, rotation_due, user["user_id"]),
             )
             new_row = cur.fetchone()
 
             cur.execute(
                 "INSERT INTO key_rotations (secret_id, triggered_by, actor_id, old_version, new_version, status) "
                 "VALUES (%s,'MANUAL',%s,%s,%s,'SUCCESS')",
-                (new_row["id"], x_user_id, old["version"], new_version),
+                (new_row["id"], user["user_id"], old["version"], new_version),
             )
         conn.commit()
         return _fmt_secret(new_row)
@@ -862,11 +839,9 @@ def reveal_secret(
     secret_id:     str = Path(...),
     access_reason: str | None = Query(None),
     x_tenant_id:   str = Header(..., alias="X-Tenant-Id"),
-    x_user_id:     str = Header(..., alias="X-User-Id"),
-    x_user_roles:  str = Header(..., alias="X-User-Roles"),
+    user: dict = Depends(require_role("platform-admin")),
     _panic: None = Depends(_vault_panic_check),
 ):
-    require_admin(x_user_roles)
     conn = get_db()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -892,7 +867,7 @@ def reveal_secret(
                     "INSERT INTO key_rotations "
                     "(secret_id, triggered_by, actor_id, old_version, new_version, status, access_reason) "
                     "VALUES (%s,'REVEAL',%s,%s,%s,'SUCCESS',%s)",
-                    (secret_id, x_user_id, row["version"], row["version"], access_reason.strip()),
+                    (secret_id, user["user_id"], row["version"], row["version"], access_reason.strip()),
                 )
             conn.commit()
     finally:
@@ -931,9 +906,8 @@ def reveal_secret(
 
 @app.get("/api/auth/secrets/governance")
 def get_governance(
-    x_user_roles: str = Header(..., alias="X-User-Roles"),
+    user: dict = Depends(require_role("platform-admin")),
 ):
-    require_admin(x_user_roles)
     conn = get_db()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -948,9 +922,8 @@ def get_governance(
 @app.put("/api/auth/secrets/governance")
 def set_governance(
     body: dict,
-    x_user_roles: str = Header(..., alias="X-User-Roles"),
+    user: dict = Depends(require_role("platform-admin")),
 ):
-    require_admin(x_user_roles)
     conn = get_db()
     try:
         with conn.cursor() as cur:
@@ -973,10 +946,8 @@ def set_governance(
 @app.post("/api/auth/secrets/panic", status_code=200)
 def trigger_panic(
     x_tenant_id:  str = Header(..., alias="X-Tenant-Id"),
-    x_user_id:    str = Header(..., alias="X-User-Id"),
-    x_user_roles: str = Header(..., alias="X-User-Roles"),
+    user: dict = Depends(require_role("platform-admin")),
 ):
-    require_admin(x_user_roles)
     conn = get_db()
     revoked = []
     try:
@@ -992,7 +963,7 @@ def trigger_panic(
                 cur.execute(
                     "INSERT INTO key_rotations (secret_id, triggered_by, actor_id, old_version, new_version, status) "
                     "VALUES (%s,'PANIC',%s,%s,%s,'SUCCESS')",
-                    (r["id"], x_user_id, r["version"], r["version"]),
+                    (r["id"], user["user_id"], r["version"], r["version"]),
                 )
                 revoked.append(r["key_name"])
         conn.commit()
@@ -1011,17 +982,16 @@ def trigger_panic(
     finally:
         conn2.close()
 
-    log.warning("vault_panic_triggered", actor=x_user_id, revoked_count=len(revoked))
+    log.warning("vault_panic_triggered", actor=user["user_id"], revoked_count=len(revoked))
     return {"revoked": revoked, "count": len(revoked)}
 
 
 @app.get("/api/auth/secrets/hsm/status")
 def hsm_status(
     x_tenant_id:  str = Header(..., alias="X-Tenant-Id"),
-    x_user_roles: str = Header(..., alias="X-User-Roles"),
+    user: dict = Depends(require_role("platform-admin")),
     _panic: None = Depends(_vault_panic_check),
 ):
-    require_admin(x_user_roles)
     vault = get_vault()
     keys_out = []
     try:
@@ -1075,10 +1045,9 @@ def sign_data(
     secret_id:    str = Path(...),
     body:         SignIn = None,
     x_tenant_id:  str = Header(..., alias="X-Tenant-Id"),
-    x_user_roles: str = Header(..., alias="X-User-Roles"),
+    user: dict = Depends(require_role("platform-admin")),
     _panic: None = Depends(_vault_panic_check),
 ):
-    require_admin(x_user_roles)
     if not body or not body.data:
         raise HTTPException(status_code=422, detail="data (base64) is required")
 
@@ -1119,10 +1088,9 @@ def verify_data(
     secret_id:    str = Path(...),
     body:         VerifyIn = None,
     x_tenant_id:  str = Header(..., alias="X-Tenant-Id"),
-    x_user_roles: str = Header(..., alias="X-User-Roles"),
+    user: dict = Depends(require_role("platform-admin")),
     _panic: None = Depends(_vault_panic_check),
 ):
-    require_admin(x_user_roles)
     if not body or not body.data or not body.signature:
         raise HTTPException(status_code=422, detail="data and signature are required")
 
@@ -1160,9 +1128,8 @@ def verify_data(
 @app.get("/api/auth/secrets/pii-log")
 def secrets_pii_log(
     x_tenant_id:  str = Header(..., alias="X-Tenant-Id"),
-    x_user_roles: str = Header(..., alias="X-User-Roles"),
+    user: dict = Depends(require_role("platform-admin")),
 ):
-    require_admin(x_user_roles)
     conn = get_db()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -1195,9 +1162,8 @@ def secrets_pii_log(
 @app.get("/api/auth/secrets/audit-log")
 def secrets_audit_log(
     x_tenant_id:  str = Header(..., alias="X-Tenant-Id"),
-    x_user_roles: str = Header(..., alias="X-User-Roles"),
+    user: dict = Depends(require_role("platform-admin")),
 ):
-    require_admin(x_user_roles)
     conn = get_db()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:

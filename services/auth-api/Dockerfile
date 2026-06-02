@@ -4,10 +4,11 @@ WORKDIR /app
 
 RUN apk add --no-cache gcc musl-dev libpq-dev curl
 
-COPY requirements.txt .
+COPY auth-api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY main.py .
+COPY auth-api/main.py .
+COPY shared/ ./shared/
 
 EXPOSE 8200
 

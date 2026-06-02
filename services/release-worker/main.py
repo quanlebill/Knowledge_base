@@ -27,6 +27,7 @@ from celery import Celery
 import ipaddress
 
 from fastapi import FastAPI, HTTPException, Header, Depends, Request, Response
+from shared.auth import get_current_user
 from kafka import KafkaConsumer, KafkaProducer
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
@@ -851,15 +852,6 @@ class DriftResolveRequest(BaseModel):
     notes: Optional[str] = None
 
 
-def get_current_user(
-    x_user_id: str = Header(..., alias="X-User-Id"),
-    x_user_roles: str = Header(..., alias="X-User-Roles"),
-    x_kong_verified: str = Header(default="", alias="X-Kong-Verified"),
-) -> dict:
-    """Accept identity only when Kong has verified the JWT."""
-    if x_kong_verified != "true":
-        raise HTTPException(status_code=401, detail="Request not verified by Kong gateway")
-    return {"user_id": x_user_id, "roles": x_user_roles.split(",")}
 
 
 @app.get("/health")

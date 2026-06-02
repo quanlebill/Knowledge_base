@@ -8,11 +8,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Cài Python deps
-COPY requirements.txt .
+COPY release-worker/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source
-COPY main.py .
+COPY release-worker/main.py .
+COPY shared/ ./shared/
 
 EXPOSE 8100
 

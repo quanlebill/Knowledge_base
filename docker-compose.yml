@@ -574,7 +574,8 @@ services:
   # ── Auth API (IP Allowlist + API Keys + Secrets Vault) ───────────
   auth-api:
     build:
-      context: ./services/auth-api
+      context: ./services
+      dockerfile: auth-api/Dockerfile
     container_name: aeroflow-auth-api
     restart: unless-stopped
     ports:
@@ -607,7 +608,8 @@ services:
   # Nhận trigger từ Kafka topic: release.pipeline.triggered
   release-worker:
     build:
-      context: ./services/release-worker
+      context: ./services
+      dockerfile: release-worker/Dockerfile
     container_name: aeroflow-release-worker
     restart: unless-stopped
     ports:
@@ -654,7 +656,8 @@ services:
   # Must share the same image/env as release-worker.
   celery-worker:
     build:
-      context: ./services/release-worker
+      context: ./services
+      dockerfile: release-worker/Dockerfile
     container_name: aeroflow-celery-worker
     command: celery -A main.celery_app worker --loglevel=info --concurrency=4
     restart: unless-stopped
