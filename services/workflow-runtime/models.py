@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Boolean, SmallInteger, Integer, Float, ForeignKey
+from sqlalchemy import Column, String, Boolean, SmallInteger, Integer, Float, ForeignKey, DateTime
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import DeclarativeBase
 
@@ -14,7 +14,7 @@ class Tenant(Base):
     name       = Column(String, nullable=False)
     slug       = Column(String, unique=True, nullable=False)
     is_active  = Column(Boolean, default=True)
-    deleted_at = Column(String)
+    deleted_at = Column(DateTime, nullable=True)
 
 
 class Member(Base):
@@ -31,7 +31,7 @@ class Agent(Base):
     id        = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
     is_active = Column(Boolean, default=True)
-    deleted_at = Column(String)
+    deleted_at = Column(DateTime, nullable=True)
 
 
 class Conversation(Base):
@@ -67,8 +67,8 @@ class AgentMemory(Base):
     memory_type = Column(String, nullable=False)
     content     = Column(String, nullable=False)
     importance  = Column(Float, default=0.5)
-    expires_at  = Column(String)
-    deleted_at  = Column(String)
+    expires_at  = Column(DateTime, nullable=True)
+    deleted_at  = Column(DateTime, nullable=True)
 
 
 class MemoryPolicy(Base):
