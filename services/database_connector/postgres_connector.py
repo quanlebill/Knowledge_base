@@ -20,96 +20,6 @@ log = create_logger("services.postgres", "service_postgres")
 
 
 
-
-
-class PostgresClient:
-    __slots__ = (
-        "_engine", "_session_factory", "_connection_wait",
-        "_healthy", "_connected", "_timeout", "_timeout_incremental", "_url",
-    )
-
-    def __init__(self):
-        self._engine: AsyncEngine | None = None
-        self._session_factory: async_sessionmaker[AsyncSession] | None = None
-        self._timeout: int = 10
-        self._timeout_incremental: int = 1
-        self._connection_wait: int = 5
-        self._healthy: bool = False
-        self._connected: bool = False
-        self._url: str | None = None
-
-    def set_url(self, url: str) -> None:
-        self._url = url
-        if self._url.startswith("postgresql://"):
-             self._url.replace("postgresql://", "postgresql+asyncpg://", 1)
-
-    async def open(self, retry: RetryConfig | None = RetryConfig()) -> None:
-        if self._url is None:
-            raise RuntimeError("Postgres URL is not yet set")
-
-        for attempt in range(retry.count):
-            try:
-                self._engine = create_async_engine(self._url, pool_pre_ping=True)
-                self._session_factory = async_sessionmaker(self._engine, expire_on_commit=False)
-                async with self._engine.connect() as conn:
-                    await conn.execute(text("SELECT 1"))
-                self._connected = True
-                self._healthy = True
-                log.info("Postgres connection established")
-                return
-            except OperationalError as e:
-                log.info(f"Attempt #{attempt + 1}/{retry.count}: Postgres connection failed — {e}")
-                if attempt < retry.count - 1:
-                    await asyncio.sleep(self._connection_wait)
-        raise ConnectionError(f"Could not connect to Postgres after {retry.count} attempts")
-
-    async def close(self) -> None:
-        if self._engine:
-            try:
-                await self._engine.dispose()
-            except Exception as e:
-                log.info(f"Postgres engine dispose error (ignored): {e}")
-            finally:
-                self._engine = None
-                self._session_factory = None
-        self._connected = False
-        self._healthy = False
-
-    async def health_check_loop(self, config: HealthCheckLoopConfig | None = None) -> None:
-        config = config or HealthCheckLoopConfig()
-        log.info("Postgres health check loop started")
-        while True:
-            try:
-                if self._engine is None:
-                    await self.open()
-                async with self._engine.connect() as conn:
-                    await asyncio.wait_for(
-                        conn.execute(text("SELECT 1")),
-                        timeout=config.timeout_for_health_check,
-                    )
-                self._healthy = True
-                log.info("Postgres health check succeeded")
-            except asyncio.TimeoutError:
-                self._healthy = False
-                log.info("Postgres health check failed: timed out")
-            except Exception as e:
-                self._healthy = False
-                self._engine = None
-                self._session_factory = None
-                log.info(f"Postgres health check failed: {e}")
-            await asyncio.sleep(config.interval)
-
-    def get_client(self) -> AsyncSession:
-        if self._session_factory is None:
-            raise RuntimeError("PostgresClient is not open — call open() first")
-        return self._session_factory()
-
-    def is_healthy(self) -> bool:
-        return self._healthy
-
-    def is_connected(self) -> bool:
-        return self._connected
-
 # Helpers
 
 def _orm_to_dict(instance) -> dict[str, Any]:
@@ -278,94 +188,179 @@ def _prepare_read(data: ReadJoinRequest) -> DQLPreparation:
     return DQLPreparation(compiled_query=stmt.limit(data.limit))
 
 
+
+class PostgresClient:
+    __slots__ = ("_engine", "_session_factory", "_connection_wait","_healthy", "_connected", "_timeout", "_timeout_incremental", "_url",)
+
+    def __init__(self):
+        self._engine: AsyncEngine | None = None
+        self._session_factory: async_sessionmaker[AsyncSession] | None = None
+        self._timeout: int = 10
+        self._timeout_incremental: int = 1
+        self._connection_wait: int = 5
+        self._healthy: bool = False
+        self._connected: bool = False
+        self._url: str | None = None
+
+    def set_url(self, url: str) -> None:
+        if url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        self._url = url
+
+    async def open(self, retry: RetryConfig | None = RetryConfig()) -> None:
+        if self._url is None:
+            raise RuntimeError("Postgres URL is not yet set")
+
+        for attempt in range(retry.count):
+            try:
+                self._engine = create_async_engine(self._url, pool_pre_ping=True)
+                self._session_factory = async_sessionmaker(self._engine, expire_on_commit=False)
+                async with self._engine.connect() as conn:
+                    await conn.execute(text("SELECT 1"))
+                self._connected = True
+                self._healthy = True
+                log.info("Postgres connection established")
+                return
+            except OperationalError as e:
+                log.info(f"Attempt #{attempt + 1}/{retry.count}: Postgres connection failed — {e}")
+                if attempt < retry.count - 1:
+                    await asyncio.sleep(self._connection_wait)
+        raise ConnectionError(f"Could not connect to Postgres after {retry.count} attempts")
+
+    async def close(self) -> None:
+        if self._engine:
+            try:
+                await self._engine.dispose()
+            except Exception as e:
+                log.info(f"Postgres engine dispose error (ignored): {e}")
+            finally:
+                self._engine = None
+                self._session_factory = None
+        self._connected = False
+        self._healthy = False
+
+    async def health_check_loop(self, config: HealthCheckLoopConfig | None = None) -> None:
+        config = config or HealthCheckLoopConfig()
+        log.info("Postgres health check loop started")
+        while True:
+            try:
+                if self._engine is None:
+                    await self.open()
+                async with self._engine.connect() as conn:
+                    await asyncio.wait_for(
+                        conn.execute(text("SELECT 1")),
+                        timeout=config.timeout_for_health_check,
+                    )
+                self._healthy = True
+                log.info("Postgres health check succeeded")
+            except asyncio.TimeoutError:
+                self._healthy = False
+                log.info("Postgres health check failed: timed out")
+            except Exception as e:
+                self._healthy = False
+                self._engine = None
+                self._session_factory = None
+                log.info(f"Postgres health check failed: {e}")
+            await asyncio.sleep(config.interval)
+
+    def get_client(self) -> AsyncSession:
+        if self._session_factory is None:
+            raise RuntimeError("PostgresClient is not open — call open() first")
+        return self._session_factory()
+
+    def is_healthy(self) -> bool:
+        return self._healthy
+
+    def is_connected(self) -> bool:
+        return self._connected
 # Operations
-async def insert(client: PostgresClient, data: BaseModel) -> ResponseModel:
-    try:
-        prep = _prepare_insert(data)
-    except AttributeError as e:
-        return ResponseModel(code=400, error=str(e))
-
-    async with client.get_client() as session:
-        session.add(prep.instance)
+    async def insert(self, data: BaseModel) -> ResponseModel:
         try:
-            await session.commit()
-            await session.refresh(prep.instance)
-        except IntegrityError:
-            await session.rollback()
-            return ResponseModel(code=409, error=f"Record already exists in {prep.table_name}")
-    pks = [col.name for col in prep.orm_cls.__table__.primary_key]
-    return ResponseModel(code=200, data={pk: str(getattr(prep.instance, pk)) for pk in pks if getattr(prep.instance, pk) is not None})
+            prep = _prepare_insert(data)
+        except AttributeError as e:
+            return ResponseModel(code=400, error=str(e))
 
+        async with self.get_client() as session:
+            session.add(prep.instance)
+            try:
+                await session.commit()
+                await session.refresh(prep.instance)
+            except IntegrityError:
+                await session.rollback()
+                return ResponseModel(code=409, error=f"Record already exists in {prep.table_name}")
+        pks = [col.name for col in prep.orm_cls.__table__.primary_key]
+        return ResponseModel(code=200, data={pk: str(getattr(prep.instance, pk)) for pk in pks if getattr(prep.instance, pk) is not None})
 
-async def soft_delete(client: PostgresClient, data: BaseModel) -> ResponseModel:
-    try:
-        prep = _prepare_soft_delete(data)
-    except AttributeError as e:
-        return ResponseModel(code=400, error=str(e))
-
-    async with client.get_client() as session:
+    async def soft_delete(self, data: BaseModel) -> ResponseModel:
         try:
-            result: Any|CursorResult = await session.execute(prep.compiled_query)
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-    if result.rowcount == 0:
-        return ResponseModel(code=404, error="Record not found or already deleted")
-    return ResponseModel(code=200)
+            prep = _prepare_soft_delete(data)
+        except AttributeError as e:
+            return ResponseModel(code=400, error=str(e))
+
+        async with self.get_client() as session:
+            try:
+                result: Any|CursorResult = await session.execute(prep.compiled_query)
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+        if result.rowcount == 0:
+            return ResponseModel(code=404, error="Record not found or already deleted")
+        return ResponseModel(code=200)
 
 
-async def delete(client: PostgresClient, data: BaseModel) -> ResponseModel:
-    try:
-        prep = _prepare_delete(data)
-    except AttributeError as e:
-        return ResponseModel(code=400, error=str(e))
-
-    async with client.get_client() as session:
+    async def delete(self, data: BaseModel) -> ResponseModel:
         try:
-            await session.execute(prep.compiled_query)
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-    return ResponseModel(code=200)
+            prep = _prepare_delete(data)
+        except AttributeError as e:
+            return ResponseModel(code=400, error=str(e))
 
+        async with self.get_client() as session:
+            try:
+                await session.execute(prep.compiled_query)
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+        return ResponseModel(code=200)
 
-async def read_deep(client: PostgresClient, data: SelectInLoadRequest) -> ResponseModel:
-    try:
-        prep = _prepare_deep_search(data)
-    except AttributeError as e:
-        return ResponseModel(code=400, error=str(e))
-
-    async with client.get_client() as session:
-        result = await session.execute(prep.compiled_query)
-        rows = result.scalars().all()
-    return ResponseModel(code=200, data=[_orm_to_dict_deep(r) for r in rows])
-
-
-async def flush(client: PostgresClient, table_name: str) -> ResponseModel:
-    try:
-        prep = _prepare_flush(table_name)
-    except AttributeError as e:
-        return ResponseModel(code=400, error=str(e))
-
-    async with client.get_client() as session:
+    async def read_deep(self, data: SelectInLoadRequest) -> ResponseModel:
         try:
-            await session.execute(prep.compiled_query)
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-    return ResponseModel(code=200)
+            prep = _prepare_deep_search(data)
+        except AttributeError as e:
+            return ResponseModel(code=400, error=str(e))
+
+        async with self.get_client() as session:
+            result = await session.execute(prep.compiled_query)
+            rows = result.scalars().all()
+        return ResponseModel(code=200, data=[_orm_to_dict_deep(r) for r in rows])
 
 
-async def read(client: PostgresClient, data: ReadJoinRequest) -> ResponseModel:
-    try:
-        prep = _prepare_read(data)
-    except AttributeError as e:
-        return ResponseModel(code=400, error=str(e))
+    async def flush(self, table_name: str) -> ResponseModel:
+        try:
+            prep = _prepare_flush(table_name)
+        except AttributeError as e:
+            return ResponseModel(code=400, error=str(e))
 
-    async with client.get_client() as session:
-        result = await session.execute(prep.compiled_query)
-        rows = result.mappings().all()
-    return ResponseModel(code=200, data=[dict(r) for r in rows])
+        async with self.get_client() as session:
+            try:
+                await session.execute(prep.compiled_query)
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+        return ResponseModel(code=200)
+
+
+    async def read(self, data: ReadJoinRequest) -> ResponseModel:
+        try:
+            prep = _prepare_read(data)
+        except AttributeError as e:
+            return ResponseModel(code=400, error=str(e))
+
+        async with self.get_client() as session:
+            result = await session.execute(prep.compiled_query)
+            rows = result.mappings().all()
+        return ResponseModel(code=200, data=[dict(r) for r in rows])
+
+client = PostgresClient()

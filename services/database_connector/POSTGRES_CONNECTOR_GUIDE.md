@@ -6,18 +6,44 @@
 
 ## Overview
 
+All operations are **methods on `PostgresClient`**. Internal query builders (`_prepare_*`, `_orm_to_dict`, etc.) are module-level private functions — they are implementation details and should not be imported directly.
+
+Use the module-level singleton `client` for all application code:
+
+```python
+from services.database_connector.postgres_connector import client
+```
+
 The connector exposes **6 operations**. There is no `update` — immutable insert pattern only.
 
 | Method | Input | Purpose |
 |---|---|---|
-| `insert` | Insert model | Insert a new row |
-| `read` | `ReadJoinRequest` | SELECT — single table or flat joined chain |
-| `read_deep` | `SelectInLoadRequest` | SELECT with nested related data via `selectinload` |
-| `soft_delete` | Delete model | Set `is_deleted = True` |
-| `delete` | Delete model | Hard DELETE by record identity |
-| `flush` | `table_name: str` | Purge all `is_deleted = True` rows from a table |
+| `client.insert` | Insert model | Insert a new row |
+| `client.read` | `ReadJoinRequest` | SELECT — single table or flat joined chain |
+| `client.read_deep` | `SelectInLoadRequest` | SELECT with nested related data via `selectinload` |
+| `client.soft_delete` | Delete model | Set `is_deleted = True` |
+| `client.delete` | Delete model | Hard DELETE by record identity |
+| `client.flush` | `table_name: str` | Purge all `is_deleted = True` rows from a table |
 
 All methods return `ResponseModel(code, data, error)`.
+
+---
+
+## Lifecycle
+
+```python
+from services.database_connector.postgres_connector import client
+
+# app startup
+client.set_url("postgresql+asyncpg://user:pass@host:5432/dbname")
+await client.open()
+
+# optional — run as a background task
+asyncio.create_task(client.health_check_loop())
+
+# app shutdown
+await client.close()
+```
 
 ---
 
@@ -28,9 +54,9 @@ Use the corresponding `*Insert` model for the table. `inserted_at` is auto-set a
 Tables **with** `tenant_id` extend `TenantInsertModel`:
 ```python
 from basemodel.services_databaseconnector.postgres_model import KBDataInsert
-from services.database_connector.postgres_connector import insert
+from services.database_connector.postgres_connector import client
 
-result = await insert(client, KBDataInsert(
+result = await client.insert(KBDataInsert(
     tenant_id="tenant-uuid",
     role_id="role-uuid",
     name="annual_report.pdf",
@@ -47,9 +73,8 @@ result = await insert(client, KBDataInsert(
 Tables **without** `tenant_id` extend `InsertModel`:
 ```python
 from basemodel.services_databaseconnector.postgres_model import KBTextBlockVersionInsert
-from services.database_connector.postgres_connector import insert
 
-result = await insert(client, KBTextBlockVersionInsert(
+result = await client.insert(KBTextBlockVersionInsert(
     block_id="block-uuid",
     version_number=1,
     content="Parsed text content of the chunk...",
@@ -83,12 +108,12 @@ Flat SELECT — returns rows as dicts. Use for single-table reads or shallow joi
 from basemodel.services_databaseconnector.postgres_model import (
     ReadJoinRequest, SelectedColumn, WhereFilter
 )
-from services.database_connector.postgres_connector import read
+from services.database_connector.postgres_connector import client
 ```
 
 ### Single table — first page
 ```python
-result = await read(client, ReadJoinRequest(
+result = await client.read(ReadJoinRequest(
     tenant_id="tenant-uuid",
     joins_table=["KBData"],
     selected_columns=[],
@@ -101,7 +126,7 @@ result = await read(client, ReadJoinRequest(
 
 ### Single table — next page (cursor pagination)
 ```python
-result = await read(client, ReadJoinRequest(
+result = await client.read(ReadJoinRequest(
     tenant_id="tenant-uuid",
     joins_table=["KBData"],
     filters=[
@@ -114,7 +139,7 @@ result = await read(client, ReadJoinRequest(
 
 ### Multi-table join
 ```python
-result = await read(client, ReadJoinRequest(
+result = await client.read(ReadJoinRequest(
     tenant_id="tenant-uuid",
     joins_table=["KBData", "KBTextBlock", "KBTextBlockVersion"],
     selected_columns=[
@@ -189,17 +214,17 @@ Nested SELECT using `selectinload` — fires separate IN queries per relationshi
 from basemodel.services_databaseconnector.postgres_model import (
     SelectInLoadRequest, WhereFilter
 )
-from services.database_connector.postgres_connector import read_deep
+from services.database_connector.postgres_connector import client
 ```
 
 ### Usage
 ```python
-result = await read_deep(client, SelectInLoadRequest(
+result = await client.read_deep(SelectInLoadRequest(
     tenant_id="tenant-uuid",
     table="KBData",
     load_paths=[
         "KBTextBlock.KBTextBlockVersion",
-        "KBTable",
+        "KBLifecycleHistory",
     ],
     filters=[
         WhereFilter(table_name="KBData", column_name="current_tier", value="bronze"),
@@ -237,8 +262,8 @@ result.data = [
             ...
         ],
 
-        "KBTable": [
-            {"table_id": "uuid-5", "table_name": "financials", ...},
+        "KBLifecycleHistory": [
+            {"history_id": "uuid-5", "to_tier": "silver", ...},
         ]
     },
     ...
@@ -255,7 +280,7 @@ result.error = "..."
 SELECT * FROM KBData WHERE tenant_id = ? AND ... LIMIT 20
 SELECT * FROM KBTextBlock WHERE owner_id IN (uuid-1, uuid-2, ...)
 SELECT * FROM KBTextBlockVersion WHERE block_id IN (uuid-2, uuid-6, ...)
-SELECT * FROM KBTable WHERE owner_id IN (uuid-1, uuid-2, ...)
+SELECT * FROM KBLifecycleHistory WHERE data_id IN (uuid-1, uuid-2, ...)
 ```
 
 ### Rules
@@ -274,9 +299,9 @@ Sets `is_deleted = True`. Fails with `400` if the table has no `is_deleted` colu
 
 ```python
 from basemodel.services_databaseconnector.postgres_model import KBDataDelete
-from services.database_connector.postgres_connector import soft_delete
+from services.database_connector.postgres_connector import client
 
-result = await soft_delete(client, KBDataDelete(
+result = await client.soft_delete(KBDataDelete(
     tenant_id="tenant-uuid",
     data_id="data-uuid",
 ))
@@ -286,7 +311,7 @@ Tables without `tenant_id`:
 ```python
 from basemodel.services_databaseconnector.postgres_model import KBTextBlockVersionDelete
 
-result = await soft_delete(client, KBTextBlockVersionDelete(
+result = await client.soft_delete(KBTextBlockVersionDelete(
     version_id="version-uuid",
 ))
 ```
@@ -312,9 +337,9 @@ Hard DELETE — permanent. All non-null fields in the model become WHERE conditi
 
 ```python
 from basemodel.services_databaseconnector.postgres_model import KBNeo4jRelationshipDelete
-from services.database_connector.postgres_connector import delete
+from services.database_connector.postgres_connector import client
 
-result = await delete(client, KBNeo4jRelationshipDelete(
+result = await client.delete(KBNeo4jRelationshipDelete(
     from_node="node-uuid-a",
     to_node="node-uuid-b",
 ))
@@ -339,10 +364,10 @@ result.error = "..."
 Purges all rows where `is_deleted = True` from a table. Fails with `400` if the table has no `is_deleted` column.
 
 ```python
-from services.database_connector.postgres_connector import flush
+from services.database_connector.postgres_connector import client
 
-result = await flush(client, "KBData")
-result = await flush(client, "KBTextBlockVersion")
+result = await client.flush("KBData")
+result = await client.flush("KBTextBlockVersion")
 ```
 
 ### Output
@@ -368,6 +393,44 @@ class ResponseModel(BaseModel):
     code: int          # 200 OK | 400 bad input | 404 not found | 409 conflict
     data: Any = None   # insert → {pk: value} | read → list[dict] | read_deep → list[nested dict]
     error: str = None  # set on failure
+```
+
+---
+
+## Code layout
+
+```
+postgres_connector.py
+│
+├── Module-level helpers (private, not for import)
+│     _orm_to_dict()          — ORM row → flat dict
+│     _orm_to_dict_deep()     — ORM row → nested dict (follows loaded relationships)
+│     _rel_key_to()           — resolve relationship attribute name between two ORM classes
+│     _build_load_option()    — build selectinload chain from dot-path string
+│     _resolve()              — look up table name + ORM class from a registered model
+│     _prepare_insert()       — compile INSERT from an Insert model
+│     _prepare_read()         — compile SELECT from ReadJoinRequest
+│     _prepare_deep_search()  — compile SELECT + selectinload from SelectInLoadRequest
+│     _prepare_soft_delete()  — compile UPDATE is_deleted=True from a Delete model
+│     _prepare_delete()       — compile DELETE from a Delete model
+│     _prepare_flush()        — compile DELETE WHERE is_deleted=True for a table
+│
+├── class PostgresClient      — stateful: holds engine, session factory, health flag
+│     set_url()               — configure async DSN before open()
+│     open()                  — create engine, verify connection, retry on failure
+│     close()                 — dispose engine gracefully
+│     health_check_loop()     — background SELECT 1 loop; reconnects on failure
+│     is_healthy()            — last health check result
+│     is_connected()          — engine is up
+│     get_client()            — returns a new AsyncSession (use as async context manager)
+│     insert()                — calls _prepare_insert → session.add → commit
+│     read()                  — calls _prepare_read → session.execute → mappings
+│     read_deep()             — calls _prepare_deep_search → scalars + selectinload
+│     soft_delete()           — calls _prepare_soft_delete → session.execute → commit
+│     delete()                — calls _prepare_delete → session.execute → commit
+│     flush()                 — calls _prepare_flush → session.execute → commit
+│
+└── client = PostgresClient() — module-level singleton; import and use directly
 ```
 
 ---
