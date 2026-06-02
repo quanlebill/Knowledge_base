@@ -10,6 +10,10 @@ import { cn } from '../../../lib/utils';
 import { AgentType, AgentStatus } from '../../../types/agent';
 import { MOCK_AGENTS } from '../../../constants/agentMock';
 
+const FLOW_BUILDER_URL = (import.meta as any).env?.VITE_FLOW_BUILDER_URL ?? 'http://localhost:8002';
+
+interface ApiAgent { id: string; name: string; description: string; published_version_id: string | null; draft_version_id: string | null; created_at: string; }
+
 interface OverviewProps {
   onNewAgent: () => void;
   onOpenCLI: () => void;
@@ -28,6 +32,14 @@ export const AgentRegistryOverview: React.FC<OverviewProps> = ({
   const [cloneTarget, setCloneTarget] = useState<{ id: string; name: string } | null>(null);
   const [cloneModalName, setCloneModalName] = useState('');
   const [toast, setToast] = useState<string | null>(null);
+  const [apiAgents, setApiAgents] = useState<ApiAgent[]>([]);
+
+  useEffect(() => {
+    fetch(`${FLOW_BUILDER_URL}/api/agents`)
+      .then(r => r.json())
+      .then((d: ApiAgent[]) => setApiAgents(Array.isArray(d) ? d : []))
+      .catch(() => {});
+  }, []);
 
   const handleMenuOpen = useCallback((e: React.MouseEvent<HTMLButtonElement>, id: string) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -56,10 +68,10 @@ export const AgentRegistryOverview: React.FC<OverviewProps> = ({
   }, [cloneTarget]);
 
   const stats = {
-    total:     MOCK_AGENTS.length,
-    active:    MOCK_AGENTS.filter(a => a.status === 'ACTIVE').length,
-    failed:    MOCK_AGENTS.filter(a => a.status === 'FAILED').length,
-    totalCost: MOCK_AGENTS.reduce((acc, c) => acc + c.cost, 0).toFixed(2),
+    total:     apiAgents.length,
+    active:    apiAgents.filter(a => a.published_version_id).length,
+    failed:    0,
+    totalCost: '--',
   };
 
   const getStatusStyle = (status: AgentStatus) => {
@@ -165,88 +177,47 @@ export const AgentRegistryOverview: React.FC<OverviewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-[#BFA66A]/15">
-              {MOCK_AGENTS.map(agent => (
+              {apiAgents.length === 0 && (
+                <tr><td colSpan={7} className="px-5 py-10 text-center text-sm text-[#8A8A7A]">
+                  {'Chưa có agent nào. Bấm + New Agent để tạo.'}
+                </td></tr>
+              )}
+              {apiAgents.map(agent => (
                 <tr
                   key={agent.id}
                   onClick={() => onSelectAgent(agent.id)}
                   className="hover:bg-[#FFF9E8] transition-colors cursor-pointer group"
                 >
-                  {/* Agent identity */}
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-3">
-                      <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center border shrink-0', getStatusStyle(agent.status))}>
-                        {getTypeIcon(agent.type)}
+                      <div className="w-9 h-9 rounded-xl flex items-center justify-center border shrink-0 bg-blue-50 border-blue-200 text-blue-600">
+                        <Bot className="w-4 h-4" />
                       </div>
                       <div>
                         <div className="font-semibold text-[#111111] text-sm leading-snug">{agent.name}</div>
-                        <div className="flex items-center gap-1 mt-0.5">
-                          <span className="text-[10px] font-mono text-[#B88719]">{agent.id}</span>
-                          <span className="text-[#BFA66A]/50">Â·</span>
-                          <span className="text-[10px] font-mono text-[#8A8A7A]">v{agent.version}</span>
-                        </div>
-                        <div className="text-[10px] text-[#8A8A7A] italic mt-0.5 truncate max-w-[180px]">{agent.owner}</div>
+                        <div className="text-[10px] font-mono text-[#B88719] mt-0.5">{agent.id.slice(0, 8)}...</div>
+                        <div className="text-[10px] text-[#8A8A7A] italic mt-0.5 truncate max-w-[180px]">{agent.description || '--'}</div>
                       </div>
                     </div>
                   </td>
-
-                  {/* Environment */}
                   <td className="px-5 py-4">
-                    <div className="text-sm font-semibold text-[#2A2A2A] leading-snug">{agent.project}</div>
-                    <div className="inline-block mt-1 px-2 py-0.5 text-[9px] font-bold tracking-widest uppercase rounded bg-[#F3E2A7] text-[#7C5A0E] border border-[#BFA66A]/40">
-                      {agent.environment}
-                    </div>
+                    <div className="text-sm font-semibold text-[#2A2A2A] leading-snug">Dev</div>
+                    <div className="inline-block mt-1 px-2 py-0.5 text-[9px] font-bold tracking-widest uppercase rounded bg-[#F3E2A7] text-[#7C5A0E] border border-[#BFA66A]/40">LOCAL</div>
                   </td>
-
-                  {/* KB */}
-                  <td className="px-5 py-4">
-                    <div className="flex items-center gap-1.5">
-                      <Database className="w-3 h-3 text-[#B88719] shrink-0" />
-                      <span className="text-[11px] font-mono text-[#2A2A2A] truncate max-w-[120px]">
-                        {agent.kbConnection === 'none' ? <span className="text-[#8A8A7A] italic">â€”</span> : agent.kbConnection}
-                      </span>
-                    </div>
-                  </td>
-
-                  {/* Latency / Health */}
-                  <td className="px-5 py-4">
-                    <div className="flex items-center gap-1.5 mb-1.5">
-                      <Zap className="w-3 h-3 text-[#B88719] shrink-0" />
-                      <span className="text-xs font-mono font-semibold text-[#2A2A2A]">{agent.latency}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-20 h-1.5 rounded-full bg-[#F0E8D5] overflow-hidden">
-                        <div
-                          className={cn('h-full rounded-full', agent.healthScore >= 95 ? 'bg-emerald-500' : agent.healthScore >= 80 ? 'bg-amber-500' : 'bg-red-500')}
-                          style={{ width: `${agent.healthScore}%` }}
-                        />
-                      </div>
-                      <span className={cn('text-[10px] font-bold', agent.healthScore >= 95 ? 'text-emerald-600' : agent.healthScore >= 80 ? 'text-amber-600' : 'text-red-600')}>
-                        {agent.healthScore}%
-                      </span>
-                    </div>
-                  </td>
-
-                  {/* Error rate */}
+                  <td className="px-5 py-4"><span className="text-[#8A8A7A] italic text-[11px]">--</span></td>
+                  <td className="px-5 py-4"><span className="text-[#8A8A7A] italic text-[11px]">--</span></td>
+                  <td className="px-5 py-4"><span className="text-[#8A8A7A] italic text-[11px]">--</span></td>
                   <td className="px-5 py-4">
                     <span className={cn(
-                      'text-sm font-bold font-mono',
-                      agent.errorRate === 0 ? 'text-emerald-600' : agent.errorRate > 5 ? 'text-red-600' : 'text-amber-600',
+                      'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wide border',
+                      agent.published_version_id
+                        ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                        : 'bg-gray-100 text-gray-500 border-gray-200',
                     )}>
-                      {agent.errorRate === 0 ? '0%' : `${agent.errorRate}%`}
-                    </span>
-                    <div className="text-[9px] text-[#8A8A7A] uppercase tracking-wide mt-0.5 font-semibold">Last: {agent.lastRun}</div>
-                  </td>
-
-                  {/* Status */}
-                  <td className="px-5 py-4">
-                    <span className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wide border', getStatusStyle(agent.status))}>
-                      {agent.status === 'ACTIVE' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />}
-                      {agent.status === 'FAILED' && <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />}
-                      {agent.status.replace('_', ' ')}
+                      {agent.published_version_id && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />}
+                      {agent.published_version_id ? 'Published' : 'Draft'}
                     </span>
                   </td>
-
-                  {/* Actions */}
                   <td className="px-5 py-4 text-right">
                     <button
                       onMouseDown={(e) => e.stopPropagation()}
@@ -269,7 +240,7 @@ export const AgentRegistryOverview: React.FC<OverviewProps> = ({
             style={{ position: 'fixed', top: menuPos.top, right: menuPos.right, zIndex: 9999 }}
             className="w-44 bg-white border border-[#BFA66A]/50 rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-100"
           >
-            {MOCK_AGENTS.filter(a => a.id === openMenuId).map(agent => (
+            {apiAgents.filter(a => a.id === openMenuId).map(agent => (
               <React.Fragment key={agent.id}>
                 <button
                   onClick={() => setOpenMenuId(null)}
@@ -372,7 +343,7 @@ export const AgentRegistryOverview: React.FC<OverviewProps> = ({
                   <X className="w-4 h-4" />
                 </button>
               </div>
-              <p className="text-xs text-[#8A8A7A] mb-4">Nháº­p tÃªn cho agent má»›i Ä‘Æ°á»£c clone tá»« <span className="font-semibold text-[#2A2A2A]">{cloneTarget.name}</span></p>
+              <p className="text-xs text-[#8A8A7A] mb-4">Nháº­p tÃªn cho agent má»›i Ä'Æ°á»£c clone tá»« <span className="font-semibold text-[#2A2A2A]">{cloneTarget.name}</span></p>
               <input
                 autoFocus
                 type="text"

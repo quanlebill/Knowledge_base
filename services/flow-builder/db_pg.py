@@ -49,8 +49,8 @@ async def create_agent(name: str, description: str, tenant_id: str) -> dict:
 
             workflow = await conn.fetchrow(
                 """
-                INSERT INTO workflows (agent_id, name)
-                VALUES ($1::uuid, 'Default Workflow')
+                INSERT INTO workflows (agent_id, name, description)
+                VALUES ($1::uuid, 'Default Workflow', '')
                 RETURNING id
                 """,
                 agent_id,
@@ -107,17 +107,22 @@ async def list_agents(tenant_id: str) -> list[dict]:
 async def get_agent(agent_id: str) -> Optional[dict]:
     row = await _pool.fetchrow(
         """
-        SELECT id, name, description, published_version_id, draft_version_id,
-               tenant_id, created_at, updated_at
-        FROM agents
-        WHERE id = $1::uuid AND deleted_at IS NULL
+        SELECT a.id, a.name, a.description, a.published_version_id, a.draft_version_id,
+               a.tenant_id, a.created_at, a.updated_at,
+               w.id AS active_workflow_id,
+               w.name AS active_workflow_name
+        FROM agents a
+        LEFT JOIN agent_versions av ON av.id = a.published_version_id
+        LEFT JOIN workflow_versions wv ON wv.id = av.workflow_version_id
+        LEFT JOIN workflows w ON w.id = wv.workflow_id
+        WHERE a.id = $1::uuid AND a.deleted_at IS NULL
         """,
         agent_id,
     )
     return dict(row) if row else None
 
 
-async def create_workflow(agent_id: str, name: str, description: str) -> dict:
+async def create_workflow(agent_id: str, name: str, description: str = "") -> dict:
     async with _pool.acquire() as conn:
         async with conn.transaction():
             wf = await conn.fetchrow(
@@ -147,7 +152,7 @@ async def list_workflows(agent_id: str) -> list[dict]:
     rows = await _pool.fetch(
         """
         SELECT
-            w.id, w.name, w.description, w.created_at,
+            w.id, w.name, w.description, w.is_active, w.created_at,
             (SELECT id FROM workflow_versions
              WHERE workflow_id = w.id AND status = 'draft'
              ORDER BY version DESC LIMIT 1) AS draft_version_id,
@@ -155,12 +160,91 @@ async def list_workflows(agent_id: str) -> list[dict]:
              WHERE workflow_id = w.id AND status = 'published'
              ORDER BY version DESC LIMIT 1) AS published_version_id
         FROM workflows w
-        WHERE w.agent_id = $1::uuid AND w.is_active = true
+        WHERE w.agent_id = $1::uuid
         ORDER BY w.created_at DESC
         """,
         agent_id,
     )
     return [dict(r) for r in rows]
+
+
+async def update_agent_draft(agent_id: str, fields: dict) -> dict:
+    """Update agent name/description và draft agent_version config."""
+    async with _pool.acquire() as conn:
+        async with conn.transaction():
+            # Update agents table
+            agent_fields = {k: v for k, v in fields.items() if k in ("name", "description")}
+            if agent_fields:
+                sets = ", ".join(f"{k} = ${i+2}" for i, k in enumerate(agent_fields))
+                await conn.execute(
+                    f"UPDATE agents SET {sets}, updated_at = now() WHERE id = $1::uuid",
+                    agent_id, *agent_fields.values(),
+                )
+
+            # Update draft agent_version
+            av_fields = {k: v for k, v in fields.items()
+                         if k in ("responder_model_id", "system_prompt_id", "guardrail_id", "memory_enabled")}
+            if av_fields:
+                sets = []
+                vals = [agent_id]
+                for i, (k, v) in enumerate(av_fields.items(), start=2):
+                    if k in ("responder_model_id", "system_prompt_id", "guardrail_id"):
+                        sets.append(f"{k} = ${i}::uuid")
+                    else:
+                        sets.append(f"{k} = ${i}")
+                    vals.append(v)
+                await conn.execute(
+                    f"UPDATE agent_versions SET {', '.join(sets)} WHERE agent_id = $1::uuid AND status = 'draft'",
+                    *vals,
+                )
+
+    return {"agent_id": agent_id, "updated": list(fields.keys())}
+
+
+async def publish_workflow_version(workflow_version_id: str) -> dict:
+    """Publish 1 draft workflow_version → status = published."""
+    async with _pool.acquire() as conn:
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                "SELECT id, workflow_id, status FROM workflow_versions WHERE id = $1::uuid",
+                workflow_version_id,
+            )
+            if not row:
+                raise ValueError("workflow_version not found")
+            if row["status"] == "published":
+                raise ValueError("already published")
+
+            # Archive old published versions of same workflow
+            await conn.execute(
+                """UPDATE workflow_versions SET status = 'archived'
+                   WHERE workflow_id = $1::uuid AND status = 'published'""",
+                str(row["workflow_id"]),
+            )
+            # Publish this version
+            await conn.execute(
+                "UPDATE workflow_versions SET status = 'published', published_at = now() WHERE id = $1::uuid",
+                workflow_version_id,
+            )
+    return {"workflow_version_id": workflow_version_id, "status": "published"}
+
+
+async def unpublish_workflow_version(workflow_version_id: str) -> dict:
+    """Set published workflow_version back to draft."""
+    async with _pool.acquire() as conn:
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                "SELECT id, status FROM workflow_versions WHERE id = $1::uuid",
+                workflow_version_id,
+            )
+            if not row:
+                raise ValueError("workflow_version not found")
+            if row["status"] != "published":
+                raise ValueError("not published")
+            await conn.execute(
+                "UPDATE workflow_versions SET status = 'draft', published_at = NULL WHERE id = $1::uuid",
+                workflow_version_id,
+            )
+    return {"workflow_version_id": workflow_version_id, "status": "draft"}
 
 
 async def publish_agent(agent_id: str, workflow_id: str) -> dict:

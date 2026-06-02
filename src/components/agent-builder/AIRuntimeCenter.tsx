@@ -38,7 +38,6 @@ const AIRuntimeCenter = () => {
   const pillTabs = [
     { id: 'PLAYGROUND',    label: 'Playground',    icon: MessageSquare },
     { id: 'AGENTS',        label: 'Agents',        icon: Bot },
-    { id: 'WORKFLOWS',     label: 'Workflows',     icon: Layers },
     { id: 'CONVERSATIONS', label: 'Conversations', icon: MessageCircle },
     { id: 'LOGS',          label: 'Logs',          icon: ScrollText },
     { id: 'CLI',           label: 'CLI',           icon: Terminal },

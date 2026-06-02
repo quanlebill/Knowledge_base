@@ -8,6 +8,7 @@ import { TraceExplorer } from './AgentTraces';
 import { ProvisioningView } from './AgentProvisioning';
 import { RunRegistry } from './AgentRuns';
 import { AgentDetailView } from './AgentDetail';
+import { AgentDetailPage } from './AgentDetailPage';
 import { DetailDrawer } from '../../shared/DetailDrawer';
 import { Bot, Terminal, Sliders, Activity, Zap, Plus, Settings } from 'lucide-react';
 import { cn } from '../../../lib/utils';
@@ -55,9 +56,22 @@ export const AgentRuntimeView = ({
     onProvisionClose?.();
   };
 
-  const handleSelectAgent = (id: string) => setSelectedAgentId(id);
+  const handleSelectAgent = (id: string) => {
+    setSelectedAgentId(id);
+    setView('OVERVIEW'); // stay in OVERVIEW but show detail
+  };
 
   const renderView = () => {
+    // Agent Detail — full page, replaces list
+    if (selectedAgentId && view === 'OVERVIEW') {
+      return (
+        <AgentDetailPage
+          agentId={selectedAgentId}
+          onBack={() => setSelectedAgentId(null)}
+        />
+      );
+    }
+
     switch (view) {
       case 'CLI':     return <CLIScreen />;
       case 'CONFIG':  return <ConfigRegistry />;
@@ -128,7 +142,7 @@ export const AgentRuntimeView = ({
       </DetailDrawer>
 
       <DetailDrawer
-        isOpen={!!selectedAgentId}
+        isOpen={false}
         onClose={() => setSelectedAgentId(null)}
         title={selectedAgentId ? `Agent: ${selectedAgentId}` : 'Agent Detail'}
         subtitle="Control Plane â€¢ Production Runtime â€¢ V2.0"

@@ -102,17 +102,16 @@ def upgrade() -> None:
         )
     """))
 
+    # Tools: platform-level only, no tenant_id or scope
     op.execute(DDL("""
         CREATE TABLE IF NOT EXISTS tools (
-          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-          tenant_id uuid NOT NULL REFERENCES tenants(id),
-          scope varchar NOT NULL DEFAULT 'tenant',
-          name varchar NOT NULL,
+          id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          name        varchar NOT NULL,
           description text,
-          type varchar NOT NULL,
-          status varchar DEFAULT 'active',
-          created_by uuid REFERENCES members(id),
-          created_at timestamp DEFAULT now()
+          type        varchar NOT NULL,
+          status      varchar DEFAULT 'active',
+          created_by  uuid REFERENCES members(id),
+          created_at  timestamp DEFAULT now()
         )
     """))
 
@@ -163,6 +162,7 @@ def upgrade() -> None:
           changelog varchar,
           created_by uuid REFERENCES members(id),
           published_at timestamp,
+          created_at timestamp DEFAULT now(),
           UNIQUE (agent_id, version)
         )
     """))
@@ -179,24 +179,27 @@ def upgrade() -> None:
 
     op.execute(DDL("""
         CREATE TABLE IF NOT EXISTS workflows (
-          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-          agent_id uuid NOT NULL REFERENCES agents(id),
-          name varchar NOT NULL,
-          created_at timestamp DEFAULT now(),
-          updated_at timestamp DEFAULT now()
+          id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          agent_id    uuid NOT NULL REFERENCES agents(id),
+          name        varchar NOT NULL,
+          description varchar,
+          is_active   boolean NOT NULL DEFAULT true,
+          created_by  uuid REFERENCES members(id),
+          created_at  timestamp DEFAULT now(),
+          updated_at  timestamp DEFAULT now()
         )
     """))
 
     op.execute(DDL("""
         CREATE TABLE IF NOT EXISTS workflow_versions (
-          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
           workflow_id uuid NOT NULL REFERENCES workflows(id),
-          version integer NOT NULL,
-          status varchar NOT NULL DEFAULT 'draft',
-          changelog varchar,
-          created_by uuid REFERENCES members(id),
+          version     integer NOT NULL,
+          status      varchar NOT NULL DEFAULT 'draft',
+          changelog   varchar,
+          created_by  uuid REFERENCES members(id),
           published_at timestamp,
-          created_at timestamp DEFAULT now(),
+          created_at  timestamp DEFAULT now(),
           UNIQUE (workflow_id, version)
         )
     """))
@@ -358,24 +361,17 @@ def upgrade() -> None:
         )
     """))
 
-    # Indexes — agents
+    # ── Indexes ──────────────────────────────────────────────────────────────
     op.execute(DDL("CREATE INDEX IF NOT EXISTS idx_agents_tenant ON agents (tenant_id) WHERE deleted_at IS NULL"))
     op.execute(DDL("CREATE INDEX IF NOT EXISTS idx_agents_tenant_active ON agents (tenant_id, is_active)"))
-    # Indexes — agent_versions
     op.execute(DDL("CREATE INDEX IF NOT EXISTS idx_agent_versions_agent ON agent_versions (agent_id, status)"))
-    # Indexes — conversations
     op.execute(DDL("CREATE INDEX IF NOT EXISTS idx_conversations_tenant ON conversations (tenant_id)"))
     op.execute(DDL("CREATE INDEX IF NOT EXISTS idx_conversations_agent_version ON conversations (agent_version_id)"))
-    # Indexes — agent_traces
     op.execute(DDL("CREATE INDEX IF NOT EXISTS idx_agent_traces_message ON agent_traces (message_id)"))
-    # Indexes — kb_connections, tools, mcp, system_prompts (all tenant-scoped)
     op.execute(DDL("CREATE INDEX IF NOT EXISTS idx_kb_connections_tenant ON kb_connections (tenant_id)"))
-    op.execute(DDL("CREATE INDEX IF NOT EXISTS idx_tools_tenant ON tools (tenant_id)"))
     op.execute(DDL("CREATE INDEX IF NOT EXISTS idx_mcp_tenant ON mcp (tenant_id)"))
     op.execute(DDL("CREATE INDEX IF NOT EXISTS idx_system_prompts_tenant ON system_prompts (tenant_id)"))
-    # Indexes — workflows
     op.execute(DDL("CREATE INDEX IF NOT EXISTS idx_workflows_agent ON workflows (agent_id)"))
-    # Indexes for agent_memories
     op.execute(DDL("""
         CREATE INDEX IF NOT EXISTS idx_agent_memories_expires
           ON agent_memories(expires_at) WHERE expires_at IS NOT NULL
@@ -383,14 +379,6 @@ def upgrade() -> None:
     op.execute(DDL("""
         CREATE INDEX IF NOT EXISTS idx_agent_memories_deleted
           ON agent_memories(deleted_at) WHERE deleted_at IS NOT NULL
-    """))
-    op.execute(DDL("""
-        CREATE INDEX IF NOT EXISTS idx_agent_memories_deleted_at
-          ON agent_memories (deleted_at) WHERE deleted_at IS NOT NULL
-    """))
-    op.execute(DDL("""
-        CREATE INDEX IF NOT EXISTS idx_agent_memories_expires_at
-          ON agent_memories (expires_at) WHERE expires_at IS NOT NULL
     """))
     op.execute(DDL("""
         CREATE INDEX IF NOT EXISTS idx_agent_memories_tenant_agent
