@@ -26,13 +26,20 @@ from memory_middleware import (
     init_qdrant, close_qdrant,
     _DEV_AGENT_ID, _DEV_TENANT_ID,
 )
+from mongo_client import init_mongo, close_mongo
+
+# Graph cache per agent_id — rebuild khi config thay đổi
+_graph_cache: dict[str, object] = {}
+_default_graph = build_graph()  # fallback khi DB không có published version
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
     await init_qdrant()
-    _graph  # ensure graph is built before first request
+    await init_mongo()
     yield
+    await close_mongo()
     await close_qdrant()
     await close_db()
 
@@ -52,8 +59,6 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-Conversation-Id"],
 )
-
-_graph = build_graph()
 
 
 class Message(BaseModel):
@@ -113,8 +118,17 @@ def get_system_prompts(request: Request):
 
 @app.post("/api/conversations/run")
 async def run_conversation(req: RunRequest, request: Request):
-    cfg      = load_agent_config(req.agent_id)
+    cfg      = await load_agent_config(req.agent_id)
     agent_id = cfg.get("agent_id", _DEV_AGENT_ID)
+
+    # Build hoặc lấy graph từ cache
+    flow_nodes = cfg.get("flow_nodes") or []
+    if flow_nodes:
+        if req.agent_id not in _graph_cache:
+            _graph_cache[req.agent_id] = build_graph(flow_nodes)
+        _graph = _graph_cache[req.agent_id]
+    else:
+        _graph = _default_graph
     tenant_id = request.headers.get("X-Tenant-ID", _DEV_TENANT_ID)
 
     if not await validate_agent_tenant(agent_id, tenant_id):

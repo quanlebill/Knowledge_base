@@ -98,6 +98,21 @@ services:
       litellm:
         condition: service_started
 
+  flow-builder:
+    build: ../services/flow-builder
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    env_file: ../.env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-dev123}@postgres:5432/dataagent
+      MONGODB_URL: mongodb://mongodb:27017/dataagent
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_started
+
   qdrant:
     image: qdrant/qdrant:v1.13.6
     restart: unless-stopped
