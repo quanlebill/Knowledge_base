@@ -1,4 +1,5 @@
 import os
+import json
 import logging
 import asyncpg
 from typing import Optional
@@ -211,8 +212,11 @@ async def publish_agent(agent_id: str, workflow_id: str) -> dict:
             system_prompt_id   = str(av_draft["system_prompt_id"]) if av_draft and av_draft["system_prompt_id"] else None
             guardrail_id       = str(av_draft["guardrail_id"]) if av_draft and av_draft["guardrail_id"] else None
             memory_enabled     = av_draft["memory_enabled"] if av_draft else False
-            llm_config         = dict(av_draft["llm_config"]) if av_draft and av_draft["llm_config"] else {}
-            retrieval_config   = dict(av_draft["retrieval_config"]) if av_draft and av_draft["retrieval_config"] else {}
+            def _to_dict(v):
+                if not v: return {}
+                return json.loads(v) if isinstance(v, str) else dict(v)
+            llm_config       = _to_dict(av_draft["llm_config"])
+            retrieval_config = _to_dict(av_draft["retrieval_config"])
 
             new_av = await conn.fetchrow(
                 """
@@ -225,8 +229,8 @@ async def publish_agent(agent_id: str, workflow_id: str) -> dict:
                 """,
                 agent_id, new_version, wv_id, responder_model_id,
                 system_prompt_id, guardrail_id, memory_enabled,
-                llm_config if llm_config else None,
-                retrieval_config if retrieval_config else None,
+                json.dumps(llm_config) if llm_config else None,
+                json.dumps(retrieval_config) if retrieval_config else None,
             )
             new_av_id = str(new_av["id"])
 

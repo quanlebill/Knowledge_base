@@ -81,7 +81,12 @@ def _build_default_graph():
 
 
 def _build_dynamic_graph(flow_nodes: list[dict]):
-    node_types = {n.get("type") for n in flow_nodes if n.get("type") in NODE_TYPE_MAP}
+    # Canvas lưu type React Flow ("flowNode"), nodeType thật nằm trong data.nodeType
+    node_types = {
+        (n.get("data", {}).get("nodeType") or n.get("type", ""))
+        for n in flow_nodes
+        if (n.get("data", {}).get("nodeType") or n.get("type", "")) in NODE_TYPE_MAP
+    }
 
     builder = StateGraph(AgentState)
 

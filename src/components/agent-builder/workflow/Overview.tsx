@@ -33,6 +33,24 @@ import ExecutionCenter from './ExecutionCenter';
 import SchedulingCenter from './SchedulingCenter';
 import WorkflowObservability from './Observability';
 
+const FLOW_BUILDER_URL = (import.meta as any).env?.VITE_FLOW_BUILDER_URL ?? 'http://localhost:8002';
+
+interface ApiAgent {
+  id: string;
+  name: string;
+  description: string;
+  published_version_id: string | null;
+  draft_version_id: string | null;
+  created_at: string;
+}
+
+interface ApiWorkflow {
+  id: string;
+  name: string;
+  draft_version_id: string | null;
+  published_version_id: string | null;
+}
+
 // â”€â”€â”€ Mock Data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const MOCK_WORKFLOWS: Workflow[] = [
@@ -250,6 +268,92 @@ const WorkflowEngine = () => {
   const [cloneTarget, setCloneTarget] = useState<Workflow | null>(null);
   const [cloneModalName, setCloneModalName] = useState('');
 
+  // ── Real API state ──────────────────────────────────────────────────────────
+  const [apiAgents, setApiAgents] = useState<ApiAgent[]>([]);
+  const [builderAgentId, setBuilderAgentId] = useState<string | undefined>();
+  const [builderWorkflowVersionId, setBuilderWorkflowVersionId] = useState<string | undefined>();
+  const [creating, setCreating] = useState(false);
+  const [createName, setCreateName] = useState('');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [publishing, setPublishing] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(`${FLOW_BUILDER_URL}/api/agents`)
+      .then(r => r.json())
+      .then((data: ApiAgent[]) => setApiAgents(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, []);
+
+  const handleCreateAgent = async () => {
+    if (!createName.trim()) return;
+    setCreating(true);
+    try {
+      const res = await fetch(`${FLOW_BUILDER_URL}/api/agents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: createName.trim(), description: '' }),
+      });
+      const data = await res.json();
+      setApiAgents(prev => [...prev, {
+        id: data.agent_id,
+        name: createName.trim(),
+        description: '',
+        published_version_id: null,
+        draft_version_id: data.agent_version_id,
+        created_at: new Date().toISOString(),
+      }]);
+      setBuilderAgentId(data.agent_id);
+      setBuilderWorkflowVersionId(data.workflow_version_id);
+      setShowCreateModal(false);
+      setCreateName('');
+      setSelectedWorkflow(null);
+      setBuilderSource('REGISTRY');
+      setActiveTab('BUILDER');
+    } catch {
+      setToast('Tạo agent thất bại');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleEditAgent = async (agent: ApiAgent) => {
+    try {
+      const res = await fetch(`${FLOW_BUILDER_URL}/api/agents/${agent.id}`);
+      const data = await res.json();
+      const workflows: ApiWorkflow[] = data.workflows ?? [];
+      const wv = workflows[0]?.draft_version_id ?? null;
+      setBuilderAgentId(agent.id);
+      setBuilderWorkflowVersionId(wv ?? undefined);
+      setSelectedWorkflow(null);
+      setBuilderSource('REGISTRY');
+      setActiveTab('BUILDER');
+    } catch {
+      setToast('Không thể mở agent');
+    }
+  };
+
+  const handlePublishAgent = async (agent: ApiAgent) => {
+    setPublishing(agent.id);
+    try {
+      const agentDetail = await fetch(`${FLOW_BUILDER_URL}/api/agents/${agent.id}`).then(r => r.json());
+      const workflows: ApiWorkflow[] = agentDetail.workflows ?? [];
+      if (!workflows[0]) { setToast('Không có workflow để publish'); return; }
+      await fetch(`${FLOW_BUILDER_URL}/api/agents/${agent.id}/publish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workflow_id: workflows[0].id }),
+      });
+      setToast(`✓ "${agent.name}" đã publish`);
+      // Refresh list
+      const updated = await fetch(`${FLOW_BUILDER_URL}/api/agents`).then(r => r.json());
+      setApiAgents(Array.isArray(updated) ? updated : []);
+    } catch {
+      setToast('Publish thất bại');
+    } finally {
+      setPublishing(null);
+    }
+  };
+
   const handleMenuOpen = useCallback((e: React.MouseEvent<HTMLButtonElement>, id: string) => {
     const rect = e.currentTarget.getBoundingClientRect();
     setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
@@ -282,7 +386,7 @@ const WorkflowEngine = () => {
     setActiveTab('EXECUTIONS');
   };
 
-  const handleNewWorkflow = () => setActiveTab('TEMPLATE_PICKER');
+  const handleNewWorkflow = () => { setCreateName(''); setShowCreateModal(true); };
 
   const handleTemplateSelect = (t: TemplateId) => {
     setSelectedTemplate(t);
@@ -299,6 +403,8 @@ const WorkflowEngine = () => {
 
   const handleBuilderClose = () => {
     setSelectedWorkflow(null);
+    setBuilderAgentId(undefined);
+    setBuilderWorkflowVersionId(undefined);
     setActiveTab(builderSource);
   };
 
@@ -317,7 +423,7 @@ const WorkflowEngine = () => {
         <table className="w-full text-left">
           <thead>
             <tr className="border-b border-[#BFA66A]/30 bg-[#FFF9E8]">
-              {['Workflow / Type', 'Tenant & Environment', 'Status / Version', 'Performance', 'Last Activity', 'Actions'].map((h, i) => (
+              {['Agent / Description', 'Status', 'Created', 'Actions'].map((h, i) => (
                 <th key={h} className={`px-5 py-3 text-[10px] font-bold text-[#5A5A5A] uppercase tracking-wider ${i === 5 ? 'text-right' : ''} ${i === 0 ? 'rounded-tl-xl' : ''} ${i === 5 ? 'rounded-tr-xl' : ''}`}>
                   {h}
                 </th>
@@ -325,97 +431,65 @@ const WorkflowEngine = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-[#BFA66A]/15">
-            {MOCK_WORKFLOWS.map((wf) => (
+            {apiAgents.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-5 py-10 text-center text-sm text-[#8A8A7A]">
+                  Chưa có agent nào. Bấm "+ New Agent" để tạo.
+                </td>
+              </tr>
+            )}
+            {apiAgents.map((agent) => (
               <motion.tr
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
-                key={wf.id}
+                key={agent.id}
                 className="hover:bg-[#FFF9E8] transition-colors"
               >
                 <td className="px-5 py-4">
                   <div className="flex items-center gap-3">
-                    <div className={`p-2.5 rounded-xl border ${
-                      wf.type === WorkflowType.MULTI_AGENT ? 'bg-blue-50 border-blue-200 text-blue-600' :
-                      wf.type === WorkflowType.KB_PIPELINE ? 'bg-emerald-50 border-emerald-200 text-emerald-600' :
-                                                              'bg-amber-50 border-amber-200 text-amber-600'
-                    }`}>
+                    <div className="p-2.5 rounded-xl border bg-blue-50 border-blue-200 text-blue-600">
                       <GitMerge className="w-4 h-4" />
                     </div>
                     <div>
                       <div
                         className="text-[#111111] font-semibold text-sm mb-0.5 hover:text-[#B88719] transition-colors cursor-pointer"
-                        onClick={() => handleEditWorkflow(wf)}
+                        onClick={() => handleEditAgent(agent)}
                       >
-                        {wf.name}
+                        {agent.name}
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-semibold text-[#8A8A7A] uppercase tracking-wider">
-                          {wf.type.replace(/_/g, ' ')}
-                        </span>
-                        {wf.tags.slice(0, 1).map(tag => (
-                          <span key={tag} className="text-[9px] px-1.5 py-0.5 bg-[#F3E2A7] text-[#7C5A0E] rounded border border-[#BFA66A]/40">
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
+                      <div className="text-[10px] text-[#8A8A7A]">{agent.description || '—'}</div>
                     </div>
                   </div>
                 </td>
 
                 <td className="px-5 py-4">
-                  <div className="text-sm font-semibold text-[#2A2A2A]">{wf.tenant}</div>
-                  <div className="text-[10px] text-[#8A8A7A] font-semibold uppercase tracking-tight mt-0.5">{wf.project}</div>
-                </td>
-
-                <td className="px-5 py-4">
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className={`w-1.5 h-1.5 rounded-full ${
-                      wf.status === WorkflowStatus.PUBLISHED ? 'bg-emerald-500' :
-                      wf.status === WorkflowStatus.ERROR     ? 'bg-red-500' : 'bg-gray-400'
-                    }`} />
-                    <span className="text-xs font-bold text-[#111111] uppercase tracking-tight">{wf.status}</span>
-                  </div>
-                  <div className="text-xs text-[#B88719] font-mono">{wf.version}</div>
-                </td>
-
-                <td className="px-5 py-4">
-                  <div className="flex items-center gap-4">
-                    <div>
-                      <div className="text-sm font-bold text-[#111111]">{wf.successRate}%</div>
-                      <div className="text-[9px] text-[#8A8A7A] uppercase font-semibold tracking-widest">Success</div>
-                    </div>
-                    <div className="w-px h-5 bg-[#BFA66A]/30" />
-                    <div>
-                      <div className="text-sm font-bold text-[#111111]">{wf.avgDuration}</div>
-                      <div className="text-[9px] text-[#8A8A7A] uppercase font-semibold tracking-widest">Avg Dur</div>
-                    </div>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-1.5 h-1.5 rounded-full ${agent.published_version_id ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                    <span className="text-xs font-bold text-[#111111] uppercase tracking-tight">
+                      {agent.published_version_id ? 'Published' : 'Draft'}
+                    </span>
                   </div>
                 </td>
 
                 <td className="px-5 py-4">
-                  <div className="text-xs text-[#2A2A2A] font-medium italic">Deployed {wf.lastDeployment}</div>
-                  <div className="text-[10px] text-[#8A8A7A] font-semibold mt-0.5">Executed {wf.lastExecution}</div>
+                  <div className="text-[10px] text-[#8A8A7A] font-mono">
+                    {new Date(agent.created_at).toLocaleDateString('vi-VN')}
+                  </div>
                 </td>
 
                 <td className="px-5 py-4 text-right">
                   <div className="flex items-center justify-end gap-1">
                     <button
-                      onClick={() => handleRunWorkflow(wf)}
-                      className="p-1.5 hover:bg-[#F3E2A7] rounded-lg transition-colors text-[#5A5A5A] hover:text-emerald-700"
-                      title="Run"
+                      onClick={() => handlePublishAgent(agent)}
+                      disabled={publishing === agent.id}
+                      className="px-2.5 py-1 text-[10px] font-bold rounded-lg border border-emerald-300 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 transition-colors"
+                      title="Publish"
                     >
-                      <Play className="w-4 h-4" />
+                      {publishing === agent.id ? '…' : 'Publish'}
                     </button>
-                    <button className="p-1.5 hover:bg-[#F3E2A7] rounded-lg transition-colors text-[#5A5A5A] hover:text-[#B88719]" title="History">
-                      <History className="w-4 h-4" />
-                    </button>
-                    <button className="p-1.5 hover:bg-[#F3E2A7] rounded-lg transition-colors text-[#5A5A5A]" title="YAML">
-                      <Code className="w-4 h-4" />
-                    </button>
-                    <div className="w-px h-4 bg-[#BFA66A]/30 mx-0.5" />
                     <button
                       onMouseDown={(e) => e.stopPropagation()}
-                      onClick={(e) => { e.stopPropagation(); handleMenuOpen(e, wf.id); }}
+                      onClick={(e) => { e.stopPropagation(); handleMenuOpen(e, agent.id); }}
                       className="p-1.5 hover:bg-[#F3E2A7] rounded-lg transition-colors text-[#5A5A5A] hover:text-[#111111]"
                     >
                       <MoreVertical className="w-4 h-4" />
@@ -435,25 +509,13 @@ const WorkflowEngine = () => {
           style={{ position: 'fixed', top: menuPos.top, right: menuPos.right, zIndex: 9999 }}
           className="w-44 bg-white border border-[#BFA66A]/50 rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-100"
         >
-          {MOCK_WORKFLOWS.filter(w => w.id === openMenuId).map(wf => (
-            <React.Fragment key={wf.id}>
+          {apiAgents.filter(a => a.id === openMenuId).map(agent => (
+            <React.Fragment key={agent.id}>
               <button
-                onClick={() => { setOpenMenuId(null); handleEditWorkflow(wf); }}
+                onClick={() => { setOpenMenuId(null); handleEditAgent(agent); }}
                 className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[11px] font-semibold text-[#2A2A2A] hover:bg-[#FFF9E8] transition-colors"
               >
-                <Settings2 className="w-3.5 h-3.5 text-[#8A8A7A]" /> Edit
-              </button>
-              <button
-                onClick={() => { setOpenMenuId(null); setCloneModalName(`Copy of ${wf.name}`); setCloneTarget(wf); }}
-                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[11px] font-semibold text-[#2A2A2A] hover:bg-[#FFF9E8] transition-colors"
-              >
-                <Copy className="w-3.5 h-3.5 text-[#8A8A7A]" /> Clone
-              </button>
-              <button
-                onClick={() => setOpenMenuId(null)}
-                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[11px] font-semibold text-[#2A2A2A] hover:bg-[#FFF9E8] transition-colors"
-              >
-                <FileCode className="w-3.5 h-3.5 text-[#8A8A7A]" /> Export YAML
+                <Settings2 className="w-3.5 h-3.5 text-[#8A8A7A]" /> Edit Canvas
               </button>
               <div className="h-px bg-[#ECE7DA] mx-3" />
               <button
@@ -477,6 +539,8 @@ const WorkflowEngine = () => {
         onClose={handleBuilderClose}
         workflow={selectedWorkflow}
         template={selectedTemplate}
+        agentId={builderAgentId}
+        workflowVersionId={builderWorkflowVersionId}
       />
     );
   }
@@ -577,6 +641,53 @@ const WorkflowEngine = () => {
       >
         {renderContent()}
       </motion.div>
+
+      {/* Create Agent Modal */}
+      <AnimatePresence>
+        {showCreateModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/30 backdrop-blur-sm"
+            onClick={() => setShowCreateModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white border border-[#ECE7DA] rounded-2xl shadow-2xl p-6 w-[420px]"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base font-bold text-[#111111]">Tạo Agent mới</h3>
+                <button onClick={() => setShowCreateModal(false)} className="p-1.5 hover:bg-[#F3E2A7] rounded-lg transition-colors text-[#8A8A7A]">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <input
+                autoFocus
+                type="text"
+                value={createName}
+                onChange={(e) => setCreateName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleCreateAgent(); }}
+                placeholder="Tên agent..."
+                className="w-full bg-[#FAFAF5] border border-[#ECE7DA] rounded-xl py-2.5 px-4 text-sm text-[#111111] focus:outline-none focus:border-[#BFA66A] mb-5"
+              />
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setShowCreateModal(false)} className="btn-secondary">Huỷ</button>
+                <button
+                  onClick={handleCreateAgent}
+                  disabled={!createName.trim() || creating}
+                  className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {creating ? 'Đang tạo…' : 'Tạo & Mở Builder'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Clone Workflow Modal */}
       <AnimatePresence>

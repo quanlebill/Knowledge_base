@@ -202,8 +202,8 @@ def _extract_node_config(flow_nodes: list[dict]) -> dict:
     """Đọc config từng node canvas — override retrieval_config nếu user tùy chỉnh."""
     cfg = {}
     for node in flow_nodes:
-        t = node.get("type", "")
-        c = node.get("config", {})
+        t = node.get("data", {}).get("nodeType") or node.get("type", "")
+        c = node.get("data", {}) or node.get("config", {})
         if t == "kb_search":
             if "mode"      in c: cfg["kb_mode"]   = c["mode"]
             if "top_k"     in c: cfg["top_k"]      = c["top_k"]

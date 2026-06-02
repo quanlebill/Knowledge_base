@@ -31,6 +31,10 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
+const FLOW_BUILDER_URL     = (import.meta as any).env?.VITE_FLOW_BUILDER_URL     ?? 'http://localhost:8002';
+const WORKFLOW_RUNTIME_URL = (import.meta as any).env?.VITE_WORKFLOW_RUNTIME_URL ?? 'http://localhost:8001';
+const LOCKED_NODE_TYPES    = new Set(['guardrail_input', 'guardrail_output', 'guardrail']);
+
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export type TemplateId = 'blank' | 'rag' | 'multi-agent' | 'hitl';
@@ -44,6 +48,7 @@ type FlowNodeType =
 export interface FlowNodeData extends Record<string, unknown> {
   nodeType: FlowNodeType;
   label: string;
+  locked?: boolean;
   kbEndpoint?: string;
   kbName?: string;
   mcpServerUrl?: string;
@@ -117,8 +122,8 @@ const CustomFlowNode = (props: NodeProps) => {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* X delete button â€” shows on hover or select */}
-      {(hovered || selected) && (
+      {/* X delete button — hidden for locked nodes */}
+      {!data.locked && (hovered || selected) && (
         <button
           onClick={handleDelete}
           title="Remove node"
@@ -649,10 +654,10 @@ const ALL_LIBRARY_NODES: Array<{
 
 // â”€â”€â”€ Node Library â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-const NodeLibrary = ({ usedTypes }: { usedTypes: Set<FlowNodeType> }) => {
+const NodeLibrary = ({ usedTypes, nodes: libraryNodes = ALL_LIBRARY_NODES }: { usedTypes: Set<FlowNodeType>; nodes?: typeof ALL_LIBRARY_NODES }) => {
   const [query, setQuery] = useState('');
 
-  const available = ALL_LIBRARY_NODES.filter(n =>
+  const available = libraryNodes.filter(n =>
     (n.allowMultiple || !usedTypes.has(n.nodeType)) &&
     n.label.toLowerCase().includes(query.toLowerCase()),
   );
@@ -795,16 +800,56 @@ export interface BuilderProps {
   onClose: () => void;
   workflow: Workflow | null;
   template?: TemplateId;
+  agentId?: string;
+  workflowVersionId?: string;
 }
 
-const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent' }: BuilderProps) => {
+const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent', agentId, workflowVersionId }: BuilderProps) => {
   const [viewMode, setViewMode]         = useState<'VISUAL' | 'CODE'>('VISUAL');
   const [selectedNode, setSelectedNode] = useState<Node<FlowNodeData> | null>(null);
   const [ctxMenu, setCtxMenu]           = useState<CtxMenuState | null>(null);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [saving, setSaving]             = useState(false);
+  const [libraryNodes, setLibraryNodes] = useState(ALL_LIBRARY_NODES);
   const rfInstance                       = useRef<ReactFlowInstance<Node<FlowNodeData>, Edge> | null>(null);
 
   const requestExit = useCallback(() => setShowExitConfirm(true), []);
+
+  // Load canvas từ flow-builder khi có workflowVersionId
+  useEffect(() => {
+    if (!workflowVersionId) return;
+    fetch(`${FLOW_BUILDER_URL}/api/workflow-versions/${workflowVersionId}/canvas`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.nodes?.length > 0) {
+          setNodes(data.nodes);
+          setEdges(data.edges ?? []);
+        }
+      })
+      .catch(() => {});
+  }, [workflowVersionId]);
+
+  // Fetch node registry từ workflow-runtime
+  useEffect(() => {
+    fetch(`${WORKFLOW_RUNTIME_URL}/api/nodes/registry`)
+      .then(r => r.json())
+      .then((registry: Record<string, { display: string; category: string; locked: boolean }>) => {
+        const mapped = Object.entries(registry)
+          .filter(([, v]) => !v.locked)
+          .map(([nodeType, v]) => {
+            const existing = ALL_LIBRARY_NODES.find(n => n.nodeType === nodeType);
+            return existing ?? {
+              nodeType: nodeType as FlowNodeType,
+              label: v.display,
+              color: '#6B7280',
+              Icon: Zap,
+              allowMultiple: true,
+            };
+          });
+        if (mapped.length > 0) setLibraryNodes(mapped);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -893,18 +938,45 @@ const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent' }: Builde
     );
   }, [setNodes]);
 
-  // â”€â”€ Delete node (context menu) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Save canvas ───────────────────────────────────────────────────────────
+  const handleSave = useCallback(async () => {
+    if (!workflowVersionId) { addToast('No workflow version — cannot save'); return; }
+    setSaving(true);
+    try {
+      const payload = {
+        nodes: nodes.map(n => ({ id: n.id, type: n.type, position: n.position, data: n.data })),
+        edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, type: e.type, label: e.label })),
+      };
+      const res = await fetch(`${FLOW_BUILDER_URL}/api/workflow-versions/${workflowVersionId}/canvas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      addToast(res.ok ? 'Canvas saved' : 'Save failed');
+    } catch {
+      addToast('Save failed — network error');
+    } finally {
+      setSaving(false);
+    }
+  }, [workflowVersionId, nodes, edges, addToast]);
+
+  // ── Delete node (context menu) ────────────────────────────────────────────
   const deleteNode = useCallback((nodeId: string) => {
     const node = nodes.find(n => n.id === nodeId);
-    if (node) addToast(`Node removed: ${(node.data as FlowNodeData).label}`);
+    if (!node) return;
+    if ((node.data as FlowNodeData).locked) { addToast('Locked node cannot be deleted'); return; }
+    addToast(`Node removed: ${(node.data as FlowNodeData).label}`);
     setNodes(nds => nds.filter(n => n.id !== nodeId));
     setEdges(eds => eds.filter(e => e.source !== nodeId && e.target !== nodeId));
     if (selectedNode?.id === nodeId) setSelectedNode(null);
   }, [nodes, setNodes, setEdges, selectedNode, addToast]);
 
-  // â”€â”€ Delete node (Delete key â€” fired by React Flow's onNodesDelete) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Delete node (Delete key — fired by React Flow's onNodesDelete) ─────────
   const onNodesDelete = useCallback((deleted: Node[]) => {
-    deleted.forEach(n => addToast(`Node removed: ${(n.data as FlowNodeData).label}`));
+    deleted.forEach(n => {
+      if ((n.data as FlowNodeData).locked) return;
+      addToast(`Node removed: ${(n.data as FlowNodeData).label}`);
+    });
   }, [addToast]);
 
   // â”€â”€ Delete edge (Delete key) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -988,9 +1060,13 @@ ${edges.map(e => `  - from: "${e.source}"  to: "${e.target}"`).join('\n')}`;
               Dry Run
             </button>
 
-            <button className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-blue-500/20">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-blue-500/20"
+            >
               <Save className="w-3 h-3" />
-              Save
+              {saving ? 'Saving…' : 'Save'}
             </button>
           </div>
         </div>
@@ -998,7 +1074,7 @@ ${edges.map(e => `  - from: "${e.source}"  to: "${e.target}"`).join('\n')}`;
         {/* â”€â”€ Body â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         <div className="flex-1 flex overflow-hidden">
 
-          <NodeLibrary usedTypes={usedTypes} />
+          <NodeLibrary usedTypes={usedTypes} nodes={libraryNodes} />
 
           {/* Canvas drop zone */}
           <div
