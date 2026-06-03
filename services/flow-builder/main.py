@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from db_pg import init_db, close_db, create_agent, list_agents, get_agent, create_workflow, list_workflows, publish_agent, update_agent_draft, publish_workflow_version, unpublish_workflow_version
+from db_pg import init_db, close_db, create_agent, list_agents, get_agent, create_workflow, list_workflows, publish_agent, update_agent_draft, publish_workflow_version, republish_workflow_version, list_workflow_versions, create_draft_version, delete_workflow_version
 from services.database_connector.postgres_connector import client
 from db_mongo import init_mongo, close_mongo, save_canvas, load_canvas
 
@@ -59,6 +59,10 @@ class CanvasPayload(BaseModel):
 
 class PublishRequest(BaseModel):
     workflow_id: str
+
+
+class PublishVersionRequest(BaseModel):
+    changelog: Optional[str] = None
 
 
 class UpdateDraftRequest(BaseModel):
@@ -140,6 +144,48 @@ async def api_list_workflows(agent_id: str):
     return [_serialize(r) for r in rows]
 
 
+# ─── Workflow version endpoints ───────────────────────────────────────────────
+
+@app.get("/api/workflows/{workflow_id}/versions")
+async def api_list_workflow_versions(workflow_id: str):
+    if not client.is_connected():
+        raise HTTPException(503, "DB not available")
+    rows = await list_workflow_versions(workflow_id)
+    return [_serialize(r) for r in rows]
+
+
+@app.post("/api/workflows/{workflow_id}/versions", status_code=201)
+async def api_create_draft_version(workflow_id: str):
+    if not client.is_connected():
+        raise HTTPException(503, "DB not available")
+    try:
+        result = await create_draft_version(workflow_id)
+        # Copy canvas từ published version hiện tại sang draft mới
+        if result.get("source_version_id"):
+            canvas = await load_canvas(result["source_version_id"])
+            if canvas["nodes"] or canvas["edges"]:
+                await save_canvas(result["workflow_version_id"], canvas["nodes"], canvas["edges"])
+        return result
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        logger.exception("create_draft_version failed")
+        raise HTTPException(500, str(e))
+
+
+@app.delete("/api/workflow-versions/{version_id}", status_code=204)
+async def api_delete_workflow_version(version_id: str):
+    if not client.is_connected():
+        raise HTTPException(503, "DB not available")
+    try:
+        await delete_workflow_version(version_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        logger.exception("delete_workflow_version failed")
+        raise HTTPException(500, str(e))
+
+
 # ─── Canvas endpoints ──────────────────────────────────────────────────────────
 
 @app.post("/api/workflow-versions/{workflow_version_id}/canvas")
@@ -175,30 +221,31 @@ async def api_update_agent(agent_id: str, body: UpdateDraftRequest):
         raise HTTPException(500, str(e))
 
 
-@app.post("/api/workflow-versions/{workflow_version_id}/unpublish")
-async def api_unpublish_workflow_version(workflow_version_id: str):
-    if not client.is_connected():
-        raise HTTPException(503, "DB not available")
-    try:
-        return await unpublish_workflow_version(workflow_version_id)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-    except Exception as e:
-        logger.exception("unpublish_workflow_version failed")
-        raise HTTPException(500, str(e))
-
-
 @app.post("/api/workflow-versions/{workflow_version_id}/publish")
-async def api_publish_workflow_version(workflow_version_id: str):
+async def api_publish_workflow_version(workflow_version_id: str, body: PublishVersionRequest = PublishVersionRequest()):
     if not client.is_connected():
         raise HTTPException(503, "DB not available")
     try:
-        result = await publish_workflow_version(workflow_version_id)
+        result = await publish_workflow_version(workflow_version_id, body.changelog)
         return result
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
         logger.exception("publish_workflow_version failed")
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/workflow-versions/{workflow_version_id}/republish")
+async def api_republish_workflow_version(workflow_version_id: str):
+    if not client.is_connected():
+        raise HTTPException(503, "DB not available")
+    try:
+        result = await republish_workflow_version(workflow_version_id)
+        return result
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        logger.exception("republish_workflow_version failed")
         raise HTTPException(500, str(e))
 
 

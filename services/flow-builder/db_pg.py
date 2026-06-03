@@ -221,7 +221,7 @@ async def update_agent_draft(agent_id: str, fields: dict) -> dict:
     return {"agent_id": agent_id, "updated": list(fields.keys())}
 
 
-async def publish_workflow_version(workflow_version_id: str) -> dict:
+async def publish_workflow_version(workflow_version_id: str, changelog: str | None = None) -> dict:
     async with client.get_client() as session:
         async with session.begin():
             wv = await session.get(WorkflowVersionsORM, UUID(workflow_version_id))
@@ -229,6 +229,32 @@ async def publish_workflow_version(workflow_version_id: str) -> dict:
                 raise ValueError("workflow_version not found")
             if wv.status == "published":
                 raise ValueError("already published")
+            if wv.status == "archived":
+                raise ValueError("use republish for archived versions")
+
+            await session.execute(
+                sa_update(WorkflowVersionsORM)
+                .where(WorkflowVersionsORM.workflow_id == wv.workflow_id)
+                .where(WorkflowVersionsORM.status == "published")
+                .values(status="archived")
+            )
+            wv.status = "published"
+            wv.published_at = func.now()
+            if changelog:
+                wv.changelog = changelog
+
+    return {"workflow_version_id": workflow_version_id, "status": "published"}
+
+
+async def republish_workflow_version(workflow_version_id: str) -> dict:
+    """Re-publish an archived version — archives current published atomically."""
+    async with client.get_client() as session:
+        async with session.begin():
+            wv = await session.get(WorkflowVersionsORM, UUID(workflow_version_id))
+            if not wv:
+                raise ValueError("workflow_version not found")
+            if wv.status != "archived":
+                raise ValueError("can only republish archived versions")
 
             await session.execute(
                 sa_update(WorkflowVersionsORM)
@@ -242,18 +268,81 @@ async def publish_workflow_version(workflow_version_id: str) -> dict:
     return {"workflow_version_id": workflow_version_id, "status": "published"}
 
 
-async def unpublish_workflow_version(workflow_version_id: str) -> dict:
+async def list_workflow_versions(workflow_id: str) -> list[dict]:
+    async with client.get_client() as session:
+        result = await session.execute(
+            select(WorkflowVersionsORM)
+            .where(WorkflowVersionsORM.workflow_id == UUID(workflow_id))
+            .order_by(WorkflowVersionsORM.version.desc())
+        )
+        rows = result.scalars().all()
+    return [
+        {
+            "id": str(r.id),
+            "workflow_id": str(r.workflow_id),
+            "version": r.version,
+            "status": r.status,
+            "changelog": r.changelog,
+            "created_at": r.created_at,
+            "published_at": r.published_at,
+        }
+        for r in rows
+    ]
+
+
+async def create_draft_version(workflow_id: str) -> dict:
     async with client.get_client() as session:
         async with session.begin():
-            wv = await session.get(WorkflowVersionsORM, UUID(workflow_version_id))
+            # Lấy max version hiện tại
+            result = await session.execute(
+                select(func.max(WorkflowVersionsORM.version))
+                .where(WorkflowVersionsORM.workflow_id == UUID(workflow_id))
+            )
+            max_version = result.scalar() or 0
+
+            # Không cho tạo draft mới nếu đã có draft
+            draft_result = await session.execute(
+                select(WorkflowVersionsORM)
+                .where(WorkflowVersionsORM.workflow_id == UUID(workflow_id))
+                .where(WorkflowVersionsORM.status == "draft")
+                .limit(1)
+            )
+            if draft_result.scalar_one_or_none():
+                raise ValueError("Already has a draft version")
+
+            # Lấy published version hiện tại để copy canvas
+            published_result = await session.execute(
+                select(WorkflowVersionsORM)
+                .where(WorkflowVersionsORM.workflow_id == UUID(workflow_id))
+                .where(WorkflowVersionsORM.status == "published")
+                .limit(1)
+            )
+            published = published_result.scalar_one_or_none()
+
+            wv = WorkflowVersionsORM(
+                workflow_id=UUID(workflow_id),
+                version=max_version + 1,
+                status="draft",
+            )
+            session.add(wv)
+            await session.flush()
+
+    return {
+        "workflow_version_id": str(wv.id),
+        "version": wv.version,
+        "source_version_id": str(published.id) if published else None,
+    }
+
+
+async def delete_workflow_version(version_id: str) -> None:
+    async with client.get_client() as session:
+        async with session.begin():
+            wv = await session.get(WorkflowVersionsORM, UUID(version_id))
             if not wv:
                 raise ValueError("workflow_version not found")
-            if wv.status != "published":
-                raise ValueError("not published")
-            wv.status = "draft"
-            wv.published_at = None
-
-    return {"workflow_version_id": workflow_version_id, "status": "draft"}
+            if wv.status == "published":
+                raise ValueError("Cannot delete a published version")
+            await session.delete(wv)
 
 
 async def publish_agent(agent_id: str, workflow_id: str) -> dict:

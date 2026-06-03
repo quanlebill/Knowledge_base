@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import {
   ArrowLeft, GitMerge, Plus, Settings2, Trash2, Upload,
-  CheckCircle2, Clock, Edit3, Save, X, Zap,
+  CheckCircle2, Clock, Edit3, Save, X, Zap, ChevronDown, RotateCcw,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import WorkflowBuilder from '../workflow/Builder';
@@ -42,11 +43,20 @@ const TEMPLATE_OPTIONS: { id: TemplateId; label: string; desc: string }[] = [
 ];
 
 type DetailTab = 'WORKFLOWS' | 'SETTINGS';
-type BuilderState = { workflowVersionId: string; workflowName: string } | null;
+type BuilderState = { workflowVersionId: string; workflowName: string; workflowId?: string } | null;
 
 interface Props {
   agentId: string;
   onBack: () => void;
+}
+
+interface WorkflowVersion {
+  id: string;
+  version: number;
+  status: 'draft' | 'published' | 'archived';
+  changelog: string | null;
+  created_at: string;
+  published_at: string | null;
 }
 
 export const AgentDetailPage: React.FC<Props> = ({ agentId, onBack }) => {
@@ -55,6 +65,14 @@ export const AgentDetailPage: React.FC<Props> = ({ agentId, onBack }) => {
   const [builder, setBuilder]       = useState<BuilderState>(null);
   const [publishing, setPublishing] = useState(false);
   const [toast, setToast]           = useState<string | null>(null);
+
+  // Version history
+  const [wfVersions, setWfVersions]               = useState<Record<string, WorkflowVersion[]>>({});
+  const [deployDropdown, setDeployDropdown]        = useState<string | null>(null);
+  const [deployBtnRect, setDeployBtnRect]          = useState<{ top: number; right: number } | null>(null);
+  const [publishModal, setPublishModal]            = useState<{ versionId: string; mode: 'publish' | 'republish' } | null>(null);
+  const [changelog, setChangelog]                  = useState('');
+  const [deleteConfirm, setDeleteConfirm]          = useState<string | null>(null); // versionId
 
   // Create workflow modal
   const [showCreateWf, setShowCreateWf]   = useState(false);
@@ -77,6 +95,41 @@ export const AgentDetailPage: React.FC<Props> = ({ agentId, onBack }) => {
     setTimeout(() => setToast(null), 3000);
   };
 
+  const fetchVersions = useCallback(async (workflowId: string) => {
+    const res = await fetch(`${FLOW_BUILDER_URL}/api/workflows/${workflowId}/versions`);
+    const data = await res.json();
+    setWfVersions(prev => ({ ...prev, [workflowId]: data }));
+  }, []);
+
+
+  const handleConfirmPublish = useCallback(async () => {
+    if (!publishModal) return;
+    const { versionId, mode } = publishModal;
+    const endpoint = mode === 'republish'
+      ? `${FLOW_BUILDER_URL}/api/workflow-versions/${versionId}/republish`
+      : `${FLOW_BUILDER_URL}/api/workflow-versions/${versionId}/publish`;
+    try {
+      await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: mode === 'publish' ? JSON.stringify({ changelog }) : undefined,
+      });
+      showToast(mode === 'republish' ? '✓ Rollback thành công' : '✓ Published thành công');
+      setPublishModal(null);
+      setChangelog('');
+      // Refetch agent + versions
+      const r = await fetch(`${FLOW_BUILDER_URL}/api/agents/${agentId}`);
+      const data: ApiAgent = await r.json();
+      setAgent(data);
+      for (const wf of data.workflows ?? []) {
+        fetch(`${FLOW_BUILDER_URL}/api/workflows/${wf.id}/versions`)
+          .then(rv => rv.json())
+          .then(versions => setWfVersions(prev => ({ ...prev, [wf.id]: versions })))
+          .catch(() => {});
+      }
+    } catch { showToast('Thao tác thất bại'); }
+  }, [publishModal, changelog, agentId]);
+
   const fetchAgent = useCallback(async () => {
     const res = await fetch(`${FLOW_BUILDER_URL}/api/agents/${agentId}`);
     const data: ApiAgent = await res.json();
@@ -86,9 +139,27 @@ export const AgentDetailPage: React.FC<Props> = ({ agentId, onBack }) => {
       name: data.name,
       description: data.description || '',
     }));
+    // Fetch versions cho tất cả workflows
+    (data.workflows ?? []).forEach(wf => {
+      fetch(`${FLOW_BUILDER_URL}/api/workflows/${wf.id}/versions`)
+        .then(r => r.json())
+        .then(versions => setWfVersions(prev => ({ ...prev, [wf.id]: versions })))
+        .catch(() => {});
+    });
   }, [agentId]);
 
   useEffect(() => { fetchAgent(); }, [fetchAgent]);
+
+  useEffect(() => {
+    if (!deployDropdown) return;
+    const close = () => { setDeployDropdown(null); setDeployBtnRect(null); };
+    document.addEventListener('scroll', close, true);
+    document.addEventListener('mousedown', close);
+    return () => {
+      document.removeEventListener('scroll', close, true);
+      document.removeEventListener('mousedown', close);
+    };
+  }, [deployDropdown]);
 
   useEffect(() => {
     fetch(`${WORKFLOW_RUNTIME_URL}/api/llm-providers`)
@@ -141,9 +212,20 @@ export const AgentDetailPage: React.FC<Props> = ({ agentId, onBack }) => {
       setNewWfName('');
       await fetchAgent();
       // Open builder
-      setBuilder({ workflowVersionId: wvId, workflowName: newWfName.trim() });
+      setBuilder({ workflowVersionId: wvId, workflowName: newWfName.trim(), workflowId: data.workflow_id });
     } catch { showToast('Tạo workflow thất bại'); }
     finally { setCreating(false); }
+  };
+
+  const handleDeleteDraft = async () => {
+    if (!deleteConfirm) return;
+    try {
+      const res = await fetch(`${FLOW_BUILDER_URL}/api/workflow-versions/${deleteConfirm}`, { method: 'DELETE' });
+      if (!res.ok) { const e = await res.json(); showToast(e.detail || 'Xóa thất bại'); return; }
+      showToast('Đã xóa draft');
+      setDeleteConfirm(null);
+      fetchAgent();
+    } catch { showToast('Xóa thất bại'); }
   };
 
   const handleSaveSettings = async () => {
@@ -169,6 +251,7 @@ export const AgentDetailPage: React.FC<Props> = ({ agentId, onBack }) => {
         workflow={null}
         agentId={agentId}
         workflowVersionId={builder.workflowVersionId}
+        workflowId={builder.workflowId}
       />
     );
   }
@@ -178,7 +261,7 @@ export const AgentDetailPage: React.FC<Props> = ({ agentId, onBack }) => {
   const isPublished = !!agent.published_version_id;
 
   return (
-    <div className="flex flex-col min-h-full">
+    <div className="flex flex-col min-h-[calc(100vh-120px)]">
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-[#ECE7DA] bg-[#FAFAF5] shrink-0">
         <div className="flex items-center gap-3">
@@ -223,7 +306,7 @@ export const AgentDetailPage: React.FC<Props> = ({ agentId, onBack }) => {
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 p-6">
 
         {/* ── Workflows tab ── */}
         {activeTab === 'WORKFLOWS' && (
@@ -240,74 +323,114 @@ export const AgentDetailPage: React.FC<Props> = ({ agentId, onBack }) => {
               </button>
             </div>
 
-            <div className="space-y-3">
-              {(agent.workflows ?? []).map(wf => (
-                <div key={wf.id} className="warm-panel rounded-xl p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-600">
-                      <GitMerge className="w-4 h-4" />
+            <div className="space-y-4">
+              {(agent.workflows ?? []).map(wf => {
+                const versions   = wfVersions[wf.id] ?? [];
+                const published  = versions.find(v => v.status === 'published');
+                const draft      = versions.find(v => v.status === 'draft');
+                const archived   = versions.filter(v => v.status === 'archived');
+                const hasDraft   = !!draft;
+                const isOpen     = deployDropdown === wf.id;
+
+                return (
+                  <div key={wf.id} className="warm-panel rounded-xl" onClick={() => isOpen && setDeployDropdown(null)}>
+                    {/* Header */}
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-[#ECE7DA]">
+                      <div className="flex items-center gap-2">
+                        <GitMerge className="w-4 h-4 text-blue-500" />
+                        <span className="text-sm font-semibold text-[#111111]">{wf.name}</span>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(`${FLOW_BUILDER_URL}/api/workflows/${wf.id}/versions`, { method: 'POST' });
+                            if (!res.ok) { const e = await res.json(); showToast(e.detail || 'Thất bại'); return; }
+                            await fetchVersions(wf.id);
+                            showToast('Đã tạo draft version mới');
+                          } catch { showToast('Thất bại'); }
+                        }}
+                        disabled={hasDraft}
+                        title={hasDraft ? 'Publish draft trước khi tạo mới' : 'Tạo draft version mới'}
+                        className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold border border-amber-300 text-amber-700 hover:bg-amber-50 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <Plus className="w-3 h-3" /> New Draft
+                      </button>
                     </div>
-                    <div>
-                      <div className="text-sm font-semibold text-[#111111]">{wf.name}</div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        {agent.active_workflow_id === wf.id && (
-                          <span className="flex items-center gap-1 text-[10px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded">
-                            <Zap className="w-2.5 h-2.5" /> Active
-                          </span>
-                        )}
-                        {wf.published_version_id && (
-                          <span className="flex items-center gap-1 text-[10px] text-emerald-600 font-bold">
-                            <CheckCircle2 className="w-2.5 h-2.5" /> Published
-                          </span>
-                        )}
-                        {wf.draft_version_id && (
-                          <span className="flex items-center gap-1 text-[10px] text-amber-600 font-bold">
-                            <Clock className="w-2.5 h-2.5" /> Draft
-                          </span>
+
+                    {/* Published row */}
+                    {published ? (
+                      <div className="flex items-center justify-between px-4 py-3 bg-emerald-50/50">
+                        <div className="flex items-center gap-3">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                          <span className="text-xs font-bold text-emerald-700">v{published.version} · đang chạy</span>
+                          {published.changelog && (
+                            <span className="text-[11px] text-slate-400 italic max-w-[200px] truncate">"{published.changelog}"</span>
+                          )}
+                          {published.published_at && (
+                            <span className="text-[10px] text-slate-400">{new Date(published.published_at).toLocaleDateString('vi-VN')}</span>
+                          )}
+                        </div>
+                        {/* Deploy v cũ dropdown */}
+                        {archived.length > 0 && (
+                          <div>
+                            <button
+                              onMouseDown={e => e.stopPropagation()}
+                              onClick={e => {
+                                e.stopPropagation();
+                                if (isOpen) {
+                                  setDeployDropdown(null);
+                                  setDeployBtnRect(null);
+                                } else {
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setDeployDropdown(wf.id);
+                                  setDeployBtnRect({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+                                }
+                              }}
+                              className="flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 border border-indigo-200 text-indigo-600 hover:bg-indigo-50 rounded-lg font-medium transition-colors"
+                            >
+                              <RotateCcw className="w-3 h-3" /> Deploy v cũ <ChevronDown className="w-3 h-3" />
+                            </button>
+                          </div>
                         )}
                       </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {wf.draft_version_id && (
-                      <button
-                        onClick={async () => {
-                          try {
-                            await fetch(`${FLOW_BUILDER_URL}/api/workflow-versions/${wf.draft_version_id}/publish`, { method: 'POST' });
-                            showToast(`✓ "${wf.name}" published`);
-                            fetchAgent();
-                          } catch { showToast('Publish thất bại'); }
-                        }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 border border-emerald-300 text-emerald-700 hover:bg-emerald-50 rounded-lg text-xs font-semibold transition-colors"
-                      >
-                        <Upload className="w-3 h-3" /> Publish
-                      </button>
+                    ) : (
+                      <div className="px-4 py-3 text-xs text-slate-400 italic flex items-center gap-2">
+                        <Clock className="w-3.5 h-3.5" /> Chưa có version nào được publish
+                      </div>
                     )}
-                    {wf.published_version_id && !wf.draft_version_id && (
-                      <button
-                        onClick={async () => {
-                          try {
-                            await fetch(`${FLOW_BUILDER_URL}/api/workflow-versions/${wf.published_version_id}/unpublish`, { method: 'POST' });
-                            showToast(`"${wf.name}" đã unpublish — có thể edit lại`);
-                            fetchAgent();
-                          } catch { showToast('Unpublish thất bại'); }
-                        }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 border border-amber-300 text-amber-700 hover:bg-amber-50 rounded-lg text-xs font-semibold transition-colors"
-                      >
-                        <X className="w-3 h-3" /> Unpublish
-                      </button>
+
+                    {/* Draft row */}
+                    {draft && (
+                      <div className="flex items-center justify-between px-4 py-3 border-t border-[#ECE7DA]">
+                        <div className="flex items-center gap-2">
+                          <Clock className="w-4 h-4 text-amber-500" />
+                          <span className="text-xs font-bold text-amber-700">v{draft.version} · draft</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setBuilder({ workflowVersionId: draft.id, workflowName: wf.name, workflowId: wf.id })}
+                            className="flex items-center gap-1 text-[11px] px-2.5 py-1.5 border border-[#BFA66A]/50 hover:bg-[#F3E2A7] text-[#5A5A5A] rounded-lg font-medium transition-colors"
+                          >
+                            <Edit3 className="w-3 h-3" /> Edit Canvas
+                          </button>
+                          <button
+                            onClick={() => setPublishModal({ versionId: draft.id, mode: 'publish' })}
+                            className="flex items-center gap-1 text-[11px] px-2.5 py-1.5 border border-emerald-300 text-emerald-700 hover:bg-emerald-50 rounded-lg font-medium transition-colors"
+                          >
+                            <Upload className="w-3 h-3" /> Publish
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirm(draft.id)}
+                            className="flex items-center gap-1 text-[11px] px-2.5 py-1.5 border border-red-200 text-red-500 hover:bg-red-50 rounded-lg font-medium transition-colors"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
                     )}
-                    <button
-                      onClick={() => wf.draft_version_id && setBuilder({ workflowVersionId: wf.draft_version_id, workflowName: wf.name })}
-                      disabled={!wf.draft_version_id}
-                      title={!wf.draft_version_id ? 'Unpublish để edit lại' : 'Edit Canvas'}
-                      className="flex items-center gap-1.5 px-3 py-1.5 border border-[#BFA66A]/50 hover:bg-[#F3E2A7] text-[#5A5A5A] rounded-lg text-xs font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      <Edit3 className="w-3 h-3" /> Edit Canvas
-                    </button>
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
               {(!agent.workflows || agent.workflows.length === 0) && (
                 <div className="text-center py-12 text-[#8A8A7A] text-sm">
@@ -419,6 +542,38 @@ export const AgentDetailPage: React.FC<Props> = ({ agentId, onBack }) => {
         )}
       </div>
 
+      {/* Deploy v cũ — portal dropdown (escapes any overflow container) */}
+      {deployDropdown && deployBtnRect && ReactDOM.createPortal(
+        <div
+          style={{ position: 'fixed', top: deployBtnRect.top, right: deployBtnRect.right, zIndex: 9999 }}
+          className="w-72 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden"
+          onMouseDown={e => e.stopPropagation()}
+        >
+          <div className="px-3 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
+            Chọn version để deploy
+          </div>
+          {(wfVersions[deployDropdown] ?? []).filter(v => v.status === 'archived').map(v => (
+            <div key={v.id} className="flex items-center justify-between px-3 py-2.5 hover:bg-slate-50">
+              <div>
+                <span className="text-xs font-bold text-slate-700">v{v.version}</span>
+                {v.changelog && <span className="text-[11px] text-slate-400 ml-2 italic">"{v.changelog}"</span>}
+                {v.published_at && (
+                  <div className="text-[10px] text-slate-400 mt-0.5">{new Date(v.published_at).toLocaleDateString('vi-VN')}</div>
+                )}
+              </div>
+              <button
+                onMouseDown={e => e.stopPropagation()}
+                onClick={() => { setDeployDropdown(null); setDeployBtnRect(null); setPublishModal({ versionId: v.id, mode: 'republish' }); }}
+                className="text-[11px] px-2.5 py-1 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg font-medium transition-colors"
+              >
+                Deploy
+              </button>
+            </div>
+          ))}
+        </div>,
+        document.body
+      )}
+
       {/* Create Workflow Modal */}
       <AnimatePresence>
         {showCreateWf && (
@@ -486,6 +641,55 @@ export const AgentDetailPage: React.FC<Props> = ({ agentId, onBack }) => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Publish / Rollback modal */}
+      {publishModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <h3 className="font-bold text-slate-800">
+              {publishModal.mode === 'republish' ? '↩ Rollback version này?' : '🚀 Publish version này?'}
+            </h3>
+            {publishModal.mode === 'publish' && (
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-500">Changelog (tuỳ chọn)</label>
+                <input
+                  autoFocus
+                  value={changelog}
+                  onChange={e => setChangelog(e.target.value)}
+                  placeholder="Mô tả thay đổi trong version này..."
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                />
+              </div>
+            )}
+            {publishModal.mode === 'republish' && (
+              <p className="text-sm text-slate-500">Version hiện tại sẽ bị archive. Agent sẽ chạy version này ngay lập tức.</p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button onClick={() => { setPublishModal(null); setChangelog(''); }} className="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg">Hủy</button>
+              <button
+                onClick={handleConfirmPublish}
+                className={`px-4 py-2 text-sm font-semibold text-white rounded-lg ${publishModal.mode === 'republish' ? 'bg-indigo-500 hover:bg-indigo-600' : 'bg-emerald-500 hover:bg-emerald-600'}`}
+              >
+                {publishModal.mode === 'republish' ? 'Rollback' : 'Publish'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete draft confirm */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <h3 className="font-bold text-slate-800">Xóa draft này?</h3>
+            <p className="text-sm text-slate-500">Draft sẽ bị xóa khỏi database và không thể khôi phục.</p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setDeleteConfirm(null)} className="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg">Hủy</button>
+              <button onClick={handleDeleteDraft} className="px-4 py-2 text-sm font-semibold text-white bg-red-500 hover:bg-red-600 rounded-lg">Xóa</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast */}
       <AnimatePresence>

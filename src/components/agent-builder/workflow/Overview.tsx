@@ -272,6 +272,7 @@ const WorkflowEngine = () => {
   const [apiAgents, setApiAgents] = useState<ApiAgent[]>([]);
   const [builderAgentId, setBuilderAgentId] = useState<string | undefined>();
   const [builderWorkflowVersionId, setBuilderWorkflowVersionId] = useState<string | undefined>();
+  const [builderWorkflowId, setBuilderWorkflowId] = useState<string | undefined>();
   const [creating, setCreating] = useState(false);
   const [createName, setCreateName] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -304,6 +305,7 @@ const WorkflowEngine = () => {
       }]);
       setBuilderAgentId(data.agent_id);
       setBuilderWorkflowVersionId(data.workflow_version_id);
+      setBuilderWorkflowId(data.workflow_id);
       setShowCreateModal(false);
       setCreateName('');
       setSelectedWorkflow(null);
@@ -324,6 +326,7 @@ const WorkflowEngine = () => {
       const wv = workflows[0]?.draft_version_id ?? null;
       setBuilderAgentId(agent.id);
       setBuilderWorkflowVersionId(wv ?? undefined);
+      setBuilderWorkflowId(workflows[0]?.id ?? undefined);
       setSelectedWorkflow(null);
       setBuilderSource('REGISTRY');
       setActiveTab('BUILDER');
@@ -405,6 +408,7 @@ const WorkflowEngine = () => {
     setSelectedWorkflow(null);
     setBuilderAgentId(undefined);
     setBuilderWorkflowVersionId(undefined);
+    setBuilderWorkflowId(undefined);
     setActiveTab(builderSource);
   };
 
@@ -541,6 +545,7 @@ const WorkflowEngine = () => {
         template={selectedTemplate}
         agentId={builderAgentId}
         workflowVersionId={builderWorkflowVersionId}
+        workflowId={builderWorkflowId}
       />
     );
   }

@@ -3,7 +3,7 @@ import {
   Save, Play, Layout, Code as CodeIcon, CheckCircle2, Terminal,
   ArrowLeft, ChevronDown, Bot, Database, Activity, Zap, Cpu,
   Search, ShieldCheck, Wrench, Layers, Filter,
-  GitBranch, Bell, RefreshCw, GripVertical, X, Copy,
+  GitBranch, Bell, RefreshCw, GripVertical, X, Copy, Trash2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import type { Workflow } from '../../../types/workflow';
@@ -796,15 +796,24 @@ const ConfirmExitModal = ({ onConfirm, onCancel }: { onConfirm: () => void; onCa
 
 // â”€â”€â”€ Main Builder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+interface WorkflowVersion {
+  id: string;
+  version: number;
+  status: 'draft' | 'published' | 'archived';
+  created_at: string;
+  published_at: string | null;
+}
+
 export interface BuilderProps {
   onClose: () => void;
   workflow: Workflow | null;
   template?: TemplateId;
   agentId?: string;
   workflowVersionId?: string;
+  workflowId?: string;
 }
 
-const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent', agentId, workflowVersionId }: BuilderProps) => {
+const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent', agentId, workflowVersionId, workflowId }: BuilderProps) => {
   const [viewMode, setViewMode]         = useState<'VISUAL' | 'CODE'>('VISUAL');
   const [selectedNode, setSelectedNode] = useState<Node<FlowNodeData> | null>(null);
   const [ctxMenu, setCtxMenu]           = useState<CtxMenuState | null>(null);
@@ -812,22 +821,33 @@ const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent', agentId,
   const [saving, setSaving]             = useState(false);
   const [libraryNodes, setLibraryNodes] = useState(ALL_LIBRARY_NODES);
   const rfInstance                       = useRef<ReactFlowInstance<Node<FlowNodeData>, Edge> | null>(null);
+  const [versions, setVersions]         = useState<WorkflowVersion[]>([]);
+  const [activeVersionId, setActiveVersionId] = useState<string | undefined>(workflowVersionId);
+  const [showVersions, setShowVersions] = useState(false);
+  const [creatingVersion, setCreatingVersion] = useState(false);
 
   const requestExit = useCallback(() => setShowExitConfirm(true), []);
 
-  // Load canvas từ flow-builder khi có workflowVersionId
+  // Fetch danh sách versions
   useEffect(() => {
-    if (!workflowVersionId) return;
-    fetch(`${FLOW_BUILDER_URL}/api/workflow-versions/${workflowVersionId}/canvas`)
+    if (!workflowId) return;
+    fetch(`${FLOW_BUILDER_URL}/api/workflows/${workflowId}/versions`)
+      .then(r => r.json())
+      .then((data: WorkflowVersion[]) => setVersions(data))
+      .catch(() => {});
+  }, [workflowId]);
+
+  // Load canvas khi activeVersionId thay đổi
+  useEffect(() => {
+    if (!activeVersionId) return;
+    fetch(`${FLOW_BUILDER_URL}/api/workflow-versions/${activeVersionId}/canvas`)
       .then(r => r.json())
       .then(data => {
-        if (data.nodes?.length > 0) {
-          setNodes(data.nodes);
-          setEdges(data.edges ?? []);
-        }
+        setNodes(data.nodes?.length > 0 ? data.nodes : []);
+        setEdges(data.edges ?? []);
       })
       .catch(() => {});
-  }, [workflowVersionId]);
+  }, [activeVersionId]);
 
   // Fetch node registry từ workflow-runtime
   useEffect(() => {
@@ -866,6 +886,38 @@ const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent', agentId,
     setToasts(prev => [...prev, { id, msg }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 2500);
   }, []);
+
+  const handleSwitchVersion = useCallback((versionId: string) => {
+    setActiveVersionId(versionId);
+    setShowVersions(false);
+  }, []);
+
+  const handleCreateDraftVersion = useCallback(async () => {
+    if (!workflowId) return;
+    setCreatingVersion(true);
+    try {
+      const res = await fetch(`${FLOW_BUILDER_URL}/api/workflows/${workflowId}/versions`, { method: 'POST' });
+      if (!res.ok) { const e = await res.json(); addToast(e.detail || 'Tạo version thất bại'); return; }
+      const data = await res.json();
+      const updated = await fetch(`${FLOW_BUILDER_URL}/api/workflows/${workflowId}/versions`).then(r => r.json());
+      setVersions(updated);
+      setActiveVersionId(data.workflow_version_id);
+      addToast(`Tạo draft v${data.version} thành công`);
+    } catch { addToast('Tạo version thất bại'); }
+    finally { setCreatingVersion(false); }
+  }, [workflowId, addToast]);
+
+  const handleDeleteVersion = useCallback(async (versionId: string) => {
+    if (!workflowId) return;
+    try {
+      const res = await fetch(`${FLOW_BUILDER_URL}/api/workflow-versions/${versionId}`, { method: 'DELETE' });
+      if (!res.ok) { const e = await res.json(); addToast(e.detail || 'Xóa thất bại'); return; }
+      const updated = await fetch(`${FLOW_BUILDER_URL}/api/workflows/${workflowId}/versions`).then(r => r.json());
+      setVersions(updated);
+      if (activeVersionId === versionId) setActiveVersionId(updated[0]?.id);
+      addToast('Đã xóa version');
+    } catch { addToast('Xóa thất bại'); }
+  }, [workflowId, activeVersionId, addToast]);
 
   // â”€â”€ Flow state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const initFlow = useMemo(() => {
@@ -940,14 +992,14 @@ const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent', agentId,
 
   // ── Save canvas ───────────────────────────────────────────────────────────
   const handleSave = useCallback(async () => {
-    if (!workflowVersionId) { addToast('No workflow version — cannot save'); return; }
+    if (!activeVersionId) { addToast('No workflow version — cannot save'); return; }
     setSaving(true);
     try {
       const payload = {
         nodes: nodes.map(n => ({ id: n.id, type: n.type, position: n.position, data: n.data })),
         edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, type: e.type, label: e.label })),
       };
-      const res = await fetch(`${FLOW_BUILDER_URL}/api/workflow-versions/${workflowVersionId}/canvas`, {
+      const res = await fetch(`${FLOW_BUILDER_URL}/api/workflow-versions/${activeVersionId}/canvas`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -1034,9 +1086,24 @@ ${edges.map(e => `  - from: "${e.source}"  to: "${e.target}"`).join('\n')}`;
                 {workflow?.name ?? 'New Workflow'}
               </div>
               <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-0.5">
-                {workflow?.version ?? 'v1.0.0-draft'} Â· {nodes.length} nodes Â· {edges.length} edges
+                {nodes.length} nodes · {edges.length} edges
               </div>
             </div>
+
+            {/* Version badge */}
+            {versions.length > 0 && (() => {
+              const active = versions.find(v => v.id === activeVersionId);
+              if (!active) return null;
+              return (
+                <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs text-slate-300">
+                  <GitBranch className="w-3 h-3" />
+                  <span>v{active.version}</span>
+                  <span className={`font-bold ${active.status === 'published' ? 'text-emerald-400' : active.status === 'draft' ? 'text-amber-400' : 'text-slate-500'}`}>
+                    · {active.status}
+                  </span>
+                </div>
+              );
+            })()}
           </div>
 
           <div className="flex items-center gap-2.5">
