@@ -811,9 +811,14 @@ export interface BuilderProps {
   agentId?: string;
   workflowVersionId?: string;
   workflowId?: string;
+  isNewWorkflow?: boolean;
+  isNewDraft?: boolean;
+  initialNodes?: any[];
+  initialEdges?: any[];
+  sourceVersionId?: string;
 }
 
-const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent', agentId, workflowVersionId, workflowId }: BuilderProps) => {
+const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent', agentId, workflowVersionId, workflowId, isNewWorkflow, isNewDraft, initialNodes, initialEdges, sourceVersionId }: BuilderProps) => {
   const [viewMode, setViewMode]         = useState<'VISUAL' | 'CODE'>('VISUAL');
   const [selectedNode, setSelectedNode] = useState<Node<FlowNodeData> | null>(null);
   const [ctxMenu, setCtxMenu]           = useState<CtxMenuState | null>(null);
@@ -825,8 +830,7 @@ const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent', agentId,
   const [activeVersionId, setActiveVersionId] = useState<string | undefined>(workflowVersionId);
   const [showVersions, setShowVersions] = useState(false);
   const [creatingVersion, setCreatingVersion] = useState(false);
-
-  const requestExit = useCallback(() => setShowExitConfirm(true), []);
+  const savedSnapshot                   = useRef<string>('');
 
   // Fetch danh sách versions
   useEffect(() => {
@@ -840,11 +844,39 @@ const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent', agentId,
   // Load canvas khi activeVersionId thay đổi
   useEffect(() => {
     if (!activeVersionId) return;
+    const snap = (ns: any[], es: any[]) => JSON.stringify({
+      nodes: ns.map((n: any) => ({ id: n.id, type: n.type, position: n.position, data: n.data })),
+      edges: es.map((e: any) => ({ id: e.id, source: e.source, target: e.target, type: e.type, label: e.label })),
+    });
     fetch(`${FLOW_BUILDER_URL}/api/workflow-versions/${activeVersionId}/canvas`)
       .then(r => r.json())
       .then(data => {
-        setNodes(data.nodes?.length > 0 ? data.nodes : []);
-        setEdges(data.edges ?? []);
+        const hasDbCanvas = data.nodes?.length > 0 || data.edges?.length > 0;
+        if (hasDbCanvas) {
+          // Existing draft đã có canvas trong DB
+          setNodes(data.nodes);
+          setEdges(data.edges ?? []);
+          savedSnapshot.current = snap(data.nodes, data.edges ?? []);
+        } else if (initialNodes || initialEdges) {
+          // Workflow mới: load template vào React state, DB vẫn rỗng
+          setNodes(initialNodes ?? []);
+          setEdges(initialEdges ?? []);
+          savedSnapshot.current = JSON.stringify({ nodes: [], edges: [] });
+        } else if (sourceVersionId) {
+          // Draft mới: load canvas từ published version vào React state, DB vẫn rỗng
+          fetch(`${FLOW_BUILDER_URL}/api/workflow-versions/${sourceVersionId}/canvas`)
+            .then(r => r.json())
+            .then(src => {
+              setNodes(src.nodes ?? []);
+              setEdges(src.edges ?? []);
+              savedSnapshot.current = JSON.stringify({ nodes: [], edges: [] });
+            })
+            .catch(() => {});
+        } else {
+          setNodes([]);
+          setEdges([]);
+          savedSnapshot.current = JSON.stringify({ nodes: [], edges: [] });
+        }
       })
       .catch(() => {});
   }, [activeVersionId]);
@@ -871,13 +903,7 @@ const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent', agentId,
       .catch(() => {});
   }, []);
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !showExitConfirm) setShowExitConfirm(true);
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [showExitConfirm]);
+
 
   // â”€â”€ Toasts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [toasts, setToasts] = useState<{ id: number; msg: string }[]>([]);
@@ -949,6 +975,30 @@ const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent', agentId,
   );
 
   // â”€â”€ Drag & drop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const normalize = useCallback((ns: typeof nodes, es: typeof edges) => JSON.stringify({
+    nodes: ns.map(n => ({ id: n.id, type: n.type, position: n.position, data: n.data })),
+    edges: es.map(e => ({ id: e.id, source: e.source, target: e.target, type: e.type, label: (e as any).label })),
+  }), []);
+
+  const isDirty = useCallback(
+    (currentNodes: typeof nodes, currentEdges: typeof edges) =>
+      normalize(currentNodes, currentEdges) !== savedSnapshot.current,
+    [normalize],
+  );
+
+  const requestExit = useCallback(() => {
+    if (!isDirty(nodes, edges)) { onClose(); return; }
+    setShowExitConfirm(true);
+  }, [nodes, edges, isDirty, onClose]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !showExitConfirm) requestExit();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [showExitConfirm, requestExit]);
+
   const onDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
@@ -1004,13 +1054,18 @@ const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent', agentId,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      addToast(res.ok ? 'Canvas saved' : 'Save failed');
+      if (res.ok) {
+        savedSnapshot.current = normalize(nodes, edges);
+        addToast('Canvas saved');
+      } else {
+        addToast('Save failed');
+      }
     } catch {
       addToast('Save failed — network error');
     } finally {
       setSaving(false);
     }
-  }, [workflowVersionId, nodes, edges, addToast]);
+  }, [activeVersionId, nodes, edges, normalize, addToast]);
 
   // ── Delete node (context menu) ────────────────────────────────────────────
   const deleteNode = useCallback((nodeId: string) => {
@@ -1248,7 +1303,14 @@ ${edges.map(e => `  - from: "${e.source}"  to: "${e.target}"`).join('\n')}`;
         <AnimatePresence>
           {showExitConfirm && (
             <ConfirmExitModal
-              onConfirm={onClose}
+              onConfirm={async () => {
+                if (isNewWorkflow && workflowId) {
+                  await fetch(`${FLOW_BUILDER_URL}/api/workflows/${workflowId}`, { method: 'DELETE' });
+                } else if (isNewDraft && activeVersionId) {
+                  await fetch(`${FLOW_BUILDER_URL}/api/workflow-versions/${activeVersionId}`, { method: 'DELETE' });
+                }
+                onClose();
+              }}
               onCancel={() => setShowExitConfirm(false)}
             />
           )}

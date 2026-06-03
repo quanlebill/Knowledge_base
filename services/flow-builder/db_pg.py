@@ -310,7 +310,7 @@ async def create_draft_version(workflow_id: str) -> dict:
             if draft_result.scalar_one_or_none():
                 raise ValueError("Already has a draft version")
 
-            # Lấy published version hiện tại để copy canvas
+            # Lấy published version hiện tại để frontend load vào React state
             published_result = await session.execute(
                 select(WorkflowVersionsORM)
                 .where(WorkflowVersionsORM.workflow_id == UUID(workflow_id))
@@ -331,6 +331,9 @@ async def create_draft_version(workflow_id: str) -> dict:
         "workflow_version_id": str(wv.id),
         "version": wv.version,
         "source_version_id": str(published.id) if published else None,
+        # Canvas KHÔNG được copy vào MongoDB ở đây.
+        # Frontend nhận source_version_id, load canvas vào React state,
+        # và chỉ POST lên MongoDB khi user ấn Save.
     }
 
 
@@ -343,6 +346,25 @@ async def delete_workflow_version(version_id: str) -> None:
             if wv.status == "published":
                 raise ValueError("Cannot delete a published version")
             await session.delete(wv)
+
+
+async def delete_workflow(workflow_id: str) -> None:
+    async with client.get_client() as session:
+        async with session.begin():
+            wf = await session.get(WorkflowsORM, UUID(workflow_id))
+            if not wf:
+                raise ValueError("workflow not found")
+            # Lấy tất cả version IDs để frontend có thể xóa MongoDB canvas
+            versions_result = await session.execute(
+                select(WorkflowVersionsORM)
+                .where(WorkflowVersionsORM.workflow_id == UUID(workflow_id))
+            )
+            versions = versions_result.scalars().all()
+            version_ids = [str(v.id) for v in versions]
+            for v in versions:
+                await session.delete(v)
+            await session.delete(wf)
+    return version_ids
 
 
 async def publish_agent(agent_id: str, workflow_id: str) -> dict:

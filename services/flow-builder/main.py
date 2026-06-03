@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from db_pg import init_db, close_db, create_agent, list_agents, get_agent, create_workflow, list_workflows, publish_agent, update_agent_draft, publish_workflow_version, republish_workflow_version, list_workflow_versions, create_draft_version, delete_workflow_version
+from db_pg import init_db, close_db, create_agent, list_agents, get_agent, create_workflow, list_workflows, publish_agent, update_agent_draft, publish_workflow_version, republish_workflow_version, list_workflow_versions, create_draft_version, delete_workflow_version, delete_workflow
 from services.database_connector.postgres_connector import client
 from db_mongo import init_mongo, close_mongo, save_canvas, load_canvas
 
@@ -160,11 +160,6 @@ async def api_create_draft_version(workflow_id: str):
         raise HTTPException(503, "DB not available")
     try:
         result = await create_draft_version(workflow_id)
-        # Copy canvas từ published version hiện tại sang draft mới
-        if result.get("source_version_id"):
-            canvas = await load_canvas(result["source_version_id"])
-            if canvas["nodes"] or canvas["edges"]:
-                await save_canvas(result["workflow_version_id"], canvas["nodes"], canvas["edges"])
         return result
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -183,6 +178,22 @@ async def api_delete_workflow_version(version_id: str):
         raise HTTPException(400, str(e))
     except Exception as e:
         logger.exception("delete_workflow_version failed")
+        raise HTTPException(500, str(e))
+
+
+@app.delete("/api/workflows/{workflow_id}", status_code=204)
+async def api_delete_workflow(workflow_id: str):
+    if not client.is_connected():
+        raise HTTPException(503, "DB not available")
+    try:
+        version_ids = await delete_workflow(workflow_id)
+        # Xóa canvas MongoDB cho tất cả versions
+        for vid in version_ids:
+            await save_canvas(vid, [], [])
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        logger.exception("delete_workflow failed")
         raise HTTPException(500, str(e))
 
 

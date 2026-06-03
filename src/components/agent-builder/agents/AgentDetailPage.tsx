@@ -43,7 +43,16 @@ const TEMPLATE_OPTIONS: { id: TemplateId; label: string; desc: string }[] = [
 ];
 
 type DetailTab = 'WORKFLOWS' | 'SETTINGS';
-type BuilderState = { workflowVersionId: string; workflowName: string; workflowId?: string } | null;
+type BuilderState = {
+  workflowVersionId: string;
+  workflowName: string;
+  workflowId?: string;
+  isNewWorkflow?: boolean;
+  isNewDraft?: boolean;
+  initialNodes?: any[];
+  initialEdges?: any[];
+  sourceVersionId?: string;
+} | null;
 
 interface Props {
   agentId: string;
@@ -73,6 +82,7 @@ export const AgentDetailPage: React.FC<Props> = ({ agentId, onBack }) => {
   const [publishModal, setPublishModal]            = useState<{ versionId: string; mode: 'publish' | 'republish' } | null>(null);
   const [changelog, setChangelog]                  = useState('');
   const [deleteConfirm, setDeleteConfirm]          = useState<string | null>(null); // versionId
+  const [deleteWfConfirm, setDeleteWfConfirm]      = useState<string | null>(null); // workflowId
 
   // Create workflow modal
   const [showCreateWf, setShowCreateWf]   = useState(false);
@@ -194,27 +204,32 @@ export const AgentDetailPage: React.FC<Props> = ({ agentId, onBack }) => {
       });
       const data = await res.json();
       const wvId: string = data.workflow_version_id;
-
-      // Save template canvas to MongoDB
       const tpl = TEMPLATE_FLOWS[newWfTemplate];
-      if (tpl && wvId) {
-        await fetch(`${FLOW_BUILDER_URL}/api/workflow-versions/${wvId}/canvas`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            nodes: tpl.nodes.map(n => ({ id: n.id, type: n.type, position: n.position, data: n.data })),
-            edges: tpl.edges.map(e => ({ id: e.id, source: e.source, target: e.target, type: e.type, label: e.label })),
-          }),
-        });
-      }
 
       setShowCreateWf(false);
       setNewWfName('');
       await fetchAgent();
-      // Open builder
-      setBuilder({ workflowVersionId: wvId, workflowName: newWfName.trim(), workflowId: data.workflow_id });
+      setBuilder({
+        workflowVersionId: wvId,
+        workflowName: newWfName.trim(),
+        workflowId: data.workflow_id,
+        isNewWorkflow: true,
+        initialNodes: tpl?.nodes.map(n => ({ id: n.id, type: n.type, position: n.position, data: n.data })) ?? [],
+        initialEdges: tpl?.edges.map(e => ({ id: e.id, source: e.source, target: e.target, type: e.type, label: e.label })) ?? [],
+      });
     } catch { showToast('Tạo workflow thất bại'); }
     finally { setCreating(false); }
+  };
+
+  const handleDeleteWorkflow = async () => {
+    if (!deleteWfConfirm) return;
+    try {
+      const res = await fetch(`${FLOW_BUILDER_URL}/api/workflows/${deleteWfConfirm}`, { method: 'DELETE' });
+      if (!res.ok) { const e = await res.json(); showToast(e.detail || 'Xóa thất bại'); return; }
+      showToast('Đã xóa workflow');
+      setDeleteWfConfirm(null);
+      fetchAgent();
+    } catch { showToast('Xóa thất bại'); }
   };
 
   const handleDeleteDraft = async () => {
@@ -252,6 +267,11 @@ export const AgentDetailPage: React.FC<Props> = ({ agentId, onBack }) => {
         agentId={agentId}
         workflowVersionId={builder.workflowVersionId}
         workflowId={builder.workflowId}
+        isNewWorkflow={builder.isNewWorkflow}
+        isNewDraft={builder.isNewDraft}
+        initialNodes={builder.initialNodes}
+        initialEdges={builder.initialEdges}
+        sourceVersionId={builder.sourceVersionId}
       />
     );
   }
@@ -340,21 +360,37 @@ export const AgentDetailPage: React.FC<Props> = ({ agentId, onBack }) => {
                         <GitMerge className="w-4 h-4 text-blue-500" />
                         <span className="text-sm font-semibold text-[#111111]">{wf.name}</span>
                       </div>
-                      <button
-                        onClick={async () => {
-                          try {
-                            const res = await fetch(`${FLOW_BUILDER_URL}/api/workflows/${wf.id}/versions`, { method: 'POST' });
-                            if (!res.ok) { const e = await res.json(); showToast(e.detail || 'Thất bại'); return; }
-                            await fetchVersions(wf.id);
-                            showToast('Đã tạo draft version mới');
-                          } catch { showToast('Thất bại'); }
-                        }}
-                        disabled={hasDraft}
-                        title={hasDraft ? 'Publish draft trước khi tạo mới' : 'Tạo draft version mới'}
-                        className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold border border-amber-300 text-amber-700 hover:bg-amber-50 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                      >
-                        <Plus className="w-3 h-3" /> New Draft
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={async () => {
+                            try {
+                              const res = await fetch(`${FLOW_BUILDER_URL}/api/workflows/${wf.id}/versions`, { method: 'POST' });
+                              if (!res.ok) { const e = await res.json(); showToast(e.detail || 'Thất bại'); return; }
+                              const data = await res.json();
+                              await fetchAgent();
+                              setBuilder({
+                                workflowVersionId: data.workflow_version_id,
+                                workflowName: wf.name,
+                                workflowId: wf.id,
+                                isNewDraft: true,
+                                sourceVersionId: data.source_version_id ?? undefined,
+                              });
+                            } catch { showToast('Thất bại'); }
+                          }}
+                          disabled={hasDraft}
+                          title={hasDraft ? 'Publish draft trước khi tạo mới' : 'Tạo draft version mới'}
+                          className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold border border-amber-300 text-amber-700 hover:bg-amber-50 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        >
+                          <Plus className="w-3 h-3" /> New Draft
+                        </button>
+                        <button
+                          onClick={() => setDeleteWfConfirm(wf.id)}
+                          title="Xóa workflow"
+                          className="p-1.5 border border-red-200 text-red-400 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
 
                     {/* Published row */}
@@ -672,6 +708,20 @@ export const AgentDetailPage: React.FC<Props> = ({ agentId, onBack }) => {
               >
                 {publishModal.mode === 'republish' ? 'Rollback' : 'Publish'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete workflow confirm */}
+      {deleteWfConfirm && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <h3 className="font-bold text-slate-800">Xóa workflow này?</h3>
+            <p className="text-sm text-slate-500">Toàn bộ versions và canvas sẽ bị xóa khỏi database và không thể khôi phục.</p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setDeleteWfConfirm(null)} className="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg">Hủy</button>
+              <button onClick={handleDeleteWorkflow} className="px-4 py-2 text-sm font-semibold text-white bg-red-500 hover:bg-red-600 rounded-lg">Xóa</button>
             </div>
           </div>
         </div>
