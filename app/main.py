@@ -48,5 +48,5 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from router import router  # noqa: E402 — imported after app creation to avoid circular deps
+from app.router import router
 app.include_router(router)
