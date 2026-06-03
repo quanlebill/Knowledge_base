@@ -1,16 +1,20 @@
 -- Idempotent seed data for dev environment
 
-INSERT INTO tenants (id, name, slug, plan_id, is_active)
-VALUES ('00000000-0000-0000-0000-000000000001', 'Dev Tenant', 'dev', 1, true)
+INSERT INTO "Plans" (id, name)
+VALUES (1, 'dev')
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO llm_providers (id, name, model_id, type, is_default, is_active)
+INSERT INTO "Tenants" (id, name, slug, plan_id, data_residency, is_active)
+VALUES ('00000000-0000-0000-0000-000000000001', 'Dev Tenant', 'dev', 1, 'Asia-SE1', true)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO "LLMProviders" (id, name, model_id, endpoint_url, type, is_default, is_active)
 VALUES
-  ('00000000-0000-0000-0000-000000000010', 'Claude Haiku',  'planner',  'chat', false, true),
-  ('00000000-0000-0000-0000-000000000011', 'Claude Sonnet', 'responder', 'chat', true,  true)
+  ('00000000-0000-0000-0000-000000000010', 'Claude Haiku',  'planner',   'http://litellm:4000', 'chat', false, true),
+  ('00000000-0000-0000-0000-000000000011', 'Claude Sonnet', 'responder', 'http://litellm:4000', 'chat', true,  true)
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO system_prompts (id, tenant_id, name, content, version)
+INSERT INTO "SystemPrompts" (id, tenant_id, name, content, version)
 VALUES (
   '00000000-0000-0000-0000-000000000020',
   '00000000-0000-0000-0000-000000000001',
@@ -20,7 +24,7 @@ VALUES (
 )
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO agents (id, tenant_id, name, description)
+INSERT INTO "Agents" (id, tenant_id, name, description)
 VALUES (
   '00000000-0000-0000-0000-000000000030',
   '00000000-0000-0000-0000-000000000001',
@@ -29,7 +33,7 @@ VALUES (
 )
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO workflows (id, agent_id, name)
+INSERT INTO "Workflows" (id, agent_id, name)
 VALUES (
   '00000000-0000-0000-0000-000000000050',
   '00000000-0000-0000-0000-000000000030',
@@ -37,7 +41,7 @@ VALUES (
 )
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO workflow_versions (id, workflow_id, version, status, published_at)
+INSERT INTO "WorkflowVersions" (id, workflow_id, version, status, published_at)
 VALUES (
   '00000000-0000-0000-0000-000000000060',
   '00000000-0000-0000-0000-000000000050',
@@ -47,7 +51,7 @@ VALUES (
 )
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO agent_versions (id, agent_id, version, status, workflow_version_id, responder_model_id, system_prompt_id)
+INSERT INTO "AgentVersions" (id, agent_id, version, status, workflow_version_id, responder_model_id, system_prompt_id)
 VALUES (
   '00000000-0000-0000-0000-000000000040',
   '00000000-0000-0000-0000-000000000030',
@@ -59,10 +63,9 @@ VALUES (
 )
 ON CONFLICT (id) DO NOTHING;
 
-UPDATE agents SET published_version_id = '00000000-0000-0000-0000-000000000040'
+UPDATE "Agents" SET published_version_id = '00000000-0000-0000-0000-000000000040'
 WHERE id = '00000000-0000-0000-0000-000000000030';
 
--- Backfill workflow_version_id nếu row đã tồn tại trước khi seed workflow
-UPDATE agent_versions SET workflow_version_id = '00000000-0000-0000-0000-000000000060'
+UPDATE "AgentVersions" SET workflow_version_id = '00000000-0000-0000-0000-000000000060'
 WHERE id = '00000000-0000-0000-0000-000000000040'
   AND workflow_version_id IS NULL;

@@ -73,7 +73,9 @@ services:
         condition: service_healthy
 
   workflow-runtime:
-    build: ../services/workflow-runtime
+    build:
+      context: ..
+      dockerfile: services/workflow-runtime/Dockerfile
     restart: unless-stopped
     ports:
       - "8001:8001"
@@ -99,7 +101,9 @@ services:
         condition: service_started
 
   flow-builder:
-    build: ../services/flow-builder
+    build:
+      context: ..
+      dockerfile: services/flow-builder/Dockerfile
     restart: unless-stopped
     ports:
       - "8002:8002"

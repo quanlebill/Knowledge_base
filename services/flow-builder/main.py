@@ -11,7 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from db_pg import init_db, close_db, get_pool, create_agent, list_agents, get_agent, create_workflow, list_workflows, publish_agent, update_agent_draft, publish_workflow_version, unpublish_workflow_version
+from db_pg import init_db, close_db, create_agent, list_agents, get_agent, create_workflow, list_workflows, publish_agent, update_agent_draft, publish_workflow_version, unpublish_workflow_version
+from services.database_connector.postgres_connector import client
 from db_mongo import init_mongo, close_mongo, save_canvas, load_canvas
 
 logging.basicConfig(level=logging.INFO)
@@ -84,7 +85,7 @@ async def api_create_agent(
     x_tenant_id: str = Header(default=None),
 ):
     tenant_id = x_tenant_id or _DEV_TENANT_ID
-    if not get_pool():
+    if not client.is_connected():
         raise HTTPException(503, "DB not available")
     try:
         result = await create_agent(body.name, body.description or "", tenant_id)
@@ -97,7 +98,7 @@ async def api_create_agent(
 @app.get("/api/agents")
 async def api_list_agents(x_tenant_id: str = Header(default=None)):
     tenant_id = x_tenant_id or _DEV_TENANT_ID
-    if not get_pool():
+    if not client.is_connected():
         raise HTTPException(503, "DB not available")
     rows = await list_agents(tenant_id)
     return [_serialize(r) for r in rows]
@@ -105,7 +106,7 @@ async def api_list_agents(x_tenant_id: str = Header(default=None)):
 
 @app.get("/api/agents/{agent_id}")
 async def api_get_agent(agent_id: str):
-    if not get_pool():
+    if not client.is_connected():
         raise HTTPException(503, "DB not available")
     agent = await get_agent(agent_id)
     if not agent:
@@ -118,7 +119,7 @@ async def api_get_agent(agent_id: str):
 
 @app.post("/api/agents/{agent_id}/workflows", status_code=201)
 async def api_create_workflow(agent_id: str, body: CreateWorkflowRequest):
-    if not get_pool():
+    if not client.is_connected():
         raise HTTPException(503, "DB not available")
     agent = await get_agent(agent_id)
     if not agent:
@@ -133,7 +134,7 @@ async def api_create_workflow(agent_id: str, body: CreateWorkflowRequest):
 
 @app.get("/api/agents/{agent_id}/workflows")
 async def api_list_workflows(agent_id: str):
-    if not get_pool():
+    if not client.is_connected():
         raise HTTPException(503, "DB not available")
     rows = await list_workflows(agent_id)
     return [_serialize(r) for r in rows]
@@ -164,7 +165,7 @@ async def api_load_canvas(workflow_version_id: str):
 
 @app.patch("/api/agents/{agent_id}")
 async def api_update_agent(agent_id: str, body: UpdateDraftRequest):
-    if not get_pool():
+    if not client.is_connected():
         raise HTTPException(503, "DB not available")
     try:
         result = await update_agent_draft(agent_id, body.model_dump(exclude_none=True))
@@ -176,7 +177,7 @@ async def api_update_agent(agent_id: str, body: UpdateDraftRequest):
 
 @app.post("/api/workflow-versions/{workflow_version_id}/unpublish")
 async def api_unpublish_workflow_version(workflow_version_id: str):
-    if not get_pool():
+    if not client.is_connected():
         raise HTTPException(503, "DB not available")
     try:
         return await unpublish_workflow_version(workflow_version_id)
@@ -189,7 +190,7 @@ async def api_unpublish_workflow_version(workflow_version_id: str):
 
 @app.post("/api/workflow-versions/{workflow_version_id}/publish")
 async def api_publish_workflow_version(workflow_version_id: str):
-    if not get_pool():
+    if not client.is_connected():
         raise HTTPException(503, "DB not available")
     try:
         result = await publish_workflow_version(workflow_version_id)
@@ -203,7 +204,7 @@ async def api_publish_workflow_version(workflow_version_id: str):
 
 @app.post("/api/agents/{agent_id}/publish")
 async def api_publish_agent(agent_id: str, body: PublishRequest):
-    if not get_pool():
+    if not client.is_connected():
         raise HTTPException(503, "DB not available")
     try:
         result = await publish_agent(agent_id, body.workflow_id)

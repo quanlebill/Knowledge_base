@@ -7,13 +7,13 @@ import logging
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from dotenv import load_dotenv, find_dotenv
 from sqlalchemy import delete, func, select, text
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
-from models import AgentMemory
+from services.database_connector.postgres_connector import client
+from basemodel.services_databaseconnector.postgres_orm.workflow_orm import AgentMemoriesORM
 
 load_dotenv(find_dotenv())
 
@@ -24,17 +24,17 @@ RETENTION_DAYS = int(os.environ.get("MEMORY_RETENTION_DAYS", "90"))
 BATCH_SIZE     = int(os.environ.get("MEMORY_CLEANUP_BATCH_SIZE", "1000"))
 
 
-async def _delete_in_batches(session_factory, where_clause, label: str) -> int:
+async def _delete_in_batches(where_clause, label: str) -> int:
     total = 0
     while True:
-        async with session_factory() as session:
+        async with client.get_client() as session:
             subq = (
-                select(AgentMemory.id)
+                select(AgentMemoriesORM.id)
                 .where(where_clause)
                 .limit(BATCH_SIZE)
             )
             result = await session.execute(
-                delete(AgentMemory).where(AgentMemory.id.in_(subq))
+                delete(AgentMemoriesORM).where(AgentMemoriesORM.id.in_(subq))
             )
             deleted = result.rowcount
             await session.commit()
@@ -47,35 +47,29 @@ async def _delete_in_batches(session_factory, where_clause, label: str) -> int:
 
 async def run():
     url = os.environ["DATABASE_URL"]
-    if "postgresql+asyncpg" not in url:
-        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
-
-    engine = create_async_engine(url, pool_size=1, max_overflow=2)
-    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    client.set_url(url)
+    await client.open()
 
     try:
-        # Log per-tenant counts trước khi xóa để debug nếu cần
-        async with session_factory() as session:
+        async with client.get_client() as session:
             counts = await session.execute(
-                select(AgentMemory.tenant_id, func.count().label("cnt"))
+                select(AgentMemoriesORM.tenant_id, func.count().label("cnt"))
                 .where(text(
                     f"(deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL '{RETENTION_DAYS} days') "
                     "OR (expires_at IS NOT NULL AND expires_at < NOW())"
                 ))
-                .group_by(AgentMemory.tenant_id)
+                .group_by(AgentMemoriesORM.tenant_id)
             )
             for row in counts.fetchall():
                 logger.info("tenant=%s — %d records pending cleanup", row.tenant_id, row.cnt)
 
         soft_deleted = await _delete_in_batches(
-            session_factory,
             text(f"deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL '{RETENTION_DAYS} days'"),
             "soft-deleted",
         )
         logger.info("cleanup complete — soft-deleted total: %d", soft_deleted)
 
         expired = await _delete_in_batches(
-            session_factory,
             text("expires_at IS NOT NULL AND expires_at < NOW()"),
             "expired",
         )
@@ -85,7 +79,7 @@ async def run():
         logger.exception("memory_cleanup failed")
         raise
     finally:
-        await engine.dispose()
+        await client.close()
 
 
 if __name__ == "__main__":

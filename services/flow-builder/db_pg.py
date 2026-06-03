@@ -1,330 +1,322 @@
-import os
 import json
+import os
 import logging
-import asyncpg
 from typing import Optional
+from uuid import UUID
+
+from sqlalchemy import select, update as sa_update, func
+from sqlalchemy.orm import selectinload
+
+from services.database_connector.postgres_connector import client
+from basemodel.services_databaseconnector.postgres_orm.workflow_orm import (
+    AgentsORM, WorkflowsORM, WorkflowVersionsORM, AgentVersionsORM,
+)
+from basemodel.services_databaseconnector.postgres_model import (
+    AgentsDelete, AgentVersionsDelete, WorkflowVersionsDelete,
+)
 
 logger = logging.getLogger(__name__)
-
-_pool: Optional[asyncpg.Pool] = None
 
 _DEV_TENANT_ID          = os.environ.get("DEV_TENANT_ID",          "00000000-0000-0000-0000-000000000001")
 _DEV_RESPONDER_MODEL_ID = os.environ.get("DEV_RESPONDER_MODEL_ID", "00000000-0000-0000-0000-000000000011")
 
 
 async def init_db():
-    global _pool
     url = os.environ.get("DATABASE_URL", "")
     if not url:
         logger.warning("DATABASE_URL not set")
         return
-    url = url.replace("postgresql+asyncpg://", "postgresql://")
-    _pool = await asyncpg.create_pool(url, min_size=1, max_size=5)
+    client.set_url(url)
+    await client.open()
     logger.info("db pool ready")
 
 
 async def close_db():
-    global _pool
-    if _pool:
-        await _pool.close()
-        _pool = None
-
-
-def get_pool() -> Optional[asyncpg.Pool]:
-    return _pool
+    await client.close()
 
 
 async def create_agent(name: str, description: str, tenant_id: str) -> dict:
-    async with _pool.acquire() as conn:
-        async with conn.transaction():
-            agent = await conn.fetchrow(
-                """
-                INSERT INTO agents (tenant_id, name, description)
-                VALUES ($1::uuid, $2, $3)
-                RETURNING id, name, description, created_at
-                """,
-                tenant_id, name, description,
+    async with client.get_client() as session:
+        async with session.begin():
+            agent = AgentsORM(
+                tenant_id=UUID(tenant_id),
+                name=name,
+                description=description,
             )
-            agent_id = str(agent["id"])
+            session.add(agent)
+            await session.flush()
 
-            workflow = await conn.fetchrow(
-                """
-                INSERT INTO workflows (agent_id, name, description)
-                VALUES ($1::uuid, 'Default Workflow', '')
-                RETURNING id
-                """,
-                agent_id,
+            workflow = WorkflowsORM(
+                agent_id=agent.id,
+                name="Default Workflow",
+                description="",
             )
-            workflow_id = str(workflow["id"])
+            session.add(workflow)
+            await session.flush()
 
-            wv = await conn.fetchrow(
-                """
-                INSERT INTO workflow_versions (workflow_id, version, status)
-                VALUES ($1::uuid, 1, 'draft')
-                RETURNING id
-                """,
-                workflow_id,
+            wv = WorkflowVersionsORM(
+                workflow_id=workflow.id,
+                version=1,
+                status="draft",
             )
-            wv_id = str(wv["id"])
+            session.add(wv)
+            await session.flush()
 
-            av = await conn.fetchrow(
-                """
-                INSERT INTO agent_versions
-                  (agent_id, version, status, workflow_version_id, responder_model_id)
-                VALUES ($1::uuid, 1, 'draft', $2::uuid, $3::uuid)
-                RETURNING id
-                """,
-                agent_id, wv_id, _DEV_RESPONDER_MODEL_ID,
+            av = AgentVersionsORM(
+                agent_id=agent.id,
+                version=1,
+                status="draft",
+                workflow_version_id=wv.id,
+                responder_model_id=UUID(_DEV_RESPONDER_MODEL_ID),
             )
-            av_id = str(av["id"])
+            session.add(av)
+            await session.flush()
 
-            await conn.execute(
-                "UPDATE agents SET draft_version_id = $1::uuid WHERE id = $2::uuid",
-                av_id, agent_id,
-            )
+            agent.draft_version_id = av.id
 
     return {
-        "agent_id": agent_id,
-        "workflow_id": workflow_id,
-        "workflow_version_id": wv_id,
-        "agent_version_id": av_id,
+        "agent_id": str(agent.id),
+        "workflow_id": str(workflow.id),
+        "workflow_version_id": str(wv.id),
+        "agent_version_id": str(av.id),
     }
 
 
 async def list_agents(tenant_id: str) -> list[dict]:
-    rows = await _pool.fetch(
-        """
-        SELECT id, name, description, published_version_id, draft_version_id, created_at
-        FROM agents
-        WHERE tenant_id = $1::uuid AND deleted_at IS NULL
-        ORDER BY created_at DESC
-        """,
-        tenant_id,
-    )
-    return [dict(r) for r in rows]
+    async with client.get_client() as session:
+        result = await session.execute(
+            select(AgentsORM)
+            .where(AgentsORM.tenant_id == UUID(tenant_id))
+            .where(AgentsORM.deleted_at.is_(None))
+            .order_by(AgentsORM.created_at.desc())
+        )
+        rows = result.scalars().all()
+    return [
+        {
+            "id": str(r.id),
+            "name": r.name,
+            "description": r.description,
+            "published_version_id": str(r.published_version_id) if r.published_version_id else None,
+            "draft_version_id": str(r.draft_version_id) if r.draft_version_id else None,
+            "created_at": r.created_at,
+        }
+        for r in rows
+    ]
 
 
 async def get_agent(agent_id: str) -> Optional[dict]:
-    row = await _pool.fetchrow(
-        """
-        SELECT a.id, a.name, a.description, a.published_version_id, a.draft_version_id,
-               a.tenant_id, a.created_at, a.updated_at,
-               w.id AS active_workflow_id,
-               w.name AS active_workflow_name
-        FROM agents a
-        LEFT JOIN agent_versions av ON av.id = a.published_version_id
-        LEFT JOIN workflow_versions wv ON wv.id = av.workflow_version_id
-        LEFT JOIN workflows w ON w.id = wv.workflow_id
-        WHERE a.id = $1::uuid AND a.deleted_at IS NULL
-        """,
-        agent_id,
-    )
-    return dict(row) if row else None
+    async with client.get_client() as session:
+        result = await session.execute(
+            select(AgentsORM)
+            .options(
+                selectinload(AgentsORM.published_version).selectinload(AgentVersionsORM.workflow_version)
+                .selectinload(WorkflowVersionsORM.workflow)
+            )
+            .where(AgentsORM.id == UUID(agent_id))
+            .where(AgentsORM.deleted_at.is_(None))
+        )
+        agent = result.scalar_one_or_none()
+    if not agent:
+        return None
+
+    active_workflow = None
+    active_workflow_name = None
+    if agent.published_version and agent.published_version.workflow_version:
+        wf = agent.published_version.workflow_version.workflow
+        if wf:
+            active_workflow = str(wf.id)
+            active_workflow_name = wf.name
+
+    return {
+        "id": str(agent.id),
+        "name": agent.name,
+        "description": agent.description,
+        "published_version_id": str(agent.published_version_id) if agent.published_version_id else None,
+        "draft_version_id": str(agent.draft_version_id) if agent.draft_version_id else None,
+        "tenant_id": str(agent.tenant_id),
+        "created_at": agent.created_at,
+        "updated_at": agent.updated_at,
+        "active_workflow_id": active_workflow,
+        "active_workflow_name": active_workflow_name,
+    }
 
 
 async def create_workflow(agent_id: str, name: str, description: str = "") -> dict:
-    async with _pool.acquire() as conn:
-        async with conn.transaction():
-            wf = await conn.fetchrow(
-                """
-                INSERT INTO workflows (agent_id, name, description)
-                VALUES ($1::uuid, $2, $3)
-                RETURNING id
-                """,
-                agent_id, name, description,
+    async with client.get_client() as session:
+        async with session.begin():
+            wf = WorkflowsORM(
+                agent_id=UUID(agent_id),
+                name=name,
+                description=description,
             )
-            workflow_id = str(wf["id"])
+            session.add(wf)
+            await session.flush()
 
-            wv = await conn.fetchrow(
-                """
-                INSERT INTO workflow_versions (workflow_id, version, status)
-                VALUES ($1::uuid, 1, 'draft')
-                RETURNING id
-                """,
-                workflow_id,
+            wv = WorkflowVersionsORM(
+                workflow_id=wf.id,
+                version=1,
+                status="draft",
             )
-            wv_id = str(wv["id"])
+            session.add(wv)
+            await session.flush()
 
-    return {"workflow_id": workflow_id, "workflow_version_id": wv_id}
+    return {"workflow_id": str(wf.id), "workflow_version_id": str(wv.id)}
 
 
 async def list_workflows(agent_id: str) -> list[dict]:
-    rows = await _pool.fetch(
-        """
-        SELECT
-            w.id, w.name, w.description, w.is_active, w.created_at,
-            (SELECT id FROM workflow_versions
-             WHERE workflow_id = w.id AND status = 'draft'
-             ORDER BY version DESC LIMIT 1) AS draft_version_id,
-            (SELECT id FROM workflow_versions
-             WHERE workflow_id = w.id AND status = 'published'
-             ORDER BY version DESC LIMIT 1) AS published_version_id
-        FROM workflows w
-        WHERE w.agent_id = $1::uuid
-        ORDER BY w.created_at DESC
-        """,
-        agent_id,
-    )
-    return [dict(r) for r in rows]
+    async with client.get_client() as session:
+        result = await session.execute(
+            select(WorkflowsORM)
+            .options(selectinload(WorkflowsORM.workflow_versions))
+            .where(WorkflowsORM.agent_id == UUID(agent_id))
+            .order_by(WorkflowsORM.created_at.desc())
+        )
+        rows = result.scalars().all()
+
+    def _pick_version(versions, status):
+        matches = [v for v in versions if v.status == status]
+        return str(max(matches, key=lambda v: v.version).id) if matches else None
+
+    return [
+        {
+            "id": str(r.id),
+            "name": r.name,
+            "description": r.description,
+            "is_active": r.is_active,
+            "created_at": r.created_at,
+            "draft_version_id": _pick_version(r.workflow_versions, "draft"),
+            "published_version_id": _pick_version(r.workflow_versions, "published"),
+        }
+        for r in rows
+    ]
 
 
 async def update_agent_draft(agent_id: str, fields: dict) -> dict:
-    """Update agent name/description và draft agent_version config."""
-    async with _pool.acquire() as conn:
-        async with conn.transaction():
-            # Update agents table
-            agent_fields = {k: v for k, v in fields.items() if k in ("name", "description")}
-            if agent_fields:
-                sets = ", ".join(f"{k} = ${i+2}" for i, k in enumerate(agent_fields))
-                await conn.execute(
-                    f"UPDATE agents SET {sets}, updated_at = now() WHERE id = $1::uuid",
-                    agent_id, *agent_fields.values(),
-                )
+    agent_fields = {k: v for k, v in fields.items() if k in ("name", "description")}
+    av_fields = {k: v for k, v in fields.items()
+                 if k in ("responder_model_id", "system_prompt_id", "guardrail_id", "memory_enabled")}
 
-            # Update draft agent_version
-            av_fields = {k: v for k, v in fields.items()
-                         if k in ("responder_model_id", "system_prompt_id", "guardrail_id", "memory_enabled")}
+    async with client.get_client() as session:
+        async with session.begin():
+            if agent_fields:
+                await session.execute(
+                    sa_update(AgentsORM)
+                    .where(AgentsORM.id == UUID(agent_id))
+                    .values(**agent_fields, updated_at=func.now())
+                )
             if av_fields:
-                sets = []
-                vals = [agent_id]
-                for i, (k, v) in enumerate(av_fields.items(), start=2):
-                    if k in ("responder_model_id", "system_prompt_id", "guardrail_id"):
-                        sets.append(f"{k} = ${i}::uuid")
-                    else:
-                        sets.append(f"{k} = ${i}")
-                    vals.append(v)
-                await conn.execute(
-                    f"UPDATE agent_versions SET {', '.join(sets)} WHERE agent_id = $1::uuid AND status = 'draft'",
-                    *vals,
+                # Cast UUID string fields to UUID
+                uuid_keys = {"responder_model_id", "system_prompt_id", "guardrail_id"}
+                av_values = {
+                    k: UUID(v) if k in uuid_keys and v else v
+                    for k, v in av_fields.items()
+                }
+                await session.execute(
+                    sa_update(AgentVersionsORM)
+                    .where(AgentVersionsORM.agent_id == UUID(agent_id))
+                    .where(AgentVersionsORM.status == "draft")
+                    .values(**av_values)
                 )
 
     return {"agent_id": agent_id, "updated": list(fields.keys())}
 
 
 async def publish_workflow_version(workflow_version_id: str) -> dict:
-    """Publish 1 draft workflow_version → status = published."""
-    async with _pool.acquire() as conn:
-        async with conn.transaction():
-            row = await conn.fetchrow(
-                "SELECT id, workflow_id, status FROM workflow_versions WHERE id = $1::uuid",
-                workflow_version_id,
-            )
-            if not row:
+    async with client.get_client() as session:
+        async with session.begin():
+            wv = await session.get(WorkflowVersionsORM, UUID(workflow_version_id))
+            if not wv:
                 raise ValueError("workflow_version not found")
-            if row["status"] == "published":
+            if wv.status == "published":
                 raise ValueError("already published")
 
-            # Archive old published versions of same workflow
-            await conn.execute(
-                """UPDATE workflow_versions SET status = 'archived'
-                   WHERE workflow_id = $1::uuid AND status = 'published'""",
-                str(row["workflow_id"]),
+            await session.execute(
+                sa_update(WorkflowVersionsORM)
+                .where(WorkflowVersionsORM.workflow_id == wv.workflow_id)
+                .where(WorkflowVersionsORM.status == "published")
+                .values(status="archived")
             )
-            # Publish this version
-            await conn.execute(
-                "UPDATE workflow_versions SET status = 'published', published_at = now() WHERE id = $1::uuid",
-                workflow_version_id,
-            )
+            wv.status = "published"
+            wv.published_at = func.now()
+
     return {"workflow_version_id": workflow_version_id, "status": "published"}
 
 
 async def unpublish_workflow_version(workflow_version_id: str) -> dict:
-    """Set published workflow_version back to draft."""
-    async with _pool.acquire() as conn:
-        async with conn.transaction():
-            row = await conn.fetchrow(
-                "SELECT id, status FROM workflow_versions WHERE id = $1::uuid",
-                workflow_version_id,
-            )
-            if not row:
+    async with client.get_client() as session:
+        async with session.begin():
+            wv = await session.get(WorkflowVersionsORM, UUID(workflow_version_id))
+            if not wv:
                 raise ValueError("workflow_version not found")
-            if row["status"] != "published":
+            if wv.status != "published":
                 raise ValueError("not published")
-            await conn.execute(
-                "UPDATE workflow_versions SET status = 'draft', published_at = NULL WHERE id = $1::uuid",
-                workflow_version_id,
-            )
+            wv.status = "draft"
+            wv.published_at = None
+
     return {"workflow_version_id": workflow_version_id, "status": "draft"}
 
 
 async def publish_agent(agent_id: str, workflow_id: str) -> dict:
-    async with _pool.acquire() as conn:
-        async with conn.transaction():
-            # Validate workflow belongs to agent
-            wf = await conn.fetchrow(
-                "SELECT id FROM workflows WHERE id = $1::uuid AND agent_id = $2::uuid",
-                workflow_id, agent_id,
-            )
-            if not wf:
+    async with client.get_client() as session:
+        async with session.begin():
+            wf = await session.get(WorkflowsORM, UUID(workflow_id))
+            if not wf or str(wf.agent_id) != agent_id:
                 raise ValueError("workflow_id does not belong to agent_id")
 
-            # Get draft workflow_version
-            wv = await conn.fetchrow(
-                """
-                SELECT id, version FROM workflow_versions
-                WHERE workflow_id = $1::uuid AND status = 'draft'
-                ORDER BY version DESC LIMIT 1
-                """,
-                workflow_id,
+            wv_result = await session.execute(
+                select(WorkflowVersionsORM)
+                .where(WorkflowVersionsORM.workflow_id == UUID(workflow_id))
+                .where(WorkflowVersionsORM.status == "draft")
+                .order_by(WorkflowVersionsORM.version.desc())
+                .limit(1)
             )
+            wv = wv_result.scalar_one_or_none()
             if not wv:
                 raise ValueError("No draft workflow_version found")
-            wv_id = str(wv["id"])
 
-            # Publish workflow_version
-            await conn.execute(
-                """
-                UPDATE workflow_versions
-                SET status = 'published', published_at = now()
-                WHERE id = $1::uuid
-                """,
-                wv_id,
+            wv.status = "published"
+            wv.published_at = func.now()
+
+            av_result = await session.execute(
+                select(AgentVersionsORM)
+                .where(AgentVersionsORM.agent_id == UUID(agent_id))
+                .where(AgentVersionsORM.status == "draft")
+                .order_by(AgentVersionsORM.version.desc())
+                .limit(1)
             )
+            av_draft = av_result.scalar_one_or_none()
 
-            # Get draft agent_version
-            av_draft = await conn.fetchrow(
-                """
-                SELECT * FROM agent_versions
-                WHERE agent_id = $1::uuid AND status = 'draft'
-                ORDER BY version DESC LIMIT 1
-                """,
-                agent_id,
+            new_version        = (av_draft.version + 1) if av_draft else 1
+            responder_model_id = av_draft.responder_model_id if av_draft else UUID(_DEV_RESPONDER_MODEL_ID)
+            system_prompt_id   = av_draft.system_prompt_id if av_draft else None
+            guardrail_id       = av_draft.guardrail_id if av_draft else None
+            memory_enabled     = av_draft.memory_enabled if av_draft else False
+            llm_config         = av_draft.llm_config if av_draft else {}
+            retrieval_config   = av_draft.retrieval_config if av_draft else {}
+
+            new_av = AgentVersionsORM(
+                agent_id=UUID(agent_id),
+                version=new_version,
+                status="published",
+                workflow_version_id=wv.id,
+                responder_model_id=responder_model_id,
+                system_prompt_id=system_prompt_id,
+                guardrail_id=guardrail_id,
+                memory_enabled=memory_enabled,
+                llm_config=llm_config,
+                retrieval_config=retrieval_config,
             )
+            session.add(new_av)
+            await session.flush()
 
-            new_version = (av_draft["version"] + 1) if av_draft else 1
-            responder_model_id = str(av_draft["responder_model_id"]) if av_draft and av_draft["responder_model_id"] else _DEV_RESPONDER_MODEL_ID
-            system_prompt_id   = str(av_draft["system_prompt_id"]) if av_draft and av_draft["system_prompt_id"] else None
-            guardrail_id       = str(av_draft["guardrail_id"]) if av_draft and av_draft["guardrail_id"] else None
-            memory_enabled     = av_draft["memory_enabled"] if av_draft else False
-            def _to_dict(v):
-                if not v: return {}
-                return json.loads(v) if isinstance(v, str) else dict(v)
-            llm_config       = _to_dict(av_draft["llm_config"])
-            retrieval_config = _to_dict(av_draft["retrieval_config"])
-
-            new_av = await conn.fetchrow(
-                """
-                INSERT INTO agent_versions
-                  (agent_id, version, status, workflow_version_id, responder_model_id,
-                   system_prompt_id, guardrail_id, memory_enabled, llm_config, retrieval_config)
-                VALUES ($1::uuid, $2, 'published', $3::uuid, $4::uuid,
-                        $5::uuid, $6::uuid, $7, $8::jsonb, $9::jsonb)
-                RETURNING id
-                """,
-                agent_id, new_version, wv_id, responder_model_id,
-                system_prompt_id, guardrail_id, memory_enabled,
-                json.dumps(llm_config) if llm_config else None,
-                json.dumps(retrieval_config) if retrieval_config else None,
-            )
-            new_av_id = str(new_av["id"])
-
-            await conn.execute(
-                "UPDATE agents SET published_version_id = $1::uuid WHERE id = $2::uuid",
-                new_av_id, agent_id,
+            await session.execute(
+                sa_update(AgentsORM)
+                .where(AgentsORM.id == UUID(agent_id))
+                .values(published_version_id=new_av.id, updated_at=func.now())
             )
 
     return {
         "agent_id": agent_id,
-        "agent_version_id": new_av_id,
-        "workflow_version_id": wv_id,
+        "agent_version_id": str(new_av.id),
+        "workflow_version_id": str(wv.id),
     }

@@ -57,16 +57,15 @@ DEV_CONFIG = {
 
 
 async def load_agent_config(agent_id: str) -> dict:
-    from db import get_session
+    from services.database_connector.postgres_connector import client
     from mongo_client import load_flow_nodes
 
-    session_ctx = get_session()
-    if not session_ctx:
+    if not client.is_connected():
         logger.debug("DB not available — using DEV_CONFIG")
         return {**DEV_CONFIG, "agent_id": agent_id}
 
     try:
-        async with session_ctx as session:
+        async with client.get_client() as session:
             # 1. Load published agent_version với responder model + system prompt
             row = (await session.execute(text("""
                 SELECT
@@ -78,10 +77,10 @@ async def load_agent_config(agent_id: str) -> dict:
                     av.guardrail_id,
                     lp.model_id                    AS responder_model,
                     sp.content                     AS system_prompt
-                FROM agents a
-                JOIN agent_versions av  ON av.id = a.published_version_id
-                JOIN llm_providers  lp  ON lp.id = av.responder_model_id
-                LEFT JOIN system_prompts sp ON sp.id = av.system_prompt_id
+                FROM "Agents" a
+                JOIN "AgentVersions" av  ON av.id = a.published_version_id
+                JOIN "LLMProviders"  lp  ON lp.id = av.responder_model_id
+                LEFT JOIN "SystemPrompts" sp ON sp.id = av.system_prompt_id
                 WHERE a.id = :agent_id
                   AND a.deleted_at IS NULL
             """), {"agent_id": agent_id})).fetchone()
@@ -97,8 +96,8 @@ async def load_agent_config(agent_id: str) -> dict:
             # 2. KB connections
             kb_rows = (await session.execute(text("""
                 SELECT kc.endpoint_url, kc.api_key_ref
-                FROM agent_kb ak
-                JOIN kb_connections kc ON kc.id = ak.kb_connection_id
+                FROM "AgentKB" ak
+                JOIN "KBConnections" kc ON kc.id = ak.kb_connection_id
                 WHERE ak.version_id = :av_id
                 LIMIT 1
             """), {"av_id": str(row.agent_version_id)})).fetchall()
@@ -108,8 +107,8 @@ async def load_agent_config(agent_id: str) -> dict:
             # 3. MCP endpoints
             mcp_rows = (await session.execute(text("""
                 SELECT m.name, m.endpoint_url, m.api_key_ref, m.capabilities
-                FROM agent_mcp am
-                JOIN mcp m ON m.id = am.mcp_id
+                FROM "AgentMCP" am
+                JOIN "MCP" m ON m.id = am.mcp_id
                 WHERE am.version_id = :av_id
             """), {"av_id": str(row.agent_version_id)})).fetchall()
 
@@ -129,8 +128,8 @@ async def load_agent_config(agent_id: str) -> dict:
                 g_row = (await session.execute(text("""
                     SELECT g.conditions, g.action,
                            lp.model_id AS guardrail_model
-                    FROM guardrails g
-                    LEFT JOIN llm_providers lp ON lp.id = g.guardrail_model_id
+                    FROM "Guardrails" g
+                    LEFT JOIN "LLMProviders" lp ON lp.id = g.guardrail_model_id
                     WHERE g.id = :gid
                 """), {"gid": str(row.guardrail_id)})).fetchone()
 

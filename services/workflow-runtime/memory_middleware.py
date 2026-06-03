@@ -9,8 +9,8 @@ from sqlalchemy import select, func
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct, Filter, FieldCondition, MatchValue
 
-from db import get_session
-from models import AgentMemory, MemoryPolicy
+from services.database_connector.postgres_connector import client
+from basemodel.services_databaseconnector.postgres_orm.workflow_orm import AgentMemoriesORM, MemoryPolicyORM
 
 logger = logging.getLogger(__name__)
 
@@ -110,8 +110,7 @@ async def retrieve_memories(
     query: str,
     limit: int = 5,
 ) -> List[dict]:
-    session_ctx = get_session()
-    if not session_ctx:
+    if not client.is_connected():
         return []
     try:
         async def _vector_search() -> list[str]:
@@ -133,26 +132,26 @@ async def retrieve_memories(
 
         async def _fts_search(session) -> list:
             fts_q = (
-                select(AgentMemory.id, AgentMemory.content, AgentMemory.memory_type, AgentMemory.scope)
-                .where(AgentMemory.tenant_id == UUID(tenant_id))
-                .where(AgentMemory.agent_id  == UUID(agent_id))
-                .where(AgentMemory.deleted_at.is_(None))
+                select(AgentMemoriesORM.id, AgentMemoriesORM.content, AgentMemoriesORM.memory_type, AgentMemoriesORM.scope)
+                .where(AgentMemoriesORM.tenant_id == UUID(tenant_id))
+                .where(AgentMemoriesORM.agent_id  == UUID(agent_id))
+                .where(AgentMemoriesORM.deleted_at.is_(None))
                 .where(
-                    func.to_tsvector("simple", AgentMemory.content).op("@@")(
+                    func.to_tsvector("simple", AgentMemoriesORM.content).op("@@")(
                         func.plainto_tsquery("simple", query[:100])
                     )
                 )
             )
             if user_ref and user_ref != "anonymous":
                 fts_q = fts_q.where(
-                    (AgentMemory.scope == "global") |
-                    ((AgentMemory.scope == "user") & (AgentMemory.user_ref == user_ref))
+                    (AgentMemoriesORM.scope == "global") |
+                    ((AgentMemoriesORM.scope == "user") & (AgentMemoriesORM.user_ref == user_ref))
                 )
             rows = (await session.execute(fts_q.limit(limit * 2))).fetchall()
             return rows
 
         # Chạy song song Qdrant + PostgreSQL
-        async with session_ctx as session:
+        async with client.get_client() as session:
             vec_ids, fts_rows = await asyncio.gather(
                 _vector_search(),
                 _fts_search(session),
@@ -165,8 +164,8 @@ async def retrieve_memories(
             missing = [id_ for id_ in vec_ids if id_ not in rows_by_id]
             if missing:
                 extra = await session.execute(
-                    select(AgentMemory.id, AgentMemory.content, AgentMemory.memory_type, AgentMemory.scope)
-                    .where(AgentMemory.id.in_([UUID(i) for i in missing]))
+                    select(AgentMemoriesORM.id, AgentMemoriesORM.content, AgentMemoriesORM.memory_type, AgentMemoriesORM.scope)
+                    .where(AgentMemoriesORM.id.in_([UUID(i) for i in missing]))
                 )
                 for r in extra.fetchall():
                     rows_by_id[str(r.id)] = r._asdict()
@@ -184,15 +183,14 @@ async def retrieve_memories(
 
 
 async def apply_memory_policy(state: dict, agent_id: str, tenant_id: str, user_ref: str = "anonymous") -> None:
-    session_ctx = get_session()
-    if not session_ctx:
+    if not client.is_connected():
         return
     try:
-        async with session_ctx as session:
+        async with client.get_client() as session:
             policies = (await session.execute(
-                select(MemoryPolicy.action_type, MemoryPolicy.condition)
-                .where(MemoryPolicy.agent_id == UUID(agent_id))
-                .where(MemoryPolicy.enabled.is_(True))
+                select(MemoryPolicyORM.action_type, MemoryPolicyORM.condition)
+                .where(MemoryPolicyORM.agent_id == UUID(agent_id))
+                .where(MemoryPolicyORM.enabled.is_(True))
             )).fetchall()
 
             for (action, condition) in policies:
@@ -209,22 +207,21 @@ async def apply_memory_policy(state: dict, agent_id: str, tenant_id: str, user_r
                     # Dedup: skip nếu exact content đã tồn tại cho cùng agent/tenant/user
                     scope = (condition or {}).get("scope", "user")
                     dedup_q = (
-                        select(AgentMemory.id)
-                        .where(AgentMemory.tenant_id == UUID(tenant_id))
-                        .where(AgentMemory.agent_id  == UUID(agent_id))
-                        .where(AgentMemory.content   == content)
-                        .where(AgentMemory.deleted_at.is_(None))
+                        select(AgentMemoriesORM.id)
+                        .where(AgentMemoriesORM.tenant_id == UUID(tenant_id))
+                        .where(AgentMemoriesORM.agent_id  == UUID(agent_id))
+                        .where(AgentMemoriesORM.content   == content)
+                        .where(AgentMemoriesORM.deleted_at.is_(None))
                     )
                     if scope == "user":
-                        dedup_q = dedup_q.where(AgentMemory.user_ref == user_ref)
+                        dedup_q = dedup_q.where(AgentMemoriesORM.user_ref == user_ref)
                     if (await session.execute(dedup_q.limit(1))).first():
                         logger.info("memory | duplicate skipped for agent=%s", agent_id)
                         continue
 
                     pg_id = uuid4()
-                    # scope đã được set ở dedup check bên trên
 
-                    memory = AgentMemory(
+                    memory = AgentMemoriesORM(
                         id=pg_id,
                         tenant_id=UUID(tenant_id),
                         agent_id=UUID(agent_id),

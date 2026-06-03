@@ -13,11 +13,14 @@ try:
 except ImportError:
     _NUMPY = False
 
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from models import Conversation, Message, AgentTrace, Member, Agent
+from services.database_connector.postgres_connector import client
+from basemodel.services_databaseconnector.postgres_orm.workflow_orm import AgentsORM
+from basemodel.services_databaseconnector.postgres_orm.auth_release_orm import MembersORM
+from basemodel.services_databaseconnector.postgres_model import (
+    ConversationsInsert, MessagesInsert, AgentTracesInsert,
+)
 
 
 def _json_fallback(obj):
@@ -56,13 +59,13 @@ _SENSITIVE_KEYS = frozenset({
     "credit_card", "card_number",
 })
 
-_MAX_STR_LEN  = 2_000   # ký tự tối đa cho 1 string value
-_MAX_LIST_LEN = 20      # phần tử tối đa cho list/array
-_MAX_DICT_KEYS = 50     # key tối đa cho 1 dict
+_MAX_STR_LEN  = 2_000
+_MAX_LIST_LEN = 20
+_MAX_DICT_KEYS = 50
 
 
 def _sanitize_trace(data: dict) -> dict:
-    """Redact sensitive fields and limit size before persisting to agent_traces."""
+    """Redact sensitive fields and limit size before persisting to AgentTraces."""
     if not isinstance(data, dict):
         return data
 
@@ -86,77 +89,57 @@ def _sanitize_trace(data: dict) -> dict:
             result[k] = v
     return result
 
-logger = logging.getLogger(__name__)
 
-_engine = None
-_session_factory = None
+logger = logging.getLogger(__name__)
 
 _DEV_TENANT_ID    = os.getenv("DEV_TENANT_ID",    "00000000-0000-0000-0000-000000000001")
 _DEV_AGENT_VER_ID = os.getenv("DEV_AGENT_VER_ID", "00000000-0000-0000-0000-000000000040")
 
-# Higher weight = higher privilege
 _ROLE_WEIGHTS = {"admin": 3, "editor": 2, "viewer": 1}
 
 
 async def init_db():
-    global _engine, _session_factory
     url = os.environ.get("RUNTIME_DB_URL") or os.environ.get("DATABASE_URL")
     if not url:
         logger.warning("RUNTIME_DB_URL/DATABASE_URL not set — DB persistence disabled")
         return
-    if "postgresql+asyncpg" not in url:
-        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    _engine = create_async_engine(url, pool_size=2, max_overflow=8, json_serializer=_json_dumps)
-    _session_factory = async_sessionmaker(_engine, expire_on_commit=False)
+    client.set_url(url)
+    await client.open()
     logger.info("db engine ready")
 
 
 async def close_db():
-    global _engine, _session_factory
-    if _engine:
-        await _engine.dispose()
-        _engine = None
-        _session_factory = None
-        logger.info("db engine closed")
+    await client.close()
+    logger.info("db engine closed")
 
 
 async def validate_agent_tenant(agent_id: str, tenant_id: str) -> bool:
     """Return True if agent_id belongs to tenant_id and is active."""
-    session_ctx = get_session()
-    if not session_ctx:
-        return True  # DB disabled — dev bypass
-    async with session_ctx as session:
+    if not client.is_connected():
+        return True  # dev bypass
+    async with client.get_client() as session:
         result = await session.execute(
-            select(Agent.id)
-            .where(Agent.id == UUID(agent_id))
-            .where(Agent.tenant_id == UUID(tenant_id))
-            .where(Agent.is_active.is_(True))
-            .where(Agent.deleted_at.is_(None))
+            select(AgentsORM.id)
+            .where(AgentsORM.id == UUID(agent_id))
+            .where(AgentsORM.tenant_id == UUID(tenant_id))
+            .where(AgentsORM.is_active.is_(True))
+            .where(AgentsORM.deleted_at.is_(None))
         )
         return result.first() is not None
 
 
-def get_session():
-    """Return an async session context manager, or None if DB is not initialised."""
-    return _session_factory() if _session_factory else None
-
-
-async def _has_role(
-    session: AsyncSession,
-    tenant_id: str,
-    user_ref: str,
-    min_role: str,
-) -> bool:
+async def _has_role(tenant_id: str, user_ref: str, min_role: str) -> bool:
     """Return True if user_ref is an active member of tenant_id with at least min_role."""
     if user_ref == "anonymous":
         return True  # dev bypass
-    result = await session.execute(
-        select(Member.tenant_role)
-        .where(Member.tenant_id == UUID(tenant_id))
-        .where(Member.user_id == user_ref)
-        .where(Member.is_active.is_(True))
-    )
-    row = result.first()
+    async with client.get_client() as session:
+        result = await session.execute(
+            select(MembersORM.tenant_role)
+            .where(MembersORM.tenant_id == UUID(tenant_id))
+            .where(MembersORM.user_id == user_ref)
+            .where(MembersORM.is_active.is_(True))
+        )
+        row = result.first()
     return bool(row) and _ROLE_WEIGHTS.get(row[0], 0) >= _ROLE_WEIGHTS.get(min_role, 0)
 
 
@@ -166,21 +149,22 @@ async def create_conversation(
     channel: str = "web",
     tenant_id: str = _DEV_TENANT_ID,
 ) -> Optional[str]:
-    if not _session_factory:
+    if not client.is_connected():
         return None
-    async with _session_factory() as session:
-        if not await _has_role(session, tenant_id, user_ref, "viewer"):
-            logger.warning("RBAC deny create_conversation: user=%s tenant=%s", user_ref, tenant_id)
-            return None
-        conv = Conversation(
-            tenant_id=UUID(tenant_id),
-            agent_version_id=UUID(agent_version_id or _DEV_AGENT_VER_ID),
-            user_ref=user_ref,
-            channel=channel,
-        )
-        session.add(conv)
-        await session.commit()
-        return str(conv.id)
+    if not await _has_role(tenant_id, user_ref, "viewer"):
+        logger.warning("RBAC deny create_conversation: user=%s tenant=%s", user_ref, tenant_id)
+        return None
+    result = await client.insert(ConversationsInsert(
+        tenant_id=tenant_id,
+        agent_version_id=agent_version_id or _DEV_AGENT_VER_ID,
+        user_ref=user_ref,
+        channel=channel,
+        status="active",
+    ))
+    if result.code != 200:
+        logger.error("create_conversation failed: %s", result.error)
+        return None
+    return result.data.get("id")
 
 
 async def save_message(
@@ -191,20 +175,20 @@ async def save_message(
     latency_ms: int = 0,
     metadata: Optional[dict] = None,
 ) -> Optional[str]:
-    if not _session_factory:
+    if not client.is_connected():
         return None
-    async with _session_factory() as session:
-        msg = Message(
-            conversation_id=UUID(conversation_id),
-            role=role,
-            content={"text": content},
-            tokens_used=tokens,
-            latency_ms=latency_ms,
-            metadata_=metadata or {},
-        )
-        session.add(msg)
-        await session.commit()
-        return str(msg.id)
+    result = await client.insert(MessagesInsert(
+        conversation_id=conversation_id,
+        role=role,
+        content={"text": content},
+        msg_metadata=metadata or {},
+        tokens_used=tokens,
+        latency_ms=latency_ms,
+    ))
+    if result.code != 200:
+        logger.error("save_message failed: %s", result.error)
+        return None
+    return result.data.get("id")
 
 
 async def save_trace(
@@ -216,21 +200,18 @@ async def save_trace(
     status: str = "success",
     latency_ms: int = 0,
 ):
-    if not _session_factory:
+    if not client.is_connected():
         return
-    async with _session_factory() as session:
-        stmt = (
-            pg_insert(AgentTrace)
-            .values(
-                message_id=UUID(message_id),
-                trace_index=trace_index,
-                tool_name=tool_name,
-                input=_sanitize_trace(input),
-                output=_sanitize_trace(output),
-                status=status,
-                latency_ms=latency_ms,
-            )
-            .on_conflict_do_nothing(index_elements=["message_id", "trace_index"])
-        )
-        await session.execute(stmt)
-        await session.commit()
+    result = await client.insert(AgentTracesInsert(
+        message_id=message_id,
+        trace_index=trace_index,
+        tool_name=tool_name,
+        input=_sanitize_trace(input),
+        output=_sanitize_trace(output),
+        status=status,
+        latency_ms=latency_ms,
+    ))
+    if result.code == 409:
+        pass  # duplicate (message_id, trace_index) — silently ignore
+    elif result.code != 200:
+        logger.error("save_trace failed: %s", result.error)

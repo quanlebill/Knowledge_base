@@ -9,13 +9,16 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-COPY requirements.txt .
+COPY services/workflow-runtime/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Non-root user
 RUN addgroup --system app && adduser --system --ingroup app app
 
-COPY --chown=app:app . .
+COPY --chown=app:app basemodel/ ./basemodel/
+COPY --chown=app:app services/database_connector/ ./services/database_connector/
+COPY --chown=app:app services/log_set_up/ ./services/log_set_up/
+COPY --chown=app:app services/workflow-runtime/ .
 
 USER app
 
