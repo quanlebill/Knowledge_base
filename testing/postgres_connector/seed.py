@@ -31,7 +31,7 @@ from basemodel.services_databaseconnector.postgres_model import (
     KBDataInsert, KBTextBlockInsert, KBTextBlockVersionInsert,
     KBFilterPolicyInsert, KBConflictBatchInsert, KBConflictInsert,
 )
-from services.database_connector.postgres_connector import PostgresClient, insert
+from services.database_connector.postgres_connector import PostgresClient
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -99,7 +99,7 @@ async def seed_kb(client: PostgresClient) -> dict:
     print("\n[KBData]")
     data_ids = []
     for row in load("kb_data.json"):
-        res = ok(await insert(client, KBDataInsert(**row)), f"KBData: {row['name']}")
+        res = ok(await client.insert(KBDataInsert(**row)), f"KBData: {row['name']}")
         data_ids.append(res["data_id"])
     ids["bronze_doc"] = data_ids[0]
     ids["silver_doc"] = data_ids[1]
@@ -109,7 +109,7 @@ async def seed_kb(client: PostgresClient) -> dict:
     print("\n[KBTextBlock]")
     block_ids = []
     for row in load("kb_text_block.json"):
-        res = ok(await insert(client, KBTextBlockInsert(
+        res = ok(await client.insert(KBTextBlockInsert(
             owner_id=ids["gold_doc"],
             **row,
         )), f"KBTextBlock: block_index={row['block_index']}")
@@ -122,7 +122,7 @@ async def seed_kb(client: PostgresClient) -> dict:
     version_ids = []
     for i, row in enumerate(versions):
         block_id = block_ids[i // 2]
-        res = ok(await insert(client, KBTextBlockVersionInsert(
+        res = ok(await client.insert(KBTextBlockVersionInsert(
             block_id=block_id,
             **row,
         )), f"KBTextBlockVersion: block={i // 2} v{row['version_number']}")
@@ -133,13 +133,13 @@ async def seed_kb(client: PostgresClient) -> dict:
     print("\n[KBFilterPolicy]")
     policy_ids = []
     for row in load("kb_filter_policy.json"):
-        res = ok(await insert(client, KBFilterPolicyInsert(**row)), f"KBFilterPolicy: {row['policy_name']}")
+        res = ok(await client.insert(KBFilterPolicyInsert(**row)), f"KBFilterPolicy: {row['policy_name']}")
         policy_ids.append(res["policy_id"])
     ids["policy_ids"] = policy_ids
 
     # KBConflictBatch + KBConflict
     print("\n[KBConflict]")
-    batch_res = ok(await insert(client, KBConflictBatchInsert(
+    batch_res = ok(await client.insert(KBConflictBatchInsert(
         **load("kb_conflict_batch.json")[0]
     )), "KBConflictBatch")
     batch_id = batch_res["batch_id"]
@@ -147,7 +147,7 @@ async def seed_kb(client: PostgresClient) -> dict:
 
     conflict_ids = []
     for row in load("kb_conflict.json"):
-        res = ok(await insert(client, KBConflictInsert(batch_id=batch_id, **row)), f"KBConflict: {row['conflict_type']}")
+        res = ok(await client.insert(KBConflictInsert(batch_id=batch_id, **row)), f"KBConflict: {row['conflict_type']}")
         conflict_ids.append(res["conflict_id"])
     ids["conflict_ids"] = conflict_ids
 

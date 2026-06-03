@@ -13,3 +13,8 @@ where = ["."]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
+pythonpath = ["."]
+markers = [
+    "unit: fast pure-Python tests, no external services",
+    "integration: tests that call Docling or a live database",
+]

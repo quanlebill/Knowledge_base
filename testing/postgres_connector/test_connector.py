@@ -17,9 +17,7 @@ from basemodel.services_databaseconnector.postgres_model import (
     KBConflictDelete,
     ReadJoinRequest, SelectInLoadRequest, WhereFilter, SelectedColumn,
 )
-from services.database_connector.postgres_connector import (
-    PostgresClient, insert, read, read_deep, soft_delete, delete, flush,
-)
+from services.database_connector.postgres_connector import PostgresClient
 
 TENANT_ID = "11111111-1111-1111-1111-111111111111"
 ROLE_ID   = "33333333-3333-3333-3333-333333333333"
@@ -33,7 +31,7 @@ class TestInsert:
 
     @pytest.mark.asyncio
     async def test_insert_with_tenant(self, client, seeded):
-        result = await insert(client, KBDataInsert(
+        result = await client.insert(KBDataInsert(
             tenant_id=TENANT_ID,
             role_id=ROLE_ID,
             name="test_insert_doc.pdf",
@@ -50,7 +48,7 @@ class TestInsert:
 
     @pytest.mark.asyncio
     async def test_insert_without_tenant(self, client, seeded):
-        result = await insert(client, KBTextBlockVersionInsert(
+        result = await client.insert(KBTextBlockVersionInsert(
             block_id=seeded["block_ids"][0],
             version_number=99,
             content="Test version content.",
@@ -73,7 +71,7 @@ class TestInsert:
             abstract="Duplicate.",
             doc_metadata={"source_type": "doc", "doc_type": "PDF"},
         )
-        result = await insert(client, payload)
+        result = await client.insert(payload)
         assert result.code == 409
 
 
@@ -85,7 +83,7 @@ class TestRead:
 
     @pytest.mark.asyncio
     async def test_read_single_table(self, client, seeded):
-        result = await read(client, ReadJoinRequest(
+        result = await client.read(ReadJoinRequest(
             tenant_id=TENANT_ID,
             joins_table=["KBData"],
             filters=[WhereFilter(table_name="KBData", column_name="current_tier", value="bronze")],
@@ -97,7 +95,7 @@ class TestRead:
 
     @pytest.mark.asyncio
     async def test_read_returns_all_columns_when_none_selected(self, client, seeded):
-        result = await read(client, ReadJoinRequest(
+        result = await client.read(ReadJoinRequest(
             tenant_id=TENANT_ID,
             joins_table=["KBData"],
             selected_columns=[],
@@ -111,7 +109,7 @@ class TestRead:
 
     @pytest.mark.asyncio
     async def test_read_cursor_pagination(self, client, seeded):
-        page1 = await read(client, ReadJoinRequest(
+        page1 = await client.read(ReadJoinRequest(
             tenant_id=TENANT_ID,
             joins_table=["KBData"],
             limit=2,
@@ -120,7 +118,7 @@ class TestRead:
         assert len(page1.data) == 2
 
         cursor = page1.data[-1]["inserted_at"]
-        page2 = await read(client, ReadJoinRequest(
+        page2 = await client.read(ReadJoinRequest(
             tenant_id=TENANT_ID,
             joins_table=["KBData"],
             limit=2,
@@ -132,7 +130,7 @@ class TestRead:
 
     @pytest.mark.asyncio
     async def test_read_multi_table_join(self, client, seeded):
-        result = await read(client, ReadJoinRequest(
+        result = await client.read(ReadJoinRequest(
             tenant_id=TENANT_ID,
             joins_table=["KBData", "KBTextBlock"],
             selected_columns=[
@@ -150,7 +148,7 @@ class TestRead:
 
     @pytest.mark.asyncio
     async def test_read_unknown_table_returns_400(self, client, seeded):
-        result = await read(client, ReadJoinRequest(
+        result = await client.read(ReadJoinRequest(
             joins_table=["NonExistentTable"],
             limit=5,
         ))
@@ -158,7 +156,7 @@ class TestRead:
 
     @pytest.mark.asyncio
     async def test_read_specific_columns(self, client, seeded):
-        result = await read(client, ReadJoinRequest(
+        result = await client.read(ReadJoinRequest(
             tenant_id=TENANT_ID,
             joins_table=["KBFilterPolicy"],
             selected_columns=[
@@ -182,7 +180,7 @@ class TestReadDeep:
 
     @pytest.mark.asyncio
     async def test_read_deep_nested_chain(self, client, seeded):
-        result = await read_deep(client, SelectInLoadRequest(
+        result = await client.read_deep(SelectInLoadRequest(
             tenant_id=TENANT_ID,
             table="KBData",
             load_paths=["KBTextBlock.KBTextBlockVersion"],
@@ -200,7 +198,7 @@ class TestReadDeep:
 
     @pytest.mark.asyncio
     async def test_read_deep_multiple_paths(self, client, seeded):
-        result = await read_deep(client, SelectInLoadRequest(
+        result = await client.read_deep(SelectInLoadRequest(
             tenant_id=TENANT_ID,
             table="KBData",
             load_paths=["KBTextBlock", "KBLifecycleHistory"],
@@ -213,7 +211,7 @@ class TestReadDeep:
 
     @pytest.mark.asyncio
     async def test_read_deep_invalid_table_returns_400(self, client, seeded):
-        result = await read_deep(client, SelectInLoadRequest(
+        result = await client.read_deep(SelectInLoadRequest(
             table="GhostTable",
             load_paths=["KBTextBlock"],
             limit=5,
@@ -222,7 +220,7 @@ class TestReadDeep:
 
     @pytest.mark.asyncio
     async def test_read_deep_invalid_path_returns_400(self, client, seeded):
-        result = await read_deep(client, SelectInLoadRequest(
+        result = await client.read_deep(SelectInLoadRequest(
             tenant_id=TENANT_ID,
             table="KBData",
             load_paths=["KBConflict"],  # no relationship from KBData → KBConflict
@@ -232,7 +230,7 @@ class TestReadDeep:
 
     @pytest.mark.asyncio
     async def test_read_deep_cursor_pagination(self, client, seeded):
-        page1 = await read_deep(client, SelectInLoadRequest(
+        page1 = await client.read_deep(SelectInLoadRequest(
             tenant_id=TENANT_ID,
             table="KBData",
             load_paths=["KBTextBlock"],
@@ -242,7 +240,7 @@ class TestReadDeep:
         assert len(page1.data) == 1
 
         cursor = page1.data[0]["inserted_at"]
-        page2 = await read_deep(client, SelectInLoadRequest(
+        page2 = await client.read_deep(SelectInLoadRequest(
             tenant_id=TENANT_ID,
             table="KBData",
             load_paths=["KBTextBlock"],
@@ -262,14 +260,14 @@ class TestSoftDelete:
     @pytest.mark.asyncio
     async def test_soft_delete_sets_is_deleted(self, client, seeded):
         policy_id = seeded["policy_ids"][1]  # inactive policy — safe to soft-delete
-        result = await soft_delete(client, KBFilterPolicyDelete(
+        result = await client.soft_delete(KBFilterPolicyDelete(
             tenant_id=TENANT_ID,
             policy_id=policy_id,
         ))
         assert result.code == 200
 
         # read filters is_deleted=False by default — soft-deleted row should not appear
-        check = await read(client, ReadJoinRequest(
+        check = await client.read(ReadJoinRequest(
             tenant_id=TENANT_ID,
             joins_table=["KBFilterPolicy"],
             filters=[WhereFilter(table_name="KBFilterPolicy", column_name="policy_id", value=policy_id)],
@@ -279,7 +277,7 @@ class TestSoftDelete:
     @pytest.mark.asyncio
     async def test_soft_delete_already_deleted_returns_404(self, client, seeded):
         policy_id = seeded["policy_ids"][1]
-        result = await soft_delete(client, KBFilterPolicyDelete(
+        result = await client.soft_delete(KBFilterPolicyDelete(
             tenant_id=TENANT_ID,
             policy_id=policy_id,
         ))
@@ -295,7 +293,7 @@ class TestDelete:
     @pytest.mark.asyncio
     async def test_hard_delete_by_pk(self, client, seeded):
         conflict_id = seeded["conflict_ids"][1]
-        result = await delete(client, KBConflictDelete(
+        result = await client.delete(KBConflictDelete(
             tenant_id=TENANT_ID,
             conflict_id=conflict_id,
         ))
@@ -304,7 +302,7 @@ class TestDelete:
     @pytest.mark.asyncio
     async def test_hard_delete_kb_data_requires_data_id(self, client, seeded):
         # insert a throwaway record then hard-delete it by data_id
-        ins = await insert(client, KBDataInsert(
+        ins = await client.insert(KBDataInsert(
             tenant_id=TENANT_ID,
             role_id=ROLE_ID,
             name="throwaway_delete_test.pdf",
@@ -318,7 +316,7 @@ class TestDelete:
         assert ins.code == 200
         data_id = ins.data["data_id"]
 
-        result = await delete(client, KBDataDelete(
+        result = await client.delete(KBDataDelete(
             tenant_id=TENANT_ID,
             data_id=data_id,          # required — must always be provided
         ))
@@ -331,7 +329,7 @@ class TestDelete:
         class UnregisteredModel(PydanticBase):
             some_id: str = "test"
 
-        result = await delete(client, UnregisteredModel())
+        result = await client.delete(UnregisteredModel())
         assert result.code == 400
 
 
@@ -343,10 +341,10 @@ class TestFlush:
 
     @pytest.mark.asyncio
     async def test_flush_removes_soft_deleted_rows(self, client, seeded):
-        result = await flush(client, "KBFilterPolicy")
+        result = await client.flush("KBFilterPolicy")
         assert result.code == 200
 
     @pytest.mark.asyncio
     async def test_flush_unknown_table_returns_400(self, client, seeded):
-        result = await flush(client, "GhostTable")
+        result = await client.flush("GhostTable")
         assert result.code == 400
