@@ -1,8 +1,6 @@
 # Ignore everything
 .claude/
-
 data_agent.egg-info/
-
 dist/
 .env*
 !.env.example
@@ -13,10 +11,7 @@ __pycache__/
 *.pyc
 coverage/
 .DS_Store
-*.log
 
-# Claude Code local settings — contains per-developer tool permissions; not shared
-.claude/settings.local.json
 
 # Generated cert files — run infra/certs/gen-certs.sh to create locally
 infra/certs/*.key

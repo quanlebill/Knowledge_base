@@ -1,4 +1,5 @@
 import asyncio
+import os
 from logging.config import fileConfig
 
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -11,7 +12,11 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-target_metadata = Base.metadata
+# ALEMBIC_DB_URL env var overrides the ini-file URL (used by CLI-based tests)
+if _env_url := os.environ.get("ALEMBIC_DB_URL"):
+    config.set_main_option("sqlalchemy.url", _env_url)
+
+target_metadata = config.attributes.get("target_metadata", Base.metadata)
 
 
 def run_migrations_offline() -> None:
@@ -28,7 +33,7 @@ def run_migrations_offline() -> None:
 
 async def run_migrations_online() -> None:
     engine = create_async_engine(config.get_main_option("sqlalchemy.url"))
-    async with engine.connect() as conn:
+    async with engine.begin() as conn:
         await conn.run_sync(
             lambda sync_conn: context.configure(
                 connection=sync_conn,
