@@ -18,8 +18,6 @@ import basemodel.services_databaseconnector.postgres_orm  # noqa: F401 — regis
 
 log = create_logger("services.postgres", "service_postgres")
 
-
-
 # Helpers
 
 def _orm_to_dict(instance) -> dict[str, Any]:
