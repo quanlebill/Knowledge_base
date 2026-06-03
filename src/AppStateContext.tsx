@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { Role, Industry, TenantContext, User, Environment, KnowledgeDocument } from './types';
 import { mockGet } from './lib/mockApi';
+import { useAuth } from './lib/AuthProvider';
 
 interface AppStateContextType {
   role: Role;
@@ -49,7 +50,8 @@ const writeHash = (module: string, sub?: string) => {
   if (typeof window === 'undefined') return;
   const next = sub ? `#${module}/${sub}` : `#${module}`;
   if (window.location.hash !== next) {
-    window.history.replaceState(null, '', next);
+    // Preserve query params so Keycloak can read ?code=&state= on auth redirect
+    window.history.replaceState(null, '', window.location.search + next);
   }
 };
 
@@ -64,12 +66,19 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
     environment: 'PROD',
   });
 
-  const [user] = useState<User>({
-    id: 'u_123',
-    name: 'Alex Rivera',
-    email: 'alex.rivera@globalcorp.ai',
-    role: 'AI_ENGINEER',
-  });
+  const { user: authUser } = useAuth();
+  const user: User = {
+    id:    authUser?.id    ?? 'u_anon',
+    name:  authUser?.name  ?? authUser?.email ?? 'User',
+    email: authUser?.email ?? '',
+    role:  (() => {
+      const normalized = authUser?.roles?.map(r => r.toUpperCase().replace(/-/g, '_')) ?? [];
+      if (normalized.includes('PLATFORM_ADMIN')) return 'PLATFORM_ADMIN';
+      if (normalized.includes('AI_ENGINEER')) return 'AI_ENGINEER';
+      if (normalized.includes('EXECUTIVE_VIEWER')) return 'EXECUTIVE';
+      return 'AI_ENGINEER';
+    })() as Role,
+  };
 
   /* Routing state — initialized from URL hash */
   const initial = parseHash();

@@ -1,42 +1,52 @@
 import React from 'react';
 import { Shield, Server, Key, Globe, Fingerprint, Activity, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { cn } from '../../../lib/utils';
+import { useAuth } from '../../../lib/AuthProvider';
 
 const HEALTH_METRICS = [
-  { label: 'Keycloak Realms',  value: '3',      sub: '2 active',         color: 'emerald' },
-  { label: 'SSO Bridges',      value: '5',      sub: 'All healthy',       color: 'emerald' },
-  { label: 'Active API Keys',  value: '14',     sub: '2 expiring soon',   color: 'amber' },
-  { label: 'IP Rules',         value: '4',      sub: '3 active',          color: 'emerald' },
-  { label: 'MFA Adoption',     value: '94%',    sub: '↑ 3% this month',   color: 'emerald' },
-  { label: 'Failed Auths/24h', value: '12',     sub: 'Below threshold',   color: 'emerald' },
+  { label: 'Keycloak Realms',  value: '3',      sub: '2 active',          color: 'emerald' },
+  { label: 'SSO Bridges',      value: '5',      sub: 'All healthy',        color: 'emerald' },
+  { label: 'Active API Keys',  value: '14',     sub: '2 expiring soon',    color: 'amber' },
+  { label: 'IP Rules',         value: '4',      sub: '3 active',           color: 'emerald' },
+  { label: 'MFA Adoption',     value: '94%',    sub: '↑ 3% this month',    color: 'emerald' },
+  { label: 'KC HA Nodes',      value: '2',      sub: 'Active/Active',      color: 'emerald' },
 ];
 
 const TECH_STACK = [
-  { layer: 'Frontend',    tech: 'keycloak-js + @react-keycloak/web',      role: 'Login, SSO, token refresh' },
-  { layer: 'Session',     tech: 'Keycloak',                               role: 'Idle timeout, revocation, concurrent limit' },
-  { layer: 'JWT Verify',  tech: 'Kong (single point)',                    role: 'Fetch JWKS from Keycloak, inject headers' },
-  { layer: 'Backend',     tech: 'FastAPI (read Kong headers)',            role: 'No JWT re-verify — trusts Kong' },
-  { layer: 'Admin Ops',   tech: 'python-keycloak',                       role: 'User/role management via Admin API' },
-  { layer: 'SSO/SAML',    tech: 'Keycloak Identity Broker',              role: 'Azure AD, Okta, Google Workspace' },
-  { layer: 'MFA',         tech: 'Keycloak TOTP + WebAuthn',              role: 'Required Actions' },
-  { layer: 'Audit Log',   tech: 'Keycloak Event Listener → PostgreSQL',  role: 'Append-only, partition by month' },
-  { layer: 'User Store',  tech: 'Keycloak internal DB',                  role: 'Identity, credentials, sessions' },
-  { layer: 'Secrets',     tech: 'OpenBao',                               role: 'No raw secrets in DB — path refs only' },
+  { layer: 'Frontend',         tech: 'keycloak-js + @react-keycloak/web',                   role: 'Login, SSO, token refresh' },
+  { layer: 'Session',          tech: 'Keycloak',                                             role: 'Idle timeout, revocation, concurrent limit' },
+  { layer: 'JWT Verify',       tech: 'Kong (single point) — JWKS TTL 300s',                 role: 'Fetch/cache JWKS, force-refresh on key rotate' },
+  { layer: 'Network Security', tech: 'mTLS / IP allowlist',                                  role: 'Backend only accepts requests from Kong' },
+  { layer: 'Backend',          tech: 'FastAPI (read Kong headers)',                          role: 'No JWT re-verify — trusts Kong' },
+  { layer: 'Admin Ops',        tech: 'python-keycloak',                                     role: 'User/role management via Admin API' },
+  { layer: 'SSO/SAML',         tech: 'Keycloak Identity Broker',                            role: 'Azure AD, Okta, Google Workspace' },
+  { layer: 'MFA',              tech: 'Keycloak TOTP + WebAuthn',                            role: 'Required Actions' },
+  { layer: 'Audit Log',        tech: 'Keycloak → Kafka audit.auth.events → PostgreSQL',     role: 'At-least-once delivery, append-only, partition by month' },
+  { layer: 'User Store',       tech: 'Keycloak internal DB',                                role: 'Identity, credentials, sessions' },
+  { layer: 'High Availability','tech': 'Keycloak cluster Active/Active + shared PostgreSQL', role: 'Load balancer + Infinispan session sync' },
+  { layer: 'Secrets',          tech: 'OpenBao',                                             role: 'No raw secrets in DB — path refs only' },
 ];
 
-const RECENT_EVENTS = [
-  { event: 'LOGIN_SUCCESS',    actor: 'linh.nguyen', tenant: 'GlobalCorp',  time: '12s ago',  type: 'USER' },
-  { event: 'SECRET_ROTATION',  actor: 'System',      tenant: 'GlobalCorp',  time: '8m ago',   type: 'SYSTEM' },
+const STATIC_EVENTS = [
+  { event: 'SECRET_ROTATION',  actor: 'System',      tenant: 'Platform',    time: '8m ago',   type: 'SYSTEM' },
   { event: 'LOGOUT',           actor: 'sarah.chen',  tenant: 'FinanceHub',  time: '22m ago',  type: 'USER' },
-  { event: 'RBAC_ELEVATION',   actor: 'admin',       tenant: 'GlobalCorp',  time: '1h ago',   type: 'SYSTEM' },
+  { event: 'RBAC_ELEVATION',   actor: 'admin',       tenant: 'Platform',    time: '1h ago',   type: 'SYSTEM' },
   { event: 'IP_BLOCKED',       actor: '185.4.2.1',   tenant: 'EuroTrust',   time: '2h ago',   type: 'AGENT' },
 ];
 
-export const AuthOverviewPanel = () => (
+export const AuthOverviewPanel = ({ onViewAudit }: { onViewAudit?: () => void } = {}) => {
+  const { user } = useAuth();
+
+  const recentEvents = [
+    { event: 'LOGIN_SUCCESS', actor: user?.email ?? user?.name ?? 'unknown', tenant: 'AeroFlow', time: 'Now', type: 'USER' },
+    ...STATIC_EVENTS,
+  ];
+
+  return (
   <div className="space-y-6">
     {/* ── Health Grid ── */}
     <section>
-      <h3 className="text-base font-bold text-[#111111] mb-4">Auth Health Overview</h3>
+      <h3 className="text-base font-bold text-white mb-4">Auth Health Overview</h3>
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         {HEALTH_METRICS.map((m, i) => (
           <div key={i} className="p-4 bg-white border border-[#E8DFC8] rounded-2xl text-center">
@@ -55,7 +65,7 @@ export const AuthOverviewPanel = () => (
 
     {/* ── Architecture summary ── */}
     <section>
-      <h3 className="text-base font-bold text-[#111111] mb-4">Technology Stack</h3>
+      <h3 className="text-base font-bold text-white mb-4">Technology Stack</h3>
       <div className="border border-[#E8DFC8] rounded-2xl overflow-hidden bg-white">
         <table className="w-full text-sm">
           <thead>
@@ -81,14 +91,17 @@ export const AuthOverviewPanel = () => (
     {/* ── Auth Audit Stream ── */}
     <section>
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-base font-bold text-[#111111]">Recent Auth Events</h3>
-        <button className="text-xs font-bold text-[#B88719] hover:underline flex items-center gap-1">
+        <h3 className="text-base font-bold text-white">Recent Auth Events</h3>
+        <button
+          onClick={onViewAudit}
+          className="text-xs font-bold text-[#B88719] hover:underline flex items-center gap-1"
+        >
           View full audit stream <ArrowRight className="w-3.5 h-3.5" />
         </button>
       </div>
 
       <div className="space-y-2">
-        {RECENT_EVENTS.map((ev, i) => (
+        {recentEvents.map((ev, i) => (
           <div key={i} className="flex items-center justify-between p-3.5 bg-white border border-[#E8DFC8] rounded-xl">
             <div className="flex items-center gap-3">
               <div className={cn(
@@ -114,11 +127,13 @@ export const AuthOverviewPanel = () => (
 
       <div className="mt-3 p-3 bg-[#FDFAF2] border border-[#E8DFC8] rounded-xl">
         <p className="text-[11px] text-[#777]">
-          Auth events are forwarded from <strong>Keycloak Event Listener SPI</strong> to PostgreSQL.
+          Auth events flow: <strong>Keycloak Event Listener SPI</strong> → Kafka topic <code className="font-mono bg-[#F4E8C3] px-1 rounded">audit.auth.events</code> → Consumer → PostgreSQL.
+          Kafka ensures at-least-once delivery — no events lost when DB is temporarily down.
           Table <code className="font-mono bg-[#F4E8C3] px-1 rounded">audit_logs</code> — append-only, partitioned by month.
           Actor stored as string (not FK) to preserve logs after user deletion.
         </p>
       </div>
     </section>
   </div>
-);
+  );
+};

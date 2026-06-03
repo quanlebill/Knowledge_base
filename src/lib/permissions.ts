@@ -24,10 +24,9 @@ const ALL: Permission[] = [
 ];
 
 const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
-  PLATFORM_ADMIN:    ALL,
-  AI_ENGINEER:       ['toggle_qdrant', 'edit_extraction_policy'],
-  BUSINESS_OPERATOR: ['add_warehouse', 'add_warehouse_config', 'edit_warehouse_config'],
-  EXECUTIVE:         ['edit_conflict', 'process_layer', 'add_filtering_policy'],
+  PLATFORM_ADMIN: ALL,
+  AI_ENGINEER:    ['toggle_qdrant', 'edit_extraction_policy'],
+  EXECUTIVE:      ['edit_conflict', 'process_layer', 'add_filtering_policy'],
 };
 
 export const usePermissions = () => {
