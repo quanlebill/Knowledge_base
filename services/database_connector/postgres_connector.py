@@ -12,11 +12,13 @@ from services.log_set_up import create_logger
 from basemodel.services_databaseconnector.shared_model import RetryConfig, HealthCheckLoopConfig, ResponseModel
 from pydantic import BaseModel
 from basemodel.services_databaseconnector.postgres_model import (
-    REGISTRY, MODEL_TO_TABLE, ReadJoinRequest, SelectInLoadRequest, DMLPreparation, DQLPreparation
+    REGISTRY, MODEL_TO_TABLE, ReadJoinRequest, SelectInLoadRequest, DMLPreparation, DQLPreparation,
+    FilterOperator, TransactionOp, TransactionJobResult,
 )
 import basemodel.services_databaseconnector.postgres_orm  # noqa: F401 — registers ORM classes into REGISTRY
 
 log = create_logger("services.postgres", "service_postgres")
+
 
 # Helpers
 
@@ -78,6 +80,34 @@ def _resolve(data: BaseModel):
 
 
 # Query Compilers
+_OP_MAP = {
+    FilterOperator.EQ: lambda col, val: col == val,
+    FilterOperator.NE: lambda col, val: col != val,
+    FilterOperator.GT: lambda col, val: col > val,
+    FilterOperator.LT: lambda col, val: col < val,
+    FilterOperator.GTE: lambda col, val: col >= val,
+    FilterOperator.LTE: lambda col, val: col <= val,
+}
+
+
+def _apply_op(col, f):
+    return _OP_MAP[f.operator](col, f.value)
+
+
+def _validate_order_by(order_by, allowed_tables: set[str]) -> None:
+    if order_by is None:
+        return
+    if order_by.table_name not in allowed_tables:
+        raise AttributeError(
+            f"order_by references table '{order_by.table_name}' which is not part of this query"
+        )
+    schema = REGISTRY[order_by.table_name]
+    valid_columns = {c.name for c in schema.orm.__table__.columns}
+    if order_by.column not in valid_columns:
+        raise AttributeError(
+            f"order_by column '{order_by.column}' does not exist on '{order_by.table_name}'"
+        )
+
 
 def _prepare_insert(data: BaseModel) -> DMLPreparation:
     table_name, orm_cls = _resolve(data)
@@ -94,6 +124,8 @@ def _prepare_deep_search(data: SelectInLoadRequest) -> DQLPreparation:
         raise AttributeError(f"Unknown table: {data.table}")
     orm_cls = schema.orm
 
+    _validate_order_by(data.order_by, {data.table})
+
     load_options = [_build_load_option(orm_cls, path) for path in data.load_paths]
 
     stmt = select(orm_cls).options(*load_options)
@@ -101,15 +133,19 @@ def _prepare_deep_search(data: SelectInLoadRequest) -> DQLPreparation:
     if data.tenant_id is not None:
         stmt = stmt.where(orm_cls.tenant_id == data.tenant_id)
     for f in data.filters:
-        stmt = stmt.where(getattr(orm_cls, f.column_name) == f.value)
+        stmt = stmt.where(_apply_op(getattr(orm_cls, f.column_name), f))
     if data.cursor is not None:
         stmt = stmt.where(orm_cls.inserted_at > data.cursor)
 
-    stmt = stmt.order_by(orm_cls.inserted_at.asc()).limit(data.limit)
+    stmt = stmt.order_by(
+        text(
+            f'"{data.order_by.table_name}".{data.order_by.column} {data.order_by.order.value}') if data.order_by else orm_cls.inserted_at.asc()
+    ).limit(data.limit)
     return DQLPreparation(compiled_query=stmt)
 
+
 def _prepare_soft_delete(data: BaseModel) -> DMLPreparation:
-    _, orm_cls = _resolve(data)
+    table_name, orm_cls = _resolve(data)
     try:
         orm_cls.is_deleted
     except AttributeError:
@@ -121,16 +157,16 @@ def _prepare_soft_delete(data: BaseModel) -> DMLPreparation:
         orm_cls.is_deleted == False,
         *[getattr(orm_cls, k) == v for k, v in pk_fields.items()],
     ]
-    return DMLPreparation(compiled_query=sa_update(orm_cls).where(*conditions).values(is_deleted=True))
+    return DMLPreparation(table_name=table_name, compiled_query=sa_update(orm_cls).where(*conditions).values(is_deleted=True))
 
 
 def _prepare_delete(data: BaseModel) -> DMLPreparation:
-    _, orm_cls = _resolve(data)
+    table_name, orm_cls = _resolve(data)
     fields = data.model_dump()
     conditions = [getattr(orm_cls, k) == v for k, v in fields.items() if v is not None]
     if not conditions:
         raise AttributeError("delete requires at least one field to identify the record")
-    return DMLPreparation(compiled_query=sa_delete(orm_cls).where(*conditions))
+    return DMLPreparation(table_name=table_name, compiled_query=sa_delete(orm_cls).where(*conditions))
 
 
 def _prepare_flush(table_name: str) -> DMLPreparation:
@@ -149,6 +185,8 @@ def _prepare_read(data: ReadJoinRequest) -> DQLPreparation:
     unknown = [t for t in data.joins_table if t not in REGISTRY]
     if unknown:
         raise AttributeError(f"Unknown table(s): {unknown}")
+
+    _validate_order_by(data.order_by, set(data.joins_table))
 
     orm_map = {t: REGISTRY[t].orm for t in data.joins_table}
     from_cls = orm_map[data.joins_table[0]]
@@ -173,7 +211,7 @@ def _prepare_read(data: ReadJoinRequest) -> DQLPreparation:
     if data.tenant_id is not None:
         stmt = stmt.where(from_cls.tenant_id == data.tenant_id)
     for f in data.filters:
-        stmt = stmt.where(getattr(orm_map[f.table_name], f.column_name) == f.value)
+        stmt = stmt.where(_apply_op(getattr(orm_map[f.table_name], f.column_name), f))
     if data.cursor is not None:
         stmt = stmt.where(from_cls.inserted_at > data.cursor)
     # exclude soft-deleted rows if the root table supports it
@@ -182,13 +220,75 @@ def _prepare_read(data: ReadJoinRequest) -> DQLPreparation:
     except AttributeError:
         pass
 
-    stmt = stmt.order_by(text(data.order_by) if data.order_by else from_cls.inserted_at.asc())
+    stmt = stmt.order_by(
+        text(
+            f'"{data.order_by.table_name}".{data.order_by.column} {data.order_by.order.value}') if data.order_by else from_cls.inserted_at.asc()
+    )
     return DQLPreparation(compiled_query=stmt.limit(data.limit))
 
 
+class PostgresTransaction:
+    __slots__ = ("_session_factory", "_jobs")
+
+    def __init__(self, session_factory: async_sessionmaker):
+        self._session_factory = session_factory
+        self._jobs: list[tuple[TransactionOp, BaseModel]] = []
+
+    def add(self, op: TransactionOp, data: BaseModel) -> "PostgresTransaction":
+        table_name = MODEL_TO_TABLE.get(type(data))
+        if table_name is None:
+            raise ValueError(f"Unregistered model: {type(data).__name__}")
+        schema = REGISTRY[table_name]
+        expected = schema.insert if op == TransactionOp.INSERT else schema.delete
+        if expected is not type(data):
+            raise ValueError(
+                f"{type(data).__name__} is not a valid {op.value} model "
+                f"for table '{table_name}' — expected {expected.__name__}"
+            )
+        self._jobs.append((op, data))
+        return self
+
+    async def commit(self) -> ResponseModel:
+        # Phase 1 — compile all jobs before touching the DB
+        preps: list[tuple[TransactionOp, Any]] = []
+        for op, data in self._jobs:
+            try:
+                if op == TransactionOp.INSERT:
+                    preps.append((op, _prepare_insert(data)))
+                elif op == TransactionOp.SOFT_DELETE:
+                    preps.append((op, _prepare_soft_delete(data)))
+                elif op == TransactionOp.DELETE:
+                    preps.append((op, _prepare_delete(data)))
+            except AttributeError as e:
+                return ResponseModel(code=400, error=f"Validation failed: {e}")
+
+        # Phase 2 — execute atomically
+        async with self._session_factory() as session:
+            try:
+                jobs: list[TransactionJobResult] = []
+                for op, prep in preps:
+                    if op == TransactionOp.INSERT:
+                        session.add(prep.instance)
+                        await session.flush()
+                        jobs.append(TransactionJobResult(method=op, table=prep.table_name, success=True))
+                    elif op == TransactionOp.SOFT_DELETE:
+                        result: Any = await session.execute(prep.compiled_query)
+                        if result.rowcount == 0:
+                            raise ValueError("Record not found or already deleted")
+                        jobs.append(TransactionJobResult(method=op, table=prep.table_name, success=True))
+                    elif op == TransactionOp.DELETE:
+                        await session.execute(prep.compiled_query)
+                        jobs.append(TransactionJobResult(method=op, table=prep.table_name, success=True))
+                await session.commit()
+                return ResponseModel(code=200, data=jobs)
+            except Exception as e:
+                await session.rollback()
+                return ResponseModel(code=400, error=f"Transaction rolled back: {e}")
+
 
 class PostgresClient:
-    __slots__ = ("_engine", "_session_factory", "_connection_wait","_healthy", "_connected", "_timeout", "_timeout_incremental", "_url",)
+    __slots__ = ("_engine", "_session_factory", "_connection_wait", "_healthy", "_connected", "_timeout",
+                 "_timeout_incremental", "_url",)
 
     def __init__(self):
         self._engine: AsyncEngine | None = None
@@ -266,12 +366,18 @@ class PostgresClient:
             raise RuntimeError("PostgresClient is not open — call open() first")
         return self._session_factory()
 
+    def create_transaction(self) -> PostgresTransaction:
+        if self._session_factory is None:
+            raise RuntimeError("PostgresClient is not open — call open() first")
+        return PostgresTransaction(self._session_factory)
+
     def is_healthy(self) -> bool:
         return self._healthy
 
     def is_connected(self) -> bool:
         return self._connected
-# Operations
+
+    # Operations
     async def insert(self, data: BaseModel) -> ResponseModel:
         try:
             prep = _prepare_insert(data)
@@ -287,7 +393,8 @@ class PostgresClient:
                 await session.rollback()
                 return ResponseModel(code=409, error=f"Record already exists in {prep.table_name}")
         pks = [col.name for col in prep.orm_cls.__table__.primary_key]
-        return ResponseModel(code=200, data={pk: str(getattr(prep.instance, pk)) for pk in pks if getattr(prep.instance, pk) is not None})
+        return ResponseModel(code=200, data={pk: str(getattr(prep.instance, pk)) for pk in pks if
+                                             getattr(prep.instance, pk) is not None})
 
     async def soft_delete(self, data: BaseModel) -> ResponseModel:
         try:
@@ -297,7 +404,7 @@ class PostgresClient:
 
         async with self.get_client() as session:
             try:
-                result: Any|CursorResult = await session.execute(prep.compiled_query)
+                result: Any | CursorResult = await session.execute(prep.compiled_query)
                 await session.commit()
             except Exception:
                 await session.rollback()
@@ -305,7 +412,6 @@ class PostgresClient:
         if result.rowcount == 0:
             return ResponseModel(code=404, error="Record not found or already deleted")
         return ResponseModel(code=200)
-
 
     async def delete(self, data: BaseModel) -> ResponseModel:
         try:
@@ -333,7 +439,6 @@ class PostgresClient:
             rows = result.scalars().all()
         return ResponseModel(code=200, data=[_orm_to_dict_deep(r) for r in rows])
 
-
     async def flush(self, table_name: str) -> ResponseModel:
         try:
             prep = _prepare_flush(table_name)
@@ -349,7 +454,6 @@ class PostgresClient:
                 raise
         return ResponseModel(code=200)
 
-
     async def read(self, data: ReadJoinRequest) -> ResponseModel:
         try:
             prep = _prepare_read(data)
@@ -360,5 +464,6 @@ class PostgresClient:
             result = await session.execute(prep.compiled_query)
             rows = result.mappings().all()
         return ResponseModel(code=200, data=[dict(r) for r in rows])
+
 
 client = PostgresClient()

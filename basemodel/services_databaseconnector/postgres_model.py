@@ -132,6 +132,26 @@ class APIType(Enum):
     RETRIEVE = "RETRIEVE"
 
 
+class TransactionOp(str, Enum):
+    INSERT      = "insert"
+    SOFT_DELETE = "soft_delete"
+    DELETE      = "delete"
+
+
+class FilterOperator(str, Enum):
+    EQ  = "eq"
+    NE  = "ne"
+    GT  = "gt"
+    LT  = "lt"
+    GTE = "gte"
+    LTE = "lte"
+
+
+class OrderDirection(str, Enum):
+    ASC  = "ASC"
+    DESC = "DESC"
+
+
 """
 Base Struct
 """
@@ -429,8 +449,6 @@ class KBPublishAPIInsert(TenantModel):
 """
 Delete Models — PK fields only
 """
-
-
 @register("delete")
 class KBModelDelete(BaseModel):
     model_id: str
@@ -540,8 +558,6 @@ class KBPublishAPIDelete(TenantModel):
 """
 Auth & Release Enums
 """
-
-
 class ActorType(str, Enum):
     USER = "USER"
     AGENT = "AGENT"
@@ -984,6 +1000,17 @@ class DriftEventDelete(BaseModel):
 
 
 """
+Transaction
+"""
+
+
+class TransactionJobResult(BaseModel):
+    method: TransactionOp
+    table: str
+    success: bool
+
+
+"""
 Read — generic join request (also handles single-table reads)
 """
 
@@ -998,6 +1025,13 @@ class WhereFilter(BaseModel):
     table_name: str
     column_name: str
     value: Any
+    operator: FilterOperator = FilterOperator.EQ
+
+
+class OrderBy(BaseModel):
+    table_name: str
+    column: str
+    order: OrderDirection = OrderDirection.ASC
 
 
 class SelectInLoadRequest(BaseModel):
@@ -1007,6 +1041,7 @@ class SelectInLoadRequest(BaseModel):
     filters: list[WhereFilter] = []
     limit: int = 50
     cursor: Optional[datetime.datetime] = None
+    order_by: Optional[OrderBy] = None
 
 
 class ReadJoinRequest(BaseModel):
@@ -1016,7 +1051,7 @@ class ReadJoinRequest(BaseModel):
     filters: list[WhereFilter] = []
     limit: int = 50
     cursor: Optional[datetime.datetime] = None
-    order_by: Optional[str] = None
+    order_by: Optional[OrderBy] = None
 
     @model_validator(mode="after")
     def _check_consistency(self):
