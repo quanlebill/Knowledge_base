@@ -37,7 +37,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [error, setError]     = useState<string | null>(null);
 
   useEffect(() => {
-    // keycloak.didInitialize is set by keycloak-js itself after init() — survives HMR and StrictMode remounts
+    // Dev bypass: VITE_MOCK_AUTH=true trong .env.local → bỏ qua Keycloak
+    if (import.meta.env.VITE_MOCK_AUTH === 'true') {
+      setUser({ id: 'u_123', name: 'Alex Rivera', email: 'alex.rivera@globalcorp.ai', roles: ['AI_ENGINEER'], token: 'mock-token' });
+      setLoading(false);
+      return;
+    }
+
     if ((keycloak as any).didInitialize) {
       setUser(buildUser());
       setLoading(false);
@@ -54,7 +60,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (authenticated) {
           setUser(buildUser());
         } else {
-          keycloak.login();
+          keycloak?.login();
         }
       })
       .catch(err => {

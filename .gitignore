@@ -1,17 +1,25 @@
-# Ignore everything
-.claude/
-data_agent.egg-info/
-dist/
-.env*
-!.env.example
-.env.local
-.idea/
 node_modules/
 __pycache__/
 *.pyc
+*.pyo
+.venv/
+build/
+dist/
 coverage/
 .DS_Store
+data_agent.egg-info/
 
+.env*
+!.env.example
+.env.local
+
+.claude/
+.idea/
+
+docs/
+CLAUDE.md
+.claude/settings.json
+.claude/settings.local.json
 
 # Generated cert files — run infra/certs/gen-certs.sh to create locally
 infra/certs/*.key

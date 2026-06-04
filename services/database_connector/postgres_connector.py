@@ -79,6 +79,7 @@ def _resolve(data: BaseModel):
 
 
 # Query Compilers
+
 _OP_MAP = {
     FilterOperator.EQ: lambda col, val: col == val,
     FilterOperator.NE: lambda col, val: col != val,
