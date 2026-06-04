@@ -480,6 +480,7 @@ class DriftEventsORM(Base):
     inserted_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+
 @register("orm")
 class MembersORM(Base):
     __tablename__ = "Members"

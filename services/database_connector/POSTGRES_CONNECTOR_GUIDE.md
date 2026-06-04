@@ -6,7 +6,7 @@
 
 ## Overview
 
-All operations are **methods on `PostgresClient`**. Internal query builders (`_prepare_*`, `_orm_to_dict`, etc.) are module-level private functions — they are implementation details and should not be imported directly.
+All operations are **methods on `PostgresClient`**. Internal query builders (`_prepare_*`, `_orm_to_dict`, etc.) are module-level private functions — implementation details, not for direct import.
 
 Use the module-level singleton `client` for all application code:
 
@@ -14,7 +14,7 @@ Use the module-level singleton `client` for all application code:
 from services.database_connector.postgres_connector import client
 ```
 
-The connector exposes **6 operations**. There is no `update` — immutable insert pattern only.
+The connector exposes **7 operations**. There is no `update` — immutable insert pattern only.
 
 | Method | Input | Purpose |
 |---|---|---|
@@ -24,16 +24,15 @@ The connector exposes **6 operations**. There is no `update` — immutable inser
 | `client.soft_delete` | Delete model | Set `is_deleted = True` |
 | `client.delete` | Delete model | Hard DELETE by record identity |
 | `client.flush` | `table_name: str` | Purge all `is_deleted = True` rows from a table |
+| `client.create_transaction` | — | Return a `PostgresTransaction` job queue for atomic batch writes |
 
-All methods return `ResponseModel(code, data, error)`.
+All methods return `ResponseModel(code, data, error)`. `create_transaction().commit()` also returns `ResponseModel`; see [7. `create_transaction`](#7-create_transaction).
 
 ---
 
 ## Lifecycle
 
 ```python
-from services.database_connector.postgres_connector import client
-
 # app startup
 client.set_url("postgresql+asyncpg://user:pass@host:5432/dbname")
 await client.open()
@@ -47,14 +46,68 @@ await client.close()
 
 ---
 
+## Shared Query Concepts
+
+`read` and `read_deep` both accept `filters`, `order_by`, `cursor`, and `tenant_id`. These work identically in both methods.
+
+### WhereFilter
+
+Filters apply to the root table. `table_name` must be one of the tables in the query.
+
+```python
+from basemodel.services_databaseconnector.postgres_model import WhereFilter, FilterOperator
+
+WhereFilter(table_name="KBData", column_name="current_tier", value="bronze")
+WhereFilter(table_name="KBData", column_name="current_tier", value="gold", operator=FilterOperator.NE)
+WhereFilter(table_name="KBData", column_name="abstract",     value=None,   operator=FilterOperator.NE)  # IS NOT NULL
+```
+
+| `FilterOperator` | SQL | `None` behaviour |
+|---|---|---|
+| `EQ` (default) | `=` | `IS NULL` |
+| `NE` | `!=` | `IS NOT NULL` |
+| `GT` | `>` | — |
+| `LT` | `<` | — |
+| `GTE` | `>=` | — |
+| `LTE` | `<=` | — |
+
+> `NE` with `value=None` generates `IS NOT NULL`. SQLAlchemy overloads `!=` on column expressions so it never emits the broken `!= NULL`.
+
+### OrderBy
+
+```python
+from basemodel.services_databaseconnector.postgres_model import OrderBy, OrderDirection
+
+OrderBy(table_name="KBData", column="inserted_at", order=OrderDirection.DESC)
+```
+
+- `table_name` must be one of the tables in the query; `column` must exist on that table. An invalid value returns `400` before the query runs.
+- When omitted, defaults to `inserted_at ASC` on the root table.
+
+### Cursor pagination
+
+Pass `cursor=<inserted_at value>` from the last row of the previous page. Adds `WHERE inserted_at > cursor` on the root table.
+
+```python
+page2 = await client.read(ReadJoinRequest(
+    ...,
+    cursor=page1.data[-1]["inserted_at"],
+))
+```
+
+### tenant_id
+
+When provided, adds `WHERE tenant_id = <value>` on the root table. Omit for tables that have no `tenant_id` column.
+
+---
+
 ## 1. `insert`
 
-Use the corresponding `*Insert` model for the table. `inserted_at` is auto-set at instantiation — never pass it manually.
+Use the `*Insert` model for the target table. `inserted_at` is auto-set — never pass it manually.
 
 Tables **with** `tenant_id` extend `TenantInsertModel`:
 ```python
 from basemodel.services_databaseconnector.postgres_model import KBDataInsert
-from services.database_connector.postgres_connector import client
 
 result = await client.insert(KBDataInsert(
     tenant_id="tenant-uuid",
@@ -84,47 +137,30 @@ result = await client.insert(KBTextBlockVersionInsert(
 
 ### Output
 ```python
-# success
+# success — returns only the PK field(s) of the inserted row
 result.code = 200
-result.data = {"data_id": "generated-uuid"}        # KBData
-result.data = {"version_id": "generated-uuid"}     # KBTextBlockVersion
-result.data = {"block_id": "generated-uuid"}       # KBTextBlock
-# — returns only the PK field(s) of the inserted row
+result.data = {"data_id": "generated-uuid"}     # KBData
+result.data = {"version_id": "generated-uuid"}  # KBTextBlockVersion
+result.data = {"block_id": "generated-uuid"}    # KBTextBlock
 
 # failure
-result.code = 409   # record already exists (unique constraint)
+result.code = 409   # unique constraint violated
 result.code = 400   # unregistered model
-result.data = None
-result.error = "..."
 ```
 
 ---
 
 ## 2. `read`
 
-Flat SELECT — returns rows as dicts. Use for single-table reads or shallow joins where you need specific columns.
+Flat SELECT — returns rows as plain dicts. Use for single-table reads or shallow joins where you need specific columns.
 
 ```python
 from basemodel.services_databaseconnector.postgres_model import (
-    ReadJoinRequest, SelectedColumn, WhereFilter
+    ReadJoinRequest, SelectedColumn, WhereFilter, OrderBy, OrderDirection, FilterOperator
 )
-from services.database_connector.postgres_connector import client
 ```
 
-### Single table — first page
-```python
-result = await client.read(ReadJoinRequest(
-    tenant_id="tenant-uuid",
-    joins_table=["KBData"],
-    selected_columns=[],
-    filters=[
-        WhereFilter(table_name="KBData", column_name="current_tier", value="bronze"),
-    ],
-    limit=20,
-))
-```
-
-### Single table — next page (cursor pagination)
+### Single table
 ```python
 result = await client.read(ReadJoinRequest(
     tenant_id="tenant-uuid",
@@ -133,7 +169,6 @@ result = await client.read(ReadJoinRequest(
         WhereFilter(table_name="KBData", column_name="current_tier", value="bronze"),
     ],
     limit=20,
-    cursor=result.data[-1]["inserted_at"],
 ))
 ```
 
@@ -154,67 +189,41 @@ result = await client.read(ReadJoinRequest(
     filters=[
         WhereFilter(table_name="KBTextBlockVersion", column_name="is_active", value=True),
     ],
+    order_by=OrderBy(table_name="KBData", column="inserted_at", order=OrderDirection.DESC),
     limit=50,
 ))
 ```
 
 ### Output
 ```python
-# success — single table (selected_columns=[])
+# success — selected_columns=[] → all columns across all tables
 result.code = 200
-result.data = [
-    {
-        "data_id": "uuid-1",
-        "name": "annual_report.pdf",
-        "current_tier": "bronze",
-        "tenant_id": "tenant-uuid",
-        "inserted_at": "2024-01-01T00:00:00+00:00",
-        ...                             # all columns from the table
-    },
-    ...
-]
+result.data = [{"data_id": "uuid-1", "name": "...", "current_tier": "bronze", ...}, ...]
 
-# success — multi-table join (specific selected_columns)
-result.code = 200
-result.data = [
-    {
-        "data_id": "uuid-1",           # from KBData
-        "name": "annual_report.pdf",   # from KBData
-        "block_id": "uuid-2",          # from KBTextBlock
-        "block_index": 0,              # from KBTextBlock
-        "version_id": "uuid-3",        # from KBTextBlockVersion
-        "content": "parsed text...",   # from KBTextBlockVersion
-        "is_active": True,             # from KBTextBlockVersion
-    },
-    ...                                # flat — one row per join combination
-]
+# success — specific selected_columns → flat row per join combination
+result.data = [{"data_id": "uuid-1", "name": "...", "block_id": "uuid-2", "content": "...", ...}, ...]
 
 # failure
-result.code = 400   # unknown table
-result.data = None
-result.error = "..."
+result.code = 400   # unknown table or invalid order_by
 ```
 
-### Rules
-- `joins_table` — at least 1 entry; tables in chain order starting from root
-- `selected_columns` — empty → `SELECT *` from all tables
-- `tenant_id` — optional; applied as filter only if the root table has the column
-- `cursor` — `inserted_at` value of the last row from the previous page
-- `order_by` — raw SQL string e.g. `"KBData.created_at DESC"`; defaults to `inserted_at ASC`
+### Fields
+- `joins_table` — at least 1 entry; list tables in join order starting from the root
+- `selected_columns` — omit for `SELECT *`; specify columns explicitly when join produces ambiguous names
+- `cursor`, `order_by`, `tenant_id`, `filters` — see [Shared Query Concepts](#shared-query-concepts)
 
-> **Avoid deep joins on large tables** — each added table multiplies the result rows. Use `read_deep` instead.
+> Each added join table multiplies result rows. Prefer `read_deep` for chains 2+ levels deep or large tables.
 
 ---
 
 ## 3. `read_deep`
 
-Nested SELECT using `selectinload` — fires separate IN queries per relationship, no row multiplication. Returns fully nested dicts.
+Nested SELECT via `selectinload` — fires a separate IN query per relationship rather than joining. Returns fully nested dicts with no row multiplication.
 
 ```python
 from basemodel.services_databaseconnector.postgres_model import (
-    SelectInLoadRequest, WhereFilter
+    SelectInLoadRequest, WhereFilter, OrderBy, OrderDirection, FilterOperator
 )
-from services.database_connector.postgres_connector import client
 ```
 
 ### Usage
@@ -228,161 +237,173 @@ result = await client.read_deep(SelectInLoadRequest(
     ],
     filters=[
         WhereFilter(table_name="KBData", column_name="current_tier", value="bronze"),
+        WhereFilter(table_name="KBData", column_name="abstract", value=None, operator=FilterOperator.NE),
     ],
+    order_by=OrderBy(table_name="KBData", column="inserted_at", order=OrderDirection.DESC),
     limit=20,
 ))
 ```
 
 ### Output
 ```python
-# success
 result.code = 200
 result.data = [
     {
-        # KBData columns
         "data_id": "uuid-1",
         "name": "annual_report.pdf",
-        "current_tier": "bronze",
-        "inserted_at": "2024-01-01T00:00:00+00:00",
         ...
-
-        # key = table name from load_paths
-        "KBTextBlock": [
+        "KBTextBlock": [                    # key = table name from load_paths
             {
                 "block_id": "uuid-2",
-                "block_index": 0,
                 ...
-
-                # key = table name from load_paths (next segment)
-                "KBTextBlockVersion": [
+                "KBTextBlockVersion": [     # key = next segment in the dot-path
                     {"version_id": "uuid-3", "content": "...", "is_active": True, ...},
-                    {"version_id": "uuid-4", "content": "...", "is_active": False, ...},
                 ]
-            },
-            ...
+            }
         ],
-
         "KBLifecycleHistory": [
-            {"history_id": "uuid-5", "to_tier": "silver", ...},
+            {"history_id": "uuid-5", "to_tier": "silver", ...}
         ]
     },
     ...
 ]
 
 # failure
-result.code = 400   # unknown table or invalid load path
-result.data = None
-result.error = "..."
+result.code = 400   # unknown table, invalid load path, or invalid order_by
 ```
 
 ### SQL fired
 ```sql
-SELECT * FROM KBData WHERE tenant_id = ? AND ... LIMIT 20
-SELECT * FROM KBTextBlock WHERE owner_id IN (uuid-1, uuid-2, ...)
-SELECT * FROM KBTextBlockVersion WHERE block_id IN (uuid-2, uuid-6, ...)
-SELECT * FROM KBLifecycleHistory WHERE data_id IN (uuid-1, uuid-2, ...)
+SELECT * FROM "KBData" WHERE tenant_id = ? AND ... ORDER BY ... LIMIT 20
+SELECT * FROM "KBTextBlock" WHERE owner_id IN (uuid-1, uuid-2, ...)
+SELECT * FROM "KBTextBlockVersion" WHERE block_id IN (uuid-2, uuid-6, ...)
+SELECT * FROM "KBLifecycleHistory" WHERE data_id IN (uuid-1, uuid-2, ...)
 ```
 
-### Rules
+### Fields
 - `table` — root table name
-- `load_paths` — dot-separated table names from root; must follow defined ORM relationships
-- `tenant_id` — optional; applied as filter only if the root table has the column
-- `cursor` — `inserted_at` of the last root row from the previous page
-- The nested key in the output matches exactly the table name used in `load_paths`
-- Use instead of `read` whenever the chain is 2+ levels deep or tables are large
+- `load_paths` — dot-separated table names following ORM relationships; the nested key in the output matches each segment exactly
+- `cursor`, `order_by`, `tenant_id`, `filters` — see [Shared Query Concepts](#shared-query-concepts)
 
 ---
 
 ## 4. `soft_delete`
 
-Sets `is_deleted = True`. Fails with `400` if the table has no `is_deleted` column.
+Sets `is_deleted = True`. Only works on tables that have an `is_deleted` column. `read` automatically excludes soft-deleted rows on the root table.
 
 ```python
-from basemodel.services_databaseconnector.postgres_model import KBDataDelete
-from services.database_connector.postgres_connector import client
+from basemodel.services_databaseconnector.postgres_model import KBDataDelete, KBTextBlockVersionDelete
 
-result = await client.soft_delete(KBDataDelete(
-    tenant_id="tenant-uuid",
-    data_id="data-uuid",
-))
-```
-
-Tables without `tenant_id`:
-```python
-from basemodel.services_databaseconnector.postgres_model import KBTextBlockVersionDelete
-
-result = await client.soft_delete(KBTextBlockVersionDelete(
-    version_id="version-uuid",
-))
+result = await client.soft_delete(KBDataDelete(tenant_id="tenant-uuid", data_id="data-uuid"))
+result = await client.soft_delete(KBTextBlockVersionDelete(version_id="version-uuid"))
 ```
 
 ### Output
 ```python
-# success
-result.code = 200
-result.data = None
-
-# failure
+result.code = 200   # success
 result.code = 400   # table has no is_deleted column
 result.code = 404   # record not found or already deleted
-result.data = None
-result.error = "..."
 ```
 
 ---
 
 ## 5. `delete`
 
-Hard DELETE — permanent. All non-null fields in the model become WHERE conditions.
+Hard DELETE — permanent. All non-null fields on the model become WHERE conditions.
 
 ```python
-from basemodel.services_databaseconnector.postgres_model import KBNeo4jRelationshipDelete
-from services.database_connector.postgres_connector import client
+from basemodel.services_databaseconnector.postgres_model import KBDataDelete
 
-result = await client.delete(KBNeo4jRelationshipDelete(
-    from_node="node-uuid-a",
-    to_node="node-uuid-b",
+result = await client.delete(KBDataDelete(
+    tenant_id="tenant-uuid",
+    data_id="data-uuid",
 ))
 ```
 
 ### Output
 ```python
-# success
-result.code = 200
-result.data = None
-
-# failure
-result.code = 400   # unregistered model or no conditions provided
-result.data = None
-result.error = "..."
+result.code = 200   # success
+result.code = 400   # unregistered model or no fields provided to identify the record
 ```
 
 ---
 
 ## 6. `flush`
 
-Purges all rows where `is_deleted = True` from a table. Fails with `400` if the table has no `is_deleted` column.
+Permanently removes all `is_deleted = True` rows from a table. Only works on tables that have an `is_deleted` column.
 
 ```python
-from services.database_connector.postgres_connector import client
-
 result = await client.flush("KBData")
-result = await client.flush("KBTextBlockVersion")
 ```
 
 ### Output
 ```python
-# success
-result.code = 200
-result.data = None
-
-# failure
+result.code = 200   # success
 result.code = 400   # unknown table or no is_deleted column
-result.data = None
-result.error = "..."
 ```
 
 > Run as a scheduled maintenance job — not on every delete.
+
+---
+
+## 7. `create_transaction`
+
+Queue multiple insert / soft_delete / delete operations and commit them atomically. On any failure the entire batch is rolled back.
+
+### Enum style
+```python
+from basemodel.services_databaseconnector.postgres_model import TransactionOp
+
+result = await (
+    client.create_transaction()
+    .add(TransactionOp.INSERT,      KBDataInsert(...))
+    .add(TransactionOp.SOFT_DELETE, KBFilterPolicyDelete(...))
+    .add(TransactionOp.DELETE,      KBTextBlockDelete(...))
+    .commit()
+)
+```
+
+### Plain string style
+`TransactionOp` is a `str` enum so plain strings work identically:
+
+```python
+result = await (
+    client.create_transaction()
+    .add("insert",      KBDataInsert(...))
+    .add("soft_delete", KBFilterPolicyDelete(...))
+    .add("delete",      KBTextBlockDelete(...))
+    .commit()
+)
+```
+
+### `add(op, data)` validation
+
+`add()` raises `ValueError` immediately if `data` is not registered or is the wrong model type for `op`:
+
+| `TransactionOp` | Plain string | Accepted model type |
+|---|---|---|
+| `INSERT` | `"insert"` | `*Insert` models |
+| `SOFT_DELETE` | `"soft_delete"` | `*Delete` models — sets `is_deleted = True` |
+| `DELETE` | `"delete"` | `*Delete` models — permanent hard delete |
+
+### Output
+
+```python
+# success
+result.code = 200
+result.data = [
+    TransactionJobResult(method="insert",      table="KBData",         success=True),
+    TransactionJobResult(method="soft_delete", table="KBFilterPolicy", success=True),
+    TransactionJobResult(method="delete",      table="KBTextBlock",    success=True),
+]
+
+# failure — nothing was written
+result.code = 400
+result.error = "Transaction rolled back: ..."  # or "Validation failed: ..."
+result.data = None
+```
+
+`TransactionJobResult` fields: `method: TransactionOp`, `table: str`, `success: bool`.
 
 ---
 
@@ -392,6 +413,7 @@ result.error = "..."
 class ResponseModel(BaseModel):
     code: int          # 200 OK | 400 bad input | 404 not found | 409 conflict
     data: Any = None   # insert → {pk: value} | read → list[dict] | read_deep → list[nested dict]
+                       # create_transaction → list[TransactionJobResult]
     error: str = None  # set on failure
 ```
 
@@ -408,12 +430,18 @@ postgres_connector.py
 │     _rel_key_to()           — resolve relationship attribute name between two ORM classes
 │     _build_load_option()    — build selectinload chain from dot-path string
 │     _resolve()              — look up table name + ORM class from a registered model
+│     _apply_op()             — apply FilterOperator to a column expression
+│     _validate_order_by()    — validate table + column against REGISTRY before query build
 │     _prepare_insert()       — compile INSERT from an Insert model
 │     _prepare_read()         — compile SELECT from ReadJoinRequest
 │     _prepare_deep_search()  — compile SELECT + selectinload from SelectInLoadRequest
 │     _prepare_soft_delete()  — compile UPDATE is_deleted=True from a Delete model
 │     _prepare_delete()       — compile DELETE from a Delete model
 │     _prepare_flush()        — compile DELETE WHERE is_deleted=True for a table
+│
+├── class PostgresTransaction — job-queue for atomic batch writes; obtain via create_transaction()
+│     add()                  — queue a job; validates op/model type match at call time
+│     commit()               — phase 1: compile all jobs; phase 2: execute → commit or rollback
 │
 ├── class PostgresClient      — stateful: holds engine, session factory, health flag
 │     set_url()               — configure async DSN before open()
@@ -423,6 +451,7 @@ postgres_connector.py
 │     is_healthy()            — last health check result
 │     is_connected()          — engine is up
 │     get_client()            — returns a new AsyncSession (use as async context manager)
+│     create_transaction()    — returns a new PostgresTransaction
 │     insert()                — calls _prepare_insert → session.add → commit
 │     read()                  — calls _prepare_read → session.execute → mappings
 │     read_deep()             — calls _prepare_deep_search → scalars + selectinload
@@ -437,7 +466,7 @@ postgres_connector.py
 
 ## Table Name Reference
 
-Used in `joins_table`, `load_paths`, `table`, and `flush`:
+Used in `joins_table`, `load_paths`, `table`, `flush`, `WhereFilter.table_name`, and `OrderBy.table_name`:
 
 | ORM Class | Table name |
 |---|---|

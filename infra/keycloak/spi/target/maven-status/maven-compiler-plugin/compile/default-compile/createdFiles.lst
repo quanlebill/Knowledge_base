@@ -1,0 +1,2 @@
+com\aeroflow\keycloak\KafkaEventListenerProvider.class
+com\aeroflow\keycloak\KafkaEventListenerProviderFactory.class

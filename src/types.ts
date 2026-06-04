@@ -1,4 +1,4 @@
-export type Role = 'PLATFORM_ADMIN' | 'AI_ENGINEER' | 'BUSINESS_OPERATOR' | 'EXECUTIVE';
+export type Role = 'PLATFORM_ADMIN' | 'AI_ENGINEER' | 'EXECUTIVE';
 export type Industry = 'GENERAL' | 'GOVERNMENT' | 'BANKING' | 'RAILWAY' | 'HEALTHCARE';
 export type Environment = 'DEV' | 'UAT' | 'STAGING' | 'PROD';
 
