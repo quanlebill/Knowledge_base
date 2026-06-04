@@ -40,7 +40,7 @@ const LOCKED_NODE_TYPES    = new Set(['guardrail_input', 'guardrail_output', 'gu
 export type TemplateId = 'blank' | 'rag' | 'multi-agent' | 'hitl';
 
 type FlowNodeType =
-  | 'trigger' | 'planner' | 'kb_search' | 'mcp_tool'
+  | 'trigger' | 'guardrail' | 'planner' | 'kb_search' | 'mcp_tool'
   | 'rrf_ranking' | 'reranker' | 'responder' | 'output'
   | 'human_approval' | 'condition' | 'db_query'
   | 'send_notification' | 'loop';
@@ -69,6 +69,7 @@ const BuilderToastCtx = React.createContext<(msg: string) => void>(() => {});
 
 const NODE_STYLE: Record<string, { typeLabel: string; Icon: any; color: string }> = {
   trigger:           { typeLabel: 'Trigger',        Icon: Zap,         color: '#6B7280' },
+  guardrail:         { typeLabel: 'Guardrail',       Icon: ShieldCheck, color: '#EF4444' },
   planner:           { typeLabel: 'Planner',        Icon: Bot,         color: '#3B82F6' },
   kb_search:         { typeLabel: 'KB Search',      Icon: Database,    color: '#10B981' },
   mcp_tool:          { typeLabel: 'MCP Tool',       Icon: Wrench,      color: '#F59E0B' },
@@ -193,11 +194,18 @@ const EdgeWithDelete = (props: EdgeProps) => {
     id, sourceX, sourceY, targetX, targetY,
     sourcePosition, targetPosition,
     style = {}, markerEnd, label, labelStyle,
-    selected,
+    selected, data, source, target,
   } = props;
 
-  const { setEdges }  = useReactFlow();
-  const addToast      = useContext(BuilderToastCtx);
+  const { setEdges, getNode } = useReactFlow();
+  const addToast = useContext(BuilderToastCtx);
+
+  // Locked nếu edge.data.locked=true HOẶC node đầu/cuối là guardrail (locked node).
+  // Dùng getNode làm fallback vì data.locked không phải lúc nào cũng được giữ qua serialization.
+  const isLocked =
+    (data as any)?.locked === true ||
+    (getNode(source)?.data as any)?.locked === true ||
+    (getNode(target)?.data as any)?.locked === true;
 
   const [edgePath, labelX, labelY] = getSmoothStepPath({
     sourceX, sourceY, sourcePosition,
@@ -251,7 +259,7 @@ const EdgeWithDelete = (props: EdgeProps) => {
         </EdgeLabelRenderer>
       )}
 
-      {selected && (
+      {selected && !isLocked && (
         <EdgeLabelRenderer>
           <div
             style={{
@@ -301,6 +309,16 @@ const dashedEdge = (id: string, src: string, tgt: string, label: string, color: 
   labelStyle: { fill: color, fontSize: 9, fontWeight: 700, fontFamily: 'monospace' },
 });
 
+// Locked edge — gắn vào/ra guardrail node, không xóa được
+const lockedEdge = (id: string, src: string, tgt: string, color = '#EF444455'): Edge => ({
+  id, source: src, target: tgt,
+  type: 'wfEdge', animated: true,
+  deletable: false,
+  data: { locked: true },
+  style: { stroke: color, strokeWidth: 2 },
+  markerEnd: { type: MarkerType.ArrowClosed, color },
+});
+
 // â”€â”€â”€ Node Factory â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const mkNode = (
@@ -309,6 +327,15 @@ const mkNode = (
 ): Node<FlowNodeData> => ({
   id, type: 'flowNode', position: { x, y },
   data: { nodeType, label, ...extra },
+});
+
+const mkLockedNode = (
+  id: string, nodeType: FlowNodeType, label: string,
+  x: number, y: number,
+): Node<FlowNodeData> => ({
+  id, type: 'flowNode', position: { x, y },
+  deletable: false,
+  data: { nodeType, label, locked: true },
 });
 
 // â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -349,69 +376,81 @@ export const TEMPLATE_FLOWS: Record<TemplateId, { nodes: Node<FlowNodeData>[]; e
 
   rag: {
     nodes: [
-      mkNode('trigger',     'trigger',     'User Input',  360, 0),
-      mkNode('planner',     'planner',     'Planner',     360, 110),
-      mkNode('kb_search',   'kb_search',   'KB Search',   360, 220, { kbEndpoint: 'http://knowledge-space/api/kb/', kbName: 'kb_a05_violations' }),
-      mkNode('rrf_ranking', 'rrf_ranking', 'RRF Ranking', 360, 330),
-      mkNode('reranker',    'reranker',    'Reranker',    360, 440, { rerankerModel: 'BGE-Reranker-v2-m3', topN: 5 }),
-      mkNode('responder',   'responder',   'Responder',   360, 550, { systemPromptName: 'prompt_default', temperature: 0.2, maxTokens: 1000 }),
-      mkNode('output',      'output',      'Response',    360, 660),
+      mkNode('trigger',       'trigger',   'User Input',         360, 0),
+      mkLockedNode('guardrail_in',  'guardrail', 'Guardrail — Input',  360, 110),
+      mkNode('planner',       'planner',   'Planner',            360, 220),
+      mkNode('kb_search',     'kb_search', 'KB Search',          360, 330, { kbEndpoint: 'http://knowledge-space/api/kb/', kbName: 'kb_a05_violations' }),
+      mkNode('rrf_ranking',   'rrf_ranking','RRF Ranking',       360, 440),
+      mkNode('reranker',      'reranker',  'Reranker',           360, 550, { rerankerModel: 'BGE-Reranker-v2-m3', topN: 5 }),
+      mkNode('responder',     'responder', 'Responder',          360, 660, { systemPromptName: 'prompt_default', temperature: 0.2, maxTokens: 1000 }),
+      mkLockedNode('guardrail_out', 'guardrail', 'Guardrail — Output', 360, 770),
+      mkNode('output',        'output',    'Response',           360, 880),
     ],
     edges: [
-      solidEdge('e1', 'trigger',     'planner',     '#6B728066'),
-      solidEdge('e2', 'planner',     'kb_search',   '#3B82F666'),
-      solidEdge('e3', 'kb_search',   'rrf_ranking', '#10B98166'),
-      solidEdge('e4', 'rrf_ranking', 'reranker',    '#8B5CF666'),
-      solidEdge('e5', 'reranker',    'responder',   '#8B5CF666'),
-      solidEdge('e6', 'responder',   'output',      '#3B82F666'),
+      lockedEdge('e1', 'trigger',       'guardrail_in'),
+      lockedEdge('e2', 'guardrail_in',  'planner'),
+      solidEdge ('e3', 'planner',       'kb_search',     '#3B82F666'),
+      solidEdge ('e4', 'kb_search',     'rrf_ranking',   '#10B98166'),
+      solidEdge ('e5', 'rrf_ranking',   'reranker',      '#8B5CF666'),
+      solidEdge ('e6', 'reranker',      'responder',     '#8B5CF666'),
+      lockedEdge('e7', 'responder',     'guardrail_out'),
+      lockedEdge('e8', 'guardrail_out', 'output'),
     ],
   },
 
   'multi-agent': {
     nodes: [
-      mkNode('trigger',     'trigger',     'User Input',  360, 0),
-      mkNode('planner',     'planner',     'Planner',     360, 110),
-      mkNode('kb_search',   'kb_search',   'KB Search',   160, 240, { kbEndpoint: 'http://knowledge-space/api/kb/', kbName: 'kb_a05_violations' }),
-      mkNode('mcp_tool',    'mcp_tool',    'MCP Tool',    560, 240, { mcpServerUrl: 'http://mcp.tenant.gov.vn/sse', allowedTools: ['tra_cuu_phat_nguoi', 'query_dashboard'] }),
-      mkNode('rrf_ranking', 'rrf_ranking', 'RRF Ranking', 360, 380),
-      mkNode('reranker',    'reranker',    'Reranker',    360, 490, { rerankerModel: 'BGE-Reranker-v2-m3', topN: 5 }),
-      mkNode('responder',   'responder',   'Responder',   360, 600, { systemPromptName: 'prompt_default', temperature: 0.2, maxTokens: 1000 }),
-      mkNode('output',      'output',      'Response',    360, 710),
+      mkNode('trigger',       'trigger',    'User Input',         360, 0),
+      mkLockedNode('guardrail_in',  'guardrail', 'Guardrail — Input',  360, 110),
+      mkNode('planner',       'planner',    'Planner',            360, 220),
+      mkNode('kb_search',     'kb_search',  'KB Search',          160, 350, { kbEndpoint: 'http://knowledge-space/api/kb/', kbName: 'kb_a05_violations' }),
+      mkNode('mcp_tool',      'mcp_tool',   'MCP Tool',           560, 350, { mcpServerUrl: 'http://mcp.tenant.gov.vn/sse', allowedTools: ['tra_cuu_phat_nguoi', 'query_dashboard'] }),
+      mkNode('rrf_ranking',   'rrf_ranking','RRF Ranking',        360, 490),
+      mkNode('reranker',      'reranker',   'Reranker',           360, 600, { rerankerModel: 'BGE-Reranker-v2-m3', topN: 5 }),
+      mkNode('responder',     'responder',  'Responder',          360, 710, { systemPromptName: 'prompt_default', temperature: 0.2, maxTokens: 1000 }),
+      mkLockedNode('guardrail_out', 'guardrail', 'Guardrail — Output', 360, 820),
+      mkNode('output',        'output',     'Response',           360, 930),
     ],
     edges: [
-      solidEdge   ('e1', 'trigger',     'planner',     '#6B728066'),
-      labeledSolid('e2', 'planner',     'kb_search',   'always',        '#10B98199'),
-      dashedEdge  ('e3', 'planner',     'mcp_tool',    'if tool_calls', '#F59E0B99'),
-      solidEdge   ('e4', 'kb_search',   'rrf_ranking', '#10B98166'),
-      solidEdge   ('e5', 'mcp_tool',    'rrf_ranking', '#F59E0B66'),
-      solidEdge   ('e6', 'rrf_ranking', 'reranker',    '#8B5CF666'),
-      solidEdge   ('e7', 'reranker',    'responder',   '#8B5CF666'),
-      solidEdge   ('e8', 'responder',   'output',      '#3B82F666'),
+      lockedEdge  ('e1',  'trigger',       'guardrail_in'),
+      lockedEdge  ('e2',  'guardrail_in',  'planner'),
+      labeledSolid('e3',  'planner',       'kb_search',     'always',        '#10B98199'),
+      dashedEdge  ('e4',  'planner',       'mcp_tool',      'if tool_calls', '#F59E0B99'),
+      solidEdge   ('e5',  'kb_search',     'rrf_ranking',   '#10B98166'),
+      solidEdge   ('e6',  'mcp_tool',      'rrf_ranking',   '#F59E0B66'),
+      solidEdge   ('e7',  'rrf_ranking',   'reranker',      '#8B5CF666'),
+      solidEdge   ('e8',  'reranker',      'responder',     '#8B5CF666'),
+      lockedEdge  ('e9',  'responder',     'guardrail_out'),
+      lockedEdge  ('e10', 'guardrail_out', 'output'),
     ],
   },
 
   hitl: {
     nodes: [
-      mkNode('trigger',        'trigger',        'User Input',   360, 0),
-      mkNode('planner',        'planner',        'Planner',      360, 110),
-      mkNode('kb_search',      'kb_search',      'KB Search',    160, 240, { kbEndpoint: 'http://knowledge-space/api/kb/', kbName: 'kb_a05_violations' }),
-      mkNode('mcp_tool',       'mcp_tool',       'MCP Tool',     560, 240, { mcpServerUrl: 'http://mcp.tenant.gov.vn/sse', allowedTools: ['tra_cuu_phat_nguoi', 'query_dashboard'] }),
-      mkNode('rrf_ranking',    'rrf_ranking',    'RRF Ranking',  360, 380),
-      mkNode('reranker',       'reranker',       'Reranker',     360, 490, { rerankerModel: 'BGE-Reranker-v2-m3', topN: 5 }),
-      mkNode('responder',      'responder',      'Responder',    360, 600, { systemPromptName: 'prompt_default', temperature: 0.2, maxTokens: 1000 }),
-      mkNode('human_approval', 'human_approval', 'Human Review', 360, 710, { approverRole: 'MANAGER' }),
-      mkNode('output',         'output',         'Response',     360, 820),
+      mkNode('trigger',        'trigger',        'User Input',         360, 0),
+      mkLockedNode('guardrail_in',  'guardrail', 'Guardrail — Input',  360, 110),
+      mkNode('planner',        'planner',        'Planner',            360, 220),
+      mkNode('kb_search',      'kb_search',      'KB Search',          160, 350, { kbEndpoint: 'http://knowledge-space/api/kb/', kbName: 'kb_a05_violations' }),
+      mkNode('mcp_tool',       'mcp_tool',       'MCP Tool',           560, 350, { mcpServerUrl: 'http://mcp.tenant.gov.vn/sse', allowedTools: ['tra_cuu_phat_nguoi', 'query_dashboard'] }),
+      mkNode('rrf_ranking',    'rrf_ranking',    'RRF Ranking',        360, 490),
+      mkNode('reranker',       'reranker',       'Reranker',           360, 600, { rerankerModel: 'BGE-Reranker-v2-m3', topN: 5 }),
+      mkNode('responder',      'responder',      'Responder',          360, 710, { systemPromptName: 'prompt_default', temperature: 0.2, maxTokens: 1000 }),
+      mkLockedNode('guardrail_out', 'guardrail', 'Guardrail — Output', 360, 820),
+      mkNode('human_approval', 'human_approval', 'Human Review',       360, 930, { approverRole: 'MANAGER' }),
+      mkNode('output',         'output',         'Response',           360, 1040),
     ],
     edges: [
-      solidEdge   ('e1', 'trigger',        'planner',        '#6B728066'),
-      labeledSolid('e2', 'planner',        'kb_search',      'always',        '#10B98199'),
-      dashedEdge  ('e3', 'planner',        'mcp_tool',       'if tool_calls', '#F59E0B99'),
-      solidEdge   ('e4', 'kb_search',      'rrf_ranking',    '#10B98166'),
-      solidEdge   ('e5', 'mcp_tool',       'rrf_ranking',    '#F59E0B66'),
-      solidEdge   ('e6', 'rrf_ranking',    'reranker',       '#8B5CF666'),
-      solidEdge   ('e7', 'reranker',       'responder',      '#8B5CF666'),
-      solidEdge   ('e8', 'responder',      'human_approval', '#3B82F666'),
-      solidEdge   ('e9', 'human_approval', 'output',         '#D9B86C66'),
+      lockedEdge  ('e1',  'trigger',        'guardrail_in'),
+      lockedEdge  ('e2',  'guardrail_in',   'planner'),
+      labeledSolid('e3',  'planner',        'kb_search',      'always',        '#10B98199'),
+      dashedEdge  ('e4',  'planner',        'mcp_tool',       'if tool_calls', '#F59E0B99'),
+      solidEdge   ('e5',  'kb_search',      'rrf_ranking',    '#10B98166'),
+      solidEdge   ('e6',  'mcp_tool',       'rrf_ranking',    '#F59E0B66'),
+      solidEdge   ('e7',  'rrf_ranking',    'reranker',       '#8B5CF666'),
+      solidEdge   ('e8',  'reranker',       'responder',      '#8B5CF666'),
+      lockedEdge  ('e9',  'responder',      'guardrail_out'),
+      lockedEdge  ('e10', 'guardrail_out',  'human_approval'),
+      solidEdge   ('e11', 'human_approval', 'output',         '#D9B86C66'),
     ],
   },
 };
@@ -534,7 +573,11 @@ const ConfigPanel = ({ node, onClose, onUpdate }: ConfigPanelProps) => {
 
       <div className="flex-1 overflow-auto custom-scrollbar p-5 space-y-5">
         {d.nodeType === 'trigger' && (
-          <InfoNote text="Nháº­n táº¥t cáº£ loáº¡i input tá»« user" />
+          <InfoNote text="Nhận tất cả loại input từ user" />
+        )}
+
+        {d.nodeType === 'guardrail' && (
+          <InfoNote text="Node khóa — tự động kiểm tra input/output. Config guardrail rules trong Agent Settings." />
         )}
 
         {d.nodeType === 'planner' && (
@@ -818,6 +861,14 @@ export interface BuilderProps {
   sourceVersionId?: string;
 }
 
+// Đảm bảo node/edge nào có data.locked=true đều có deletable:false,
+// bất kể source (DB, initialNodes, sourceVersion canvas).
+const withLockedNodes = (nodes: any[]): any[] =>
+  nodes.map(n => n.data?.locked ? { ...n, deletable: false } : n);
+
+const withLockedEdges = (edges: any[]): any[] =>
+  edges.map(e => e.data?.locked ? { ...e, deletable: false } : e);
+
 const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent', agentId, workflowVersionId, workflowId, isNewWorkflow, isNewDraft, initialNodes, initialEdges, sourceVersionId }: BuilderProps) => {
   const [viewMode, setViewMode]         = useState<'VISUAL' | 'CODE'>('VISUAL');
   const [selectedNode, setSelectedNode] = useState<Node<FlowNodeData> | null>(null);
@@ -854,21 +905,21 @@ const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent', agentId,
         const hasDbCanvas = data.nodes?.length > 0 || data.edges?.length > 0;
         if (hasDbCanvas) {
           // Existing draft đã có canvas trong DB
-          setNodes(data.nodes);
-          setEdges(data.edges ?? []);
+          setNodes(withLockedNodes(data.nodes));
+          setEdges(withLockedEdges(data.edges ?? []));
           savedSnapshot.current = snap(data.nodes, data.edges ?? []);
         } else if (initialNodes || initialEdges) {
           // Workflow mới: load template vào React state, DB vẫn rỗng
-          setNodes(initialNodes ?? []);
-          setEdges(initialEdges ?? []);
+          setNodes(withLockedNodes(initialNodes ?? []));
+          setEdges(withLockedEdges(initialEdges ?? []));
           savedSnapshot.current = JSON.stringify({ nodes: [], edges: [] });
         } else if (sourceVersionId) {
           // Draft mới: load canvas từ published version vào React state, DB vẫn rỗng
           fetch(`${FLOW_BUILDER_URL}/api/workflow-versions/${sourceVersionId}/canvas`)
             .then(r => r.json())
             .then(src => {
-              setNodes(src.nodes ?? []);
-              setEdges(src.edges ?? []);
+              setNodes(withLockedNodes(src.nodes ?? []));
+              setEdges(withLockedEdges(src.edges ?? []));
               savedSnapshot.current = JSON.stringify({ nodes: [], edges: [] });
             })
             .catch(() => {});
@@ -961,17 +1012,24 @@ const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent', agentId,
 
   // â”€â”€ Connect â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const onConnect = useCallback<OnConnect>(
-    conn => setEdges(eds => addEdge(
-      {
-        ...conn,
-        type: 'wfEdge',
-        animated: true,
-        style: { stroke: '#ffffff22', strokeWidth: 2 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: '#ffffff44' },
-      },
-      eds,
-    )),
-    [setEdges],
+    conn => {
+      const srcType = (nodes.find(n => n.id === conn.source)?.data as FlowNodeData)?.nodeType;
+      const tgtType = (nodes.find(n => n.id === conn.target)?.data as FlowNodeData)?.nodeType;
+      const guardrailEdge = srcType === 'guardrail' || tgtType === 'guardrail';
+      setEdges(eds => addEdge(
+        {
+          ...conn,
+          type: 'wfEdge',
+          animated: true,
+          ...(guardrailEdge
+            ? { deletable: false, data: { locked: true }, style: { stroke: '#EF444455', strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: '#EF444455' } }
+            : { style: { stroke: '#ffffff22', strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: '#ffffff44' } }
+          ),
+        },
+        eds,
+      ));
+    },
+    [setEdges, nodes],
   );
 
   // â”€â”€ Drag & drop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1225,6 +1283,14 @@ ${edges.map(e => `  - from: "${e.source}"  to: "${e.target}"`).join('\n')}`;
                     onNodeContextMenu={handleNodeContextMenu}
                     onNodesDelete={onNodesDelete}
                     onEdgesDelete={onEdgesDelete}
+                    onBeforeDelete={async ({ nodes: ns, edges: es }) => {
+                      const hasLocked =
+                        ns.some(n => (n.data as any)?.locked) ||
+                        es.some(e => (e as any).data?.locked ||
+                          (nodes.find(n => n.id === e.source)?.data as any)?.locked ||
+                          (nodes.find(n => n.id === e.target)?.data as any)?.locked);
+                      return !hasLocked;
+                    }}
                     onInit={inst => { rfInstance.current = inst; }}
                     nodeTypes={nodeTypes}
                     edgeTypes={edgeTypes}
