@@ -21,7 +21,6 @@ log = create_logger("services.postgres", "service_postgres")
 
 
 # Helpers
-
 def _orm_to_dict(instance) -> dict[str, Any]:
     return {c.name: getattr(instance, c.name) for c in instance.__table__.columns}
 
@@ -287,25 +286,18 @@ class PostgresTransaction:
 
 
 class PostgresClient:
-    __slots__ = ("_engine", "_session_factory", "_connection_wait", "_healthy", "_connected", "_timeout",
-                 "_timeout_incremental", "_url",)
+    __slots__ = ("_engine", "_session_factory", "_connection_wait", "_healthy", "_connected", "_timeout", "_url",)
 
     def __init__(self):
         self._engine: AsyncEngine | None = None
         self._session_factory: async_sessionmaker[AsyncSession] | None = None
         self._timeout: int = 10
-        self._timeout_incremental: int = 1
         self._connection_wait: int = 5
         self._healthy: bool = False
         self._connected: bool = False
         self._url: str | None = None
 
-    def set_url(self, url: str) -> None:
-        if url.startswith("postgresql://"):
-            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
-        self._url = url
-
-    async def open(self, retry: RetryConfig | None = RetryConfig()) -> None:
+    async def open(self, retry: RetryConfig | None = RetryConfig()) -> AsyncSession:
         if self._url is None:
             raise RuntimeError("Postgres URL is not yet set")
 
@@ -318,11 +310,13 @@ class PostgresClient:
                 self._connected = True
                 self._healthy = True
                 log.info("Postgres connection established")
-                return
+                return self.get_client()
             except OperationalError as e:
                 log.info(f"Attempt #{attempt + 1}/{retry.count}: Postgres connection failed — {e}")
-                if attempt < retry.count - 1:
-                    await asyncio.sleep(self._connection_wait)
+                await self._engine.dispose()
+                self._engine = None
+                self._session_factory = None
+            await asyncio.sleep(self._connection_wait)
         raise ConnectionError(f"Could not connect to Postgres after {retry.count} attempts")
 
     async def close(self) -> None:
@@ -337,39 +331,22 @@ class PostgresClient:
         self._connected = False
         self._healthy = False
 
-    async def health_check_loop(self, config: HealthCheckLoopConfig | None = None) -> None:
-        config = config or HealthCheckLoopConfig()
+    async def health_check_loop(self, config: HealthCheckLoopConfig | None = HealthCheckLoopConfig()) -> None:
         log.info("Postgres health check loop started")
         while True:
             try:
-                if self._engine is None:
-                    await self.open()
-                async with self._engine.connect() as conn:
-                    await asyncio.wait_for(
-                        conn.execute(text("SELECT 1")),
-                        timeout=config.timeout_for_health_check,
-                    )
+                await self._check_health(config)
                 self._healthy = True
-                log.info("Postgres health check succeeded")
-            except asyncio.TimeoutError:
-                self._healthy = False
-                log.info("Postgres health check failed: timed out")
             except Exception as e:
                 self._healthy = False
-                self._engine = None
-                self._session_factory = None
-                log.info(f"Postgres health check failed: {e}")
+                log.warning(f"Postgres unhealthy: {e} — attempting reconnect")
+                await self._reconnect()
             await asyncio.sleep(config.interval)
 
-    def get_client(self) -> AsyncSession:
-        if self._session_factory is None:
-            raise RuntimeError("PostgresClient is not open — call open() first")
-        return self._session_factory()
-
-    def create_transaction(self) -> PostgresTransaction:
-        if self._session_factory is None:
-            raise RuntimeError("PostgresClient is not open — call open() first")
-        return PostgresTransaction(self._session_factory)
+    def set_url(self, url: str) -> None:
+        if url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        self._url = url
 
     def is_healthy(self) -> bool:
         return self._healthy
@@ -377,7 +354,31 @@ class PostgresClient:
     def is_connected(self) -> bool:
         return self._connected
 
+    def get_client(self) -> AsyncSession:
+        if self._session_factory is None:
+            raise RuntimeError("PostgresClient is not open — call open() first")
+        return self._session_factory()
+
+    async def _check_health(self, config: HealthCheckLoopConfig) -> None:
+        async with self._engine.connect() as conn:
+            await asyncio.wait_for(
+                conn.execute(text("SELECT 1")),
+                timeout=config.timeout_for_health_check,
+            )
+
+    async def _reconnect(self) -> None:
+        await self.close()
+        try:
+            await self.open(RetryConfig(count=1))
+        except ConnectionError as e:
+            log.warning(f"Postgres reconnect failed: {e}")
+
     # Operations
+    def create_transaction(self) -> PostgresTransaction:
+        if self._session_factory is None:
+            raise RuntimeError("PostgresClient is not open — call open() first")
+        return PostgresTransaction(self._session_factory)
+
     async def insert(self, data: BaseModel) -> ResponseModel:
         try:
             prep = _prepare_insert(data)
