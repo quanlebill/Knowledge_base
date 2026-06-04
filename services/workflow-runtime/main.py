@@ -1,6 +1,7 @@
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
 
+import asyncio
 import os
 import time
 import logging
@@ -27,6 +28,8 @@ from memory_middleware import (
     _DEV_AGENT_ID, _DEV_TENANT_ID,
 )
 from mongo_client import init_mongo, close_mongo
+from services.database_connector.postgres_connector import client as pg_client
+from services.database_connector.mongo_connector import client as mongo_client
 
 # Graph cache per agent_id — rebuild khi config thay đổi
 _graph_cache: dict[str, object] = {}
@@ -38,7 +41,21 @@ async def lifespan(app: FastAPI):
     await init_db()
     await init_qdrant()
     await init_mongo()
+
+    tasks = [
+        asyncio.create_task(pg_client.health_check_loop()),
+        asyncio.create_task(mongo_client.health_check_loop()),
+    ]
+
     yield
+
+    for task in tasks:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
     await close_mongo()
     await close_qdrant()
     await close_db()

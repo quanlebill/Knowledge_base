@@ -1,6 +1,7 @@
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -13,6 +14,7 @@ from pydantic import BaseModel
 
 from db_pg import init_db, close_db, create_agent, list_agents, get_agent, create_workflow, list_workflows, publish_agent, update_agent_draft, publish_workflow_version, republish_workflow_version, list_workflow_versions, create_draft_version, delete_workflow_version, delete_workflow
 from services.database_connector.postgres_connector import client
+from services.database_connector.mongo_connector import client as mongo_client
 from db_mongo import init_mongo, close_mongo, save_canvas, load_canvas
 
 logging.basicConfig(level=logging.INFO)
@@ -25,7 +27,21 @@ _DEV_TENANT_ID = os.environ.get("DEV_TENANT_ID", "00000000-0000-0000-0000-000000
 async def lifespan(app: FastAPI):
     await init_db()
     await init_mongo()
+
+    tasks = [
+        asyncio.create_task(client.health_check_loop()),
+        asyncio.create_task(mongo_client.health_check_loop()),
+    ]
+
     yield
+
+    for task in tasks:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
     await close_mongo()
     await close_db()
 
