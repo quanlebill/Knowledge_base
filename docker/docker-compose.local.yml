@@ -9,7 +9,7 @@ services:
     restart: "no"
     command: alembic -c alembic/alembic.ini upgrade head
     environment:
-      SQLALCHEMY_URL: postgresql+asyncpg://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-dev123}@postgres:5432/dataagent
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-dev123}@postgres:5432/dataagent
     depends_on:
       postgres:
         condition: service_healthy

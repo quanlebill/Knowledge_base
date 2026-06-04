@@ -290,7 +290,7 @@ const TopBar = ({
   const { logout } = useAuth();
 
   return (
-    <header className="h-14 bg-white border-b border-[#D6C79F] px-4 lg:px-5 flex items-center justify-between shrink-0 relative z-[150]">
+    <header className="h-14 bg-white border-b border-[#D6C79F] px-4 lg:px-5 flex items-center justify-between shrink-0 z-20">
       <div className="flex items-center gap-2.5">
         <button
           onClick={onMenuClick}

@@ -10,7 +10,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev123}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ../infra/postgres/init.sql:/docker-entrypoint-initdb.d/01_databases.sql:ro
+      - ../infra/postgres/setup.sh:/docker-entrypoint-initdb.d/01-setup.sh:ro
+      - ../infra/postgres/init.sql:/docker-entrypoint-initdb.d/kb-init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-dataagent}"]
       interval: 5s
@@ -116,6 +117,29 @@ services:
         condition: service_healthy
       mongodb:
         condition: service_started
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    container_name: dataagent-keycloak
+    restart: unless-stopped
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/dataagent
+      KC_DB_USERNAME: ${POSTGRES_USER:-admin}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-dev123}
+      KC_DB_SCHEMA: keycloak
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../infra/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   qdrant:
     image: qdrant/qdrant:v1.13.6
