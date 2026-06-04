@@ -367,6 +367,38 @@ async def delete_workflow(workflow_id: str) -> None:
     return version_ids
 
 
+async def delete_agent(agent_id: str) -> list[str]:
+    """Hard delete agent + cascade workflows + versions. Trả về version_ids để xóa MongoDB canvas."""
+    async with client.get_client() as session:
+        async with session.begin():
+            agent = await session.get(AgentsORM, UUID(agent_id))
+            if not agent:
+                raise ValueError("agent not found")
+
+            # Lấy tất cả workflows của agent
+            wf_result = await session.execute(
+                select(WorkflowsORM).where(WorkflowsORM.agent_id == UUID(agent_id))
+            )
+            workflows = wf_result.scalars().all()
+
+            # Xóa tất cả workflow_versions và thu thập version_ids cho MongoDB
+            version_ids: list[str] = []
+            for wf in workflows:
+                wv_result = await session.execute(
+                    select(WorkflowVersionsORM)
+                    .where(WorkflowVersionsORM.workflow_id == wf.id)
+                )
+                versions = wv_result.scalars().all()
+                for v in versions:
+                    version_ids.append(str(v.id))
+                    await session.delete(v)
+                await session.delete(wf)
+
+            await session.delete(agent)
+
+    return version_ids
+
+
 async def publish_agent(agent_id: str, workflow_id: str) -> dict:
     async with client.get_client() as session:
         async with session.begin():

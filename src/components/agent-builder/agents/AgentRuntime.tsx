@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { AgentRegistryOverview } from './AgentOverview';
-import { NewAgentWizard } from './AgentWizard';
+import { NewAgentWizard, type CreatedAgent } from './AgentWizard';
 import { CLIScreen } from './AgentCLI';
 import { ConfigRegistry } from './AgentConfig';
 import { TraceExplorer } from './AgentTraces';
@@ -10,8 +10,11 @@ import { RunRegistry } from './AgentRuns';
 import { AgentDetailView } from './AgentDetail';
 import { AgentDetailPage } from './AgentDetailPage';
 import { DetailDrawer } from '../../shared/DetailDrawer';
+import WorkflowBuilder from '../workflow/Builder';
 import { Bot, Terminal, Sliders, Activity, Zap, Plus, Settings } from 'lucide-react';
 import { cn } from '../../../lib/utils';
+
+const FLOW_BUILDER_URL = (import.meta as any).env?.VITE_FLOW_BUILDER_URL ?? 'http://localhost:8002';
 
 export type RegistryView = 'OVERVIEW' | 'CLI' | 'CONFIG' | 'TRACES' | 'RUNS';
 
@@ -43,6 +46,8 @@ export const AgentRuntimeView = ({
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [showWizard, setShowWizard] = useState(false);
   const [showProvisioning, setShowProvisioning] = useState(false);
+  const [builderAgent, setBuilderAgent] = useState<CreatedAgent | null>(null);
+  const [wizardRestore, setWizardRestore] = useState<{ name: string } | null>(null);
 
   useEffect(() => { if (openWizard) setShowWizard(true); }, [openWizard]);
   useEffect(() => { if (openProvision) setShowProvisioning(true); }, [openProvision]);
@@ -50,6 +55,13 @@ export const AgentRuntimeView = ({
   const handleCloseWizard = () => {
     setShowWizard(false);
     onWizardClose?.();
+  };
+
+  const handleWizardComplete = (data: CreatedAgent) => {
+    setShowWizard(false);
+    setBuilderAgent(data);
+    // onWizardClose không gọi ở đây — gọi nó sẽ đổi activeSubTab trong AIRuntimeCenter
+    // → key={activeSubTab} trên motion.div unmount AgentRuntimeView → mất builderAgent state
   };
   const handleCloseProvision = () => {
     setShowProvisioning(false);
@@ -90,6 +102,26 @@ export const AgentRuntimeView = ({
     }
   };
 
+  if (builderAgent) {
+    return (
+      <WorkflowBuilder
+        workflow={null}
+        agentId={builderAgent.agentId}
+        workflowId={builderAgent.workflowId}
+        workflowVersionId={builderAgent.workflowVersionId}
+        isNewWorkflow
+        initialNodes={builderAgent.initialNodes}
+        initialEdges={builderAgent.initialEdges}
+        onClose={() => setBuilderAgent(null)}
+        onLeave={async () => {
+          await fetch(`${FLOW_BUILDER_URL}/api/agents/${builderAgent.agentId}`, { method: 'DELETE' });
+          setWizardRestore({ name: builderAgent.name });
+          setBuilderAgent(null);
+        }}
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col relative">
       {/* Internal view tabs â€” kept as a fallback so the component still works standalone */}
@@ -114,20 +146,21 @@ export const AgentRuntimeView = ({
         </div>
       )}
 
-      <DetailDrawer
-        isOpen={showWizard}
-        onClose={handleCloseWizard}
-        title="Agent Architect"
-        subtitle="Provision specialized AI agents with discrete capabilities"
-        icon={Plus}
-        size="wide"
-        persistKey="agent-wizard"
-      >
-        <NewAgentWizard
-          onCancel={handleCloseWizard}
-          onComplete={handleCloseWizard}
-        />
-      </DetailDrawer>
+      {(showWizard || !!wizardRestore) && (
+        wizardRestore ? (
+          <NewAgentWizard
+            onCancel={() => setWizardRestore(null)}
+            onComplete={data => { setWizardRestore(null); setBuilderAgent(data); }}
+            initialStep={2}
+            initialName={wizardRestore.name}
+          />
+        ) : (
+          <NewAgentWizard
+            onCancel={handleCloseWizard}
+            onComplete={handleWizardComplete}
+          />
+        )
+      )}
 
       <DetailDrawer
         isOpen={showProvisioning}
@@ -177,6 +210,7 @@ export const AgentRuntimeView = ({
           {renderView()}
         </div>
       </AnimatePresence>
+
     </div>
   );
 };

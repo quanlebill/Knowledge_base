@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from db_pg import init_db, close_db, create_agent, list_agents, get_agent, create_workflow, list_workflows, publish_agent, update_agent_draft, publish_workflow_version, republish_workflow_version, list_workflow_versions, create_draft_version, delete_workflow_version, delete_workflow
+from db_pg import init_db, close_db, create_agent, list_agents, get_agent, create_workflow, list_workflows, publish_agent, update_agent_draft, publish_workflow_version, republish_workflow_version, list_workflow_versions, create_draft_version, delete_workflow_version, delete_workflow, delete_agent
 from services.database_connector.postgres_connector import client
 from services.database_connector.mongo_connector import client as mongo_client
 from db_mongo import init_mongo, close_mongo, save_canvas, load_canvas
@@ -235,6 +235,21 @@ async def api_load_canvas(workflow_version_id: str):
 
 
 # ─── Publish endpoint ──────────────────────────────────────────────────────────
+
+@app.delete("/api/agents/{agent_id}", status_code=204)
+async def api_delete_agent(agent_id: str):
+    if not client.is_connected():
+        raise HTTPException(503, "DB not available")
+    try:
+        version_ids = await delete_agent(agent_id)
+        for vid in version_ids:
+            await save_canvas(vid, [], [])
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        logger.exception("delete_agent failed")
+        raise HTTPException(500, str(e))
+
 
 @app.patch("/api/agents/{agent_id}")
 async def api_update_agent(agent_id: str, body: UpdateDraftRequest):

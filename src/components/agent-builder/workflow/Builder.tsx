@@ -856,6 +856,7 @@ export interface BuilderProps {
   workflowId?: string;
   isNewWorkflow?: boolean;
   isNewDraft?: boolean;
+  onLeave?: () => Promise<void>;
   initialNodes?: any[];
   initialEdges?: any[];
   sourceVersionId?: string;
@@ -869,7 +870,7 @@ const withLockedNodes = (nodes: any[]): any[] =>
 const withLockedEdges = (edges: any[]): any[] =>
   edges.map(e => e.data?.locked ? { ...e, deletable: false } : e);
 
-const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent', agentId, workflowVersionId, workflowId, isNewWorkflow, isNewDraft, initialNodes, initialEdges, sourceVersionId }: BuilderProps) => {
+const WorkflowBuilder = ({ onClose, workflow, template = 'multi-agent', agentId, workflowVersionId, workflowId, isNewWorkflow, isNewDraft, onLeave, initialNodes, initialEdges, sourceVersionId }: BuilderProps) => {
   const [viewMode, setViewMode]         = useState<'VISUAL' | 'CODE'>('VISUAL');
   const [selectedNode, setSelectedNode] = useState<Node<FlowNodeData> | null>(null);
   const [ctxMenu, setCtxMenu]           = useState<CtxMenuState | null>(null);
@@ -1370,6 +1371,10 @@ ${edges.map(e => `  - from: "${e.source}"  to: "${e.target}"`).join('\n')}`;
           {showExitConfirm && (
             <ConfirmExitModal
               onConfirm={async () => {
+                if (onLeave) {
+                  await onLeave();
+                  return;
+                }
                 if (isNewWorkflow && workflowId) {
                   await fetch(`${FLOW_BUILDER_URL}/api/workflows/${workflowId}`, { method: 'DELETE' });
                 } else if (isNewDraft && activeVersionId) {

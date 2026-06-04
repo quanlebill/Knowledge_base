@@ -31,6 +31,8 @@ export const AgentRegistryOverview: React.FC<OverviewProps> = ({
   const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
   const [cloneTarget, setCloneTarget] = useState<{ id: string; name: string } | null>(null);
   const [cloneModalName, setCloneModalName] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [apiAgents, setApiAgents] = useState<ApiAgent[]>([]);
 
@@ -46,6 +48,22 @@ export const AgentRegistryOverview: React.FC<OverviewProps> = ({
     setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
     setOpenMenuId(id);
   }, []);
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`${FLOW_BUILDER_URL}/api/agents/${deleteTarget.id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error(`${res.status}`);
+      setApiAgents(prev => prev.filter(a => a.id !== deleteTarget.id));
+      setToast(`Đã xóa agent "${deleteTarget.name}"`);
+    } catch {
+      setToast('Xóa thất bại');
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
+    }
+  };
 
   useEffect(() => {
     if (!openMenuId) return;
@@ -112,7 +130,7 @@ export const AgentRegistryOverview: React.FC<OverviewProps> = ({
             <Terminal className="w-3.5 h-3.5" /> CLI Tooling
           </button>
           <button onClick={onNewAgent} className="btn-primary">
-            <Plus className="w-4 h-4" /> New Autonomous Unit
+            <Plus className="w-4 h-4" /> New Agent
           </button>
         </div>
       </div>
@@ -256,7 +274,7 @@ export const AgentRegistryOverview: React.FC<OverviewProps> = ({
                 </button>
                 <div className="h-px bg-[#ECE7DA] mx-3" />
                 <button
-                  onClick={() => setOpenMenuId(null)}
+                  onClick={() => { setOpenMenuId(null); setDeleteTarget({ id: agent.id, name: agent.name }); }}
                   className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[11px] font-semibold text-red-600 hover:bg-red-50 transition-colors"
                 >
                   <Trash2 className="w-3.5 h-3.5" /> Delete
@@ -367,6 +385,52 @@ export const AgentRegistryOverview: React.FC<OverviewProps> = ({
                   className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Copy className="w-4 h-4" /> Clone
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Confirm Modal */}
+      <AnimatePresence>
+        {deleteTarget && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/30 backdrop-blur-sm"
+            onClick={() => setDeleteTarget(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={e => e.stopPropagation()}
+              onMouseDown={e => e.stopPropagation()}
+              className="bg-white border border-[#ECE7DA] rounded-2xl shadow-2xl p-6 w-[400px]"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-base font-bold text-[#111111]">Xóa agent</h3>
+                <button onClick={() => setDeleteTarget(null)} className="p-1.5 hover:bg-[#F3E2A7] rounded-lg transition-colors text-[#8A8A7A]">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-sm text-[#8A8A7A] mb-5">
+                Bạn chắc chắn muốn xóa agent{' '}
+                <span className="font-semibold text-[#111111]">"{deleteTarget.name}"</span>?
+                Hành động này không thể hoàn tác.
+              </p>
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setDeleteTarget(null)} className="btn-secondary" disabled={deleting}>
+                  Huỷ
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-all"
+                >
+                  {deleting ? 'Đang xóa...' : <><Trash2 className="w-3.5 h-3.5" /> Xóa</>}
                 </button>
               </div>
             </motion.div>

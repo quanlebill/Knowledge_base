@@ -272,6 +272,15 @@ export const AgentDetailPage: React.FC<Props> = ({ agentId, onBack }) => {
         initialNodes={builder.initialNodes}
         initialEdges={builder.initialEdges}
         sourceVersionId={builder.sourceVersionId}
+        onLeave={builder.isNewWorkflow ? async () => {
+          if (builder.workflowId) {
+            await fetch(`${FLOW_BUILDER_URL}/api/workflows/${builder.workflowId}`, { method: 'DELETE' });
+          }
+          setBuilder(null);
+          setNewWfName(builder.workflowName ?? '');
+          setShowCreateWf(true);
+          fetchAgent();
+        } : undefined}
       />
     );
   }
