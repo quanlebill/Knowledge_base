@@ -12,11 +12,10 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# ALEMBIC_DB_URL env var overrides the ini-file URL (used by CLI-based tests)
-if _env_url := os.environ.get("ALEMBIC_DB_URL"):
-    config.set_main_option("sqlalchemy.url", _env_url)
+if _db_url := os.environ.get("DATABASE_URL"):
+    config.set_main_option("sqlalchemy.url", _db_url)
 
-target_metadata = config.attributes.get("target_metadata", Base.metadata)
+target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:

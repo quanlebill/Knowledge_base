@@ -132,6 +132,7 @@ class APIType(Enum):
     RETRIEVE = "RETRIEVE"
 
 
+
 class TransactionOp(str, Enum):
     INSERT      = "insert"
     SOFT_DELETE = "soft_delete"
@@ -449,6 +450,8 @@ class KBPublishAPIInsert(TenantModel):
 """
 Delete Models — PK fields only
 """
+
+
 @register("delete")
 class KBModelDelete(BaseModel):
     model_id: str
@@ -556,8 +559,15 @@ class KBPublishAPIDelete(TenantModel):
 
 
 """
+Agent Platform — Insert Models
+"""
+
+
+"""
 Auth & Release Enums
 """
+
+
 class ActorType(str, Enum):
     USER = "USER"
     AGENT = "AGENT"
@@ -661,6 +671,16 @@ Auth Insert Models
 
 
 @register("insert")
+class LLMProvidersInsert(InsertModel):
+    name: str
+    model_id: str
+    endpoint_url: str
+    type: str
+    is_default: bool = False
+    max_tokens: Optional[int] = None
+
+
+@register("insert")
 class PlanInsert(BaseModel):
     name: str
     max_users: Optional[int] = None
@@ -678,6 +698,15 @@ class TenantInsert(BaseModel):
     plan_id: Optional[int] = None
     data_residency: str = "Asia-SE1"
     is_active: bool = True
+
+
+@register("insert")
+class KBConnectionsInsert(TenantInsertModel):
+    name: str
+    endpoint_url: str
+    api_key_ref: Optional[str] = None
+    status: str = "disconnected"
+    created_by: Optional[str] = None
 
 
 @register("insert")
@@ -706,6 +735,156 @@ class IpAllowlistInsert(TenantModel):
     label: Optional[str] = None
     is_active: bool = True
     created_by: Optional[str] = None
+
+
+@register("insert")
+class SystemPromptsInsert(TenantInsertModel):
+    name: str
+    content: str
+    version: int = 1
+    is_active: bool = True
+    created_by: Optional[str] = None
+
+
+@register("insert")
+class GuardrailsInsert(InsertModel):
+    name: str
+    type: str
+    conditions: dict = {}
+    action: str
+    priority: int = 0
+    guardrail_model_id: Optional[str] = None
+    created_by: Optional[str] = None
+
+
+@register("insert")
+class ToolsInsert(InsertModel):
+    name: str
+    description: Optional[str] = None
+    type: str
+    status: str = "active"
+    created_by: Optional[str] = None
+
+
+@register("insert")
+class MCPInsert(TenantInsertModel):
+    name: str
+    endpoint_url: str
+    api_key_ref: Optional[str] = None
+    status: str = "disconnected"
+    capabilities: Optional[dict] = None
+    created_by: Optional[str] = None
+
+
+@register("insert")
+class AgentsInsert(TenantInsertModel):
+    name: str
+    description: Optional[str] = None
+    language: str = "vi"
+    is_active: bool = True
+    created_by: Optional[str] = None
+
+
+@register("insert")
+class WorkflowsInsert(InsertModel):
+    agent_id: str
+    name: str
+    description: Optional[str] = None
+    is_active: bool = True
+    created_by: Optional[str] = None
+
+
+@register("insert")
+class WorkflowVersionsInsert(InsertModel):
+    workflow_id: str
+    version: int
+    status: str = "draft"
+    changelog: Optional[str] = None
+    created_by: Optional[str] = None
+
+
+@register("insert")
+class AgentVersionsInsert(InsertModel):
+    agent_id: str
+    version: int
+    status: str = "draft"
+    workflow_version_id: Optional[str] = None
+    responder_model_id: Optional[str] = None
+    llm_config: Optional[dict] = None
+    system_prompt_id: Optional[str] = None
+    guardrail_id: Optional[str] = None
+    memory_enabled: bool = False
+    retrieval_config: Optional[dict] = None
+    changelog: Optional[str] = None
+    created_by: Optional[str] = None
+
+
+@register("insert")
+class AgentKBInsert(InsertModel):
+    version_id: str
+    kb_connection_id: str
+
+
+@register("insert")
+class AgentToolsInsert(InsertModel):
+    version_id: str
+    tool_id: str
+
+
+@register("insert")
+class AgentMCPInsert(InsertModel):
+    version_id: str
+    mcp_id: str
+
+
+@register("insert")
+class AgentMemoriesInsert(TenantInsertModel):
+    agent_id: str
+    scope: str = "global"
+    user_ref: Optional[str] = None
+    memory_type: str
+    content: str
+    embedding_ref: Optional[str] = None
+    importance: Optional[float] = 0.5
+    expires_at: Optional[datetime.datetime] = None
+
+
+@register("insert")
+class MemoryPolicyInsert(InsertModel):
+    agent_id: str
+    action_type: str
+    condition: Optional[dict] = None
+    enabled: bool = True
+    created_by: Optional[str] = None
+
+
+@register("insert")
+class ConversationsInsert(TenantInsertModel):
+    agent_version_id: str
+    user_ref: Optional[str] = None
+    channel: str = "web"
+    status: str = "active"
+
+
+@register("insert")
+class MessagesInsert(InsertModel):
+    conversation_id: str
+    role: str
+    content: dict
+    msg_metadata: Optional[dict] = None
+    tokens_used: Optional[int] = None
+    latency_ms: Optional[int] = None
+
+
+@register("insert")
+class AgentTracesInsert(InsertModel):
+    message_id: str
+    trace_index: int
+    tool_name: str
+    input: Optional[dict] = None
+    output: Optional[dict] = None
+    status: str = "success"
+    latency_ms: Optional[int] = None
 
 
 @register("insert")
@@ -895,8 +1074,18 @@ class DriftEventInsert(BaseModel):
 
 
 """
+Agent Platform — Delete Models
+"""
+
+
+"""
 Auth Delete Models
 """
+
+
+@register("delete")
+class LLMProvidersDelete(BaseModel):
+    id: str
 
 
 @register("delete")
@@ -910,7 +1099,17 @@ class TenantDelete(BaseModel):
 
 
 @register("delete")
+class KBConnectionsDelete(TenantModel):
+    id: str
+
+
+@register("delete")
 class RolePermissionDelete(BaseModel):
+    id: str
+
+
+@register("delete")
+class SystemPromptsDelete(TenantModel):
     id: str
 
 
@@ -925,7 +1124,17 @@ class IpAllowlistDelete(TenantModel):
 
 
 @register("delete")
+class GuardrailsDelete(BaseModel):
+    id: str
+
+
+@register("delete")
 class ApiKeyDelete(TenantModel):
+    id: str
+
+
+@register("delete")
+class ToolsDelete(BaseModel):
     id: str
 
 
@@ -935,7 +1144,17 @@ class SecretsVaultDelete(TenantModel):
 
 
 @register("delete")
+class MCPDelete(TenantModel):
+    id: str
+
+
+@register("delete")
 class KeyRotationDelete(BaseModel):
+    id: str
+
+
+@register("delete")
+class AgentsDelete(TenantModel):
     id: str
 
 
@@ -945,7 +1164,17 @@ class WebhookDelete(TenantModel):
 
 
 @register("delete")
+class WorkflowsDelete(BaseModel):
+    id: str
+
+
+@register("delete")
 class AuditLogDelete(TenantModel):
+    id: str
+
+
+@register("delete")
+class WorkflowVersionsDelete(BaseModel):
     id: str
 
 
@@ -965,12 +1194,40 @@ class PipelineDelete(BaseModel):
 
 
 @register("delete")
+class AgentVersionsDelete(BaseModel):
+    id: str
+
+
+@register("delete")
 class PipelineStepDelete(BaseModel):
     id: int
 
 
 @register("delete")
 class ReleasePackageDelete(BaseModel):
+    id: str
+
+
+@register("delete")
+class AgentKBDelete(BaseModel):
+    version_id: str
+    kb_connection_id: str
+
+
+@register("delete")
+class AgentToolsDelete(BaseModel):
+    version_id: str
+    tool_id: str
+
+
+@register("delete")
+class AgentMCPDelete(BaseModel):
+    version_id: str
+    mcp_id: str
+
+
+@register("delete")
+class AgentMemoriesDelete(BaseModel):
     id: str
 
 
@@ -991,6 +1248,26 @@ class ReleaseHistoryDelete(BaseModel):
 
 @register("delete")
 class RollbackOperationDelete(BaseModel):
+    id: str
+
+
+@register("delete")
+class MemoryPolicyDelete(BaseModel):
+    id: str
+
+
+@register("delete")
+class ConversationsDelete(BaseModel):
+    id: str
+
+
+@register("delete")
+class MessagesDelete(BaseModel):
+    id: str
+
+
+@register("delete")
+class AgentTracesDelete(BaseModel):
     id: str
 
 

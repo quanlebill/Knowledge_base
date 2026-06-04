@@ -1,12 +1,87 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# GTEL Data Agent
+
+Multi-tenant AI agent platform — LangGraph + LightRAG + LiteLLM.
+
+## Yêu cầu
+
+- Docker + Docker Compose v2
+- API keys: `GEMINI_API_KEY`, `OPENAI_API_KEY` (embedding)
+
+## Cài đặt lần đầu
+
+```bash
+cp .env.example .env
+# Điền GEMINI_API_KEY và OPENAI_API_KEY vào .env
+```
+
+## Chạy
+
+**Local** — máy cá nhân:
+
+```bash
+docker-compose -f docker-compose.yml -f docker-compose.local.yml down
+docker-compose -f docker-compose.yml -f docker-compose.local.yml up -d
+```
+
+**Dev server** — server dev chung của team:
+
+```bash
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml down
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+```
+
+> `down` trước `up` để tránh lỗi network orphan khi Docker Desktop restart. Migrate + seed chạy tự động mỗi lần. Seed dùng `ON CONFLICT DO NOTHING` — không bị duplicate.
+
+## Services
+
+| Service | URL | Mô tả |
+|---|---|---|
+| workflow-runtime | http://localhost:8001 | FastAPI — LangGraph pipeline |
+| LiteLLM | http://localhost:4000 | LLM gateway |
+| Langfuse | http://localhost:3001 | Observability UI |
+| PostgreSQL | localhost:5432 | `dataagent` / `langfuse` / `litellm` |
+| MongoDB | localhost:27017 | Flow nodes/edges |
+| Redis | localhost:6379 | Cache + pub/sub |
+
+## Migration
+
+Migrations chạy tự động khi `docker-compose up`. Để chạy tay:
+
+```bash
+cd services/workflow-runtime
+alembic upgrade head        # apply tất cả migrations
+alembic downgrade -1        # rollback 1 bước
+alembic revision -m "tên"  # tạo migration mới
+```
+
+## Test API
+
+```bash
+# Health check
+curl http://localhost:8001/health
+
+# Chat
+curl -X POST http://localhost:8001/api/conversations/run \
+  -H "Content-Type: application/json" \
+  -d '{"query": "xin chào", "agent_id": "00000000-0000-0000-0000-000000000030"}'
+
+# Test LiteLLM
+curl http://localhost:4000/v1/models \
+  -H "Authorization: Bearer sk-dev"
+```
+
+## Dừng
+
+```bash
+docker-compose down          # giữ data
+docker-compose down -v       # xóa luôn volume (reset DB)
+```
+
+---
 
 # AeroFlow AI OS — Knowledge Base UI
 
 Enterprise Knowledge Operations Center for RAG orchestration. Manages document ingestion, chunking, embedding, conflict resolution, policy management, and graph-based retrieval across Bronze / Silver / Gold data layers.
-
----
 
 ## Stack
 
@@ -17,8 +92,6 @@ Enterprise Knowledge Operations Center for RAG orchestration. Manages document i
 | Database | PostgreSQL 16 (internal only) |
 | Vector DB | Qdrant (internal only) |
 | Graph DB | Neo4j (internal only) |
-
----
 
 ## Run with Docker (Recommended)
 
@@ -48,8 +121,6 @@ docker exec aeroflow-backend bash -c "cd /app && python testing/mockdata/seed.py
 http://localhost:3000
 ```
 
----
-
 ## Service URLs
 
 | Service | URL |
@@ -60,35 +131,21 @@ http://localhost:3000
 
 > PostgreSQL, Qdrant, and Neo4j are internal to the Docker network and not accessible from the host.
 
----
-
 ## Rebuild after code changes
 
 ```bash
-# Rebuild and restart backend only
 docker compose build backend && docker compose up -d backend
-
-# Rebuild and restart frontend only
 docker compose build frontend && docker compose up -d frontend
-
-# Rebuild everything
 docker compose build && docker compose up -d
 ```
-
----
 
 ## Reset the database
 
 ```bash
-# Stop containers and remove volumes (wipes all data)
 docker compose down -v
-
-# Start fresh and re-seed
 docker compose up -d
 docker exec aeroflow-backend bash -c "cd /app && python testing/mockdata/seed.py"
 ```
-
----
 
 ## Run Locally (without Docker)
 
@@ -98,9 +155,8 @@ docker exec aeroflow-backend bash -c "cd /app && python testing/mockdata/seed.py
 
 ```bash
 npm install
-npm run dev          # Vite dev server on port 3000
-npm run lint         # TypeScript type check
-npm run build        # Production build
+npm run dev
+npm run build
 ```
 
 ### Backend
@@ -111,55 +167,30 @@ cd server
 uvicorn main:app --reload --port 8000
 ```
 
-Set environment variables before starting the backend:
-
-```bash
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5432
-POSTGRES_USER=aeroflow
-POSTGRES_PASSWORD=password
-POSTGRES_DB=aeroflow_kb
-QDRANT_HOST=localhost
-QDRANT_PORT=6333
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=password
-```
-
----
-
 ## Project Structure
 
 ```
 ├── src/                        # React frontend
 │   ├── components/knowledge/   # Knowledge Operations Center UI
-│   │   ├── KnowledgeOpsCenter.tsx
-│   │   ├── fleet/              # Pipeline health dashboard
-│   │   ├── inventory/          # Asset browser (Bronze/Silver/Gold)
-│   │   ├── knowledge-hub/      # GraphRAG view (DB / Qdrant / Neo4j)
-│   │   ├── conflicts/          # Conflict resolution queue
-│   │   ├── policy/             # Filter & extraction policies
-│   │   ├── ingest/             # Ingestion wizard
-│   │   └── warehouse/          # Warehouse connection wizard
 │   └── lib/
-│       └── mockApi.ts          # API client (talks to backend on port 8000)
+│       └── mockApi.ts
 │
 ├── server/                     # FastAPI backend
-│   ├── main.py                 # App entry point
-│   ├── router.py               # All API routes
-│   └── basemodel/              # Pydantic request/response models
+│   ├── main.py
+│   ├── router.py
+│   └── basemodel/
 │
 ├── services/
-│   ├── database_connector/     # PostgreSQL / Qdrant / Neo4j clients
-│   └── parse_for_ui/           # DB → UI data transformation layer
+│   ├── database_connector/
+│   └── parse_for_ui/
 │
 ├── database/
-│   └── Postgres/init.sql       # Schema definition
+│   └── Postgres/init.sql
 │
 ├── testing/
-│   └── mockdata/seed.py        # Database seeder
+│   └── mockdata/seed.py
 │
-├── docker-compose.yml          # Full stack orchestration
-├── Dockerfile                  # Backend image
-└── Dockerfile.frontend         # Frontend image (nginx)
+├── docker-compose.yml
+├── Dockerfile
+└── Dockerfile.frontend
 ```

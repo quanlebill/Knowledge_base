@@ -1,0 +1,159 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-dataagent}
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev123}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../infra/postgres/setup.sh:/docker-entrypoint-initdb.d/01-setup.sh:ro
+      - ../infra/postgres/init.sql:/docker-entrypoint-initdb.d/kb-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-dataagent}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mongodb:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-stable
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    volumes:
+      - ../infra/litellm/config.yaml:/app/config.yaml:ro
+    env_file: ../.env
+    environment:
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-dev123}@postgres:5432/litellm
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  langfuse:
+    image: langfuse/langfuse:2
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-dev123}@postgres:5432/langfuse
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-dev-langfuse-nextauth-secret-changeme}
+      SALT: ${LANGFUSE_SALT:-dev-langfuse-salt-changeme}
+      NEXTAUTH_URL: http://localhost:3001
+      TELEMETRY_ENABLED: "false"
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_EMAIL:-admin@example.com}
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_PASSWORD:-Admin@12345678}
+      LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_NAME:-Admin}
+      LANGFUSE_INIT_ORG_NAME: ${LANGFUSE_INIT_ORG:-GTEL}
+      LANGFUSE_INIT_PROJECT_NAME: ${LANGFUSE_INIT_PROJECT:-data-agent}
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: pk-lf-8615e735-e5d5-4942-913f-68d02f6e48cc
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: sk-lf-b5f72b59-f31c-470f-aee3-8bd2d3d6acc0
+      AUTH_DISABLE_SIGNUP: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  workflow-runtime:
+    build:
+      context: ..
+      dockerfile: services/workflow-runtime/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    env_file: ../.env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-dev123}@postgres:5432/dataagent
+      RUNTIME_DB_URL: postgresql+asyncpg://runtime_writer:${RUNTIME_DB_PASSWORD:-runtime_dev_pw}@postgres:5432/dataagent
+      MONGODB_URL: mongodb://mongodb:27017/dataagent
+      REDIS_URL: redis://redis:6379
+      LITELLM_BASE_URL: http://litellm:4000
+      LANGFUSE_HOST: http://langfuse:3000
+      LANGFUSE_PUBLIC_KEY: pk-lf-8615e735-e5d5-4942-913f-68d02f6e48cc
+      LANGFUSE_SECRET_KEY: sk-lf-b5f72b59-f31c-470f-aee3-8bd2d3d6acc0
+      QDRANT_URL: http://qdrant:6333
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_started
+      redis:
+        condition: service_started
+      litellm:
+        condition: service_started
+
+  flow-builder:
+    build:
+      context: ..
+      dockerfile: services/flow-builder/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    env_file: ../.env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-dev123}@postgres:5432/dataagent
+      MONGODB_URL: mongodb://mongodb:27017/dataagent
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_started
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    container_name: dataagent-keycloak
+    restart: unless-stopped
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/dataagent
+      KC_DB_USERNAME: ${POSTGRES_USER:-admin}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-dev123}
+      KC_DB_SCHEMA: keycloak
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../infra/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  qdrant:
+    image: qdrant/qdrant:v1.13.6
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+volumes:
+  postgres_data:
+  mongo_data:
+  qdrant_data:
+
+networks:
+  default:
+    name: data-agent-network

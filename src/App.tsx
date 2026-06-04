@@ -1,6 +1,8 @@
 import React from 'react';
 import { AppStateProvider, useAppState } from './AppStateContext';
+import { AppLayout } from './components/Layout';
 import KnowledgeOpsCenter from './components/knowledge/KnowledgeOpsCenter';
+import AIRuntimeCenter from './components/agent-builder/AIRuntimeCenter';
 import SettingsView from './components/Settings/Overview';
 
 const Placeholder = ({ module }: { module: string }) => (
@@ -10,12 +12,14 @@ const Placeholder = ({ module }: { module: string }) => (
 );
 
 function AppContent() {
-  const { activeModule } = useAppState();
+  const { activeModule, setActiveModule } = useAppState();
 
   const renderView = () => {
     switch (activeModule) {
       case 'knowledge-ops':
         return <KnowledgeOpsCenter />;
+      case 'ai-runtime':
+        return <AIRuntimeCenter />;
       case 'settings':
         return <SettingsView />;
       default:
@@ -24,9 +28,9 @@ function AppContent() {
   };
 
   return (
-    <div className="h-screen w-screen bg-[#1E1B15] overflow-hidden">
+    <AppLayout activeTab={activeModule} setActiveTab={setActiveModule}>
       {renderView()}
-    </div>
+    </AppLayout>
   );
 }
 

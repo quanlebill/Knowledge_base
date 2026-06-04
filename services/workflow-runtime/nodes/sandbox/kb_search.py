@@ -1,0 +1,60 @@
+import logging
+import httpx
+from pydantic import BaseModel, ValidationError
+from tenacity import AsyncRetrying, retry_if_exception, stop_after_attempt, wait_exponential
+
+from state import AgentState
+
+logger = logging.getLogger(__name__)
+
+_RETRYABLE = lambda e: isinstance(e, httpx.TransportError) or (
+    isinstance(e, httpx.HTTPStatusError) and e.response.status_code >= 500
+)
+
+
+class KBChunk(BaseModel):
+    id: str
+    content: str
+    score: float
+
+
+async def kb_search_node(state: AgentState) -> dict:
+    cfg = state["config"]
+    kb_endpoint = cfg.get("kb_endpoint", "")
+    mode = cfg.get("kb_mode", "hybrid")
+    top_k = max(1, min(cfg.get("top_k", 10), 50))
+    max_depth = max(1, min(cfg.get("max_depth", 3), 5))
+
+    if not kb_endpoint:
+        return {"kb_chunks": []}
+
+    timeout = httpx.Timeout(connect=5.0, read=30.0, write=5.0, pool=5.0)
+
+    try:
+        async for attempt in AsyncRetrying(
+            retry=retry_if_exception(_RETRYABLE),
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1, min=1, max=8),
+            reraise=True,
+        ):
+            with attempt:
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    resp = await client.post(
+                        f"{kb_endpoint}/search",
+                        json={"query": state["query"], "mode": mode, "top_k": top_k, "max_depth": max_depth},
+                    )
+                    resp.raise_for_status()
+                    raw = resp.json().get("chunks", [])
+                    valid, skipped = [], 0
+                    for item in raw:
+                        try:
+                            valid.append(KBChunk.model_validate(item).model_dump())
+                        except ValidationError:
+                            skipped += 1
+                    if skipped:
+                        logger.warning("kb_search | skipped %d invalid chunks", skipped)
+                    logger.info("kb_search | found %d chunks", len(valid))
+                    return {"kb_chunks": valid}
+    except Exception as e:
+        logger.warning("kb_search | failed after retries: %s — returning empty", e)
+        return {"kb_chunks": [], "kb_error": str(e)}

@@ -38,8 +38,8 @@ class LLMProvidersORM(Base):
 
     guardrails: Mapped[list["GuardrailsORM"]] = relationship(back_populates="guardrail_model")
     agent_versions: Mapped[list["AgentVersionsORM"]] = relationship(
-        back_populates="reasoner_model",
-        foreign_keys="AgentVersionsORM.reasoner_model_id",
+        back_populates="responder_model",
+        foreign_keys="AgentVersionsORM.responder_model_id",
     )
 
 
@@ -264,7 +264,7 @@ class AgentVersionsORM(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     workflow_version_id: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("WorkflowVersions.id"), nullable=True)
-    reasoner_model_id: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("LLMProviders.id"), nullable=True)
+    responder_model_id: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("LLMProviders.id"), nullable=True)
     llm_config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     system_prompt_id: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("SystemPrompts.id"), nullable=True)
     guardrail_id: Mapped[Optional[uuid.UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("Guardrails.id"), nullable=True)
@@ -278,9 +278,9 @@ class AgentVersionsORM(Base):
 
     agent: Mapped["AgentsORM"] = relationship(back_populates="versions", foreign_keys=[agent_id])
     workflow_version: Mapped[Optional["WorkflowVersionsORM"]] = relationship(back_populates="agent_versions")
-    reasoner_model: Mapped[Optional["LLMProvidersORM"]] = relationship(
+    responder_model: Mapped[Optional["LLMProvidersORM"]] = relationship(
         back_populates="agent_versions",
-        foreign_keys=[reasoner_model_id],
+        foreign_keys=[responder_model_id],
     )
     system_prompt: Mapped[Optional["SystemPromptsORM"]] = relationship(back_populates="agent_versions")
     guardrail: Mapped[Optional["GuardrailsORM"]] = relationship(back_populates="agent_versions")
