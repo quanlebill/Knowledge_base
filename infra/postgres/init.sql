@@ -1,9 +1,5 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Schemas cho third-party services
-CREATE SCHEMA IF NOT EXISTS keycloak;
-CREATE SCHEMA IF NOT EXISTS kong;
-
 -- ── Enums ─────────────────────────────────────────────────────────────────────
 
 CREATE TYPE KBLanguage        AS ENUM ('english', 'vietnamese');
