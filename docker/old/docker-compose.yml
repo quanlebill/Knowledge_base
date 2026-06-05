@@ -27,17 +27,18 @@ volumes:
   qdrant_data:
   neo4j_data:
   neo4j_logs:
+  ollama_data:
 
 services:
 
   # ── PostgreSQL — 1 port, 3 DB: dataagent · litellm · langfuse ──────────────
   postgres:
     image: postgres:16-alpine
-    container_name: dataagent-postgres
+    container_name: postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: admin
-      POSTGRES_PASSWORD: dev123
+      POSTGRES_HOST_AUTH_METHOD: trust
       POSTGRES_DB: dataagent
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -45,8 +46,8 @@ services:
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/02-kb-tables.sql:ro
       - ./infra/sql/init.sql:/docker-entrypoint-initdb.d/03-app-schema.sql:ro
       - ./infra/sql/release-init.sql:/docker-entrypoint-initdb.d/04-release-schema.sql:ro
-    ports:
-      - "5432:5432"
+    expose :
+      - "5432"
     networks:
       - data-agent-network
     healthcheck:
@@ -107,7 +108,7 @@ services:
   # ── Neo4j ───────────────────────────────────────────────────────────────────
   neo4j:
     build:
-      context: ./infra/Neo4j
+      context: ../../infra/Neo4j
     container_name: dataagent-neo4j
     restart: unless-stopped
     expose:
@@ -156,8 +157,8 @@ services:
   # ── Kong Migration ──────────────────────────────────────────────────────────
   kong-migration:
     build:
-      context: .
-      dockerfile: Dockerfile.kong
+      context: ../..
+      dockerfile: ../../Dockerfile.kong
     container_name: dataagent-kong-migration
     command: kong migrations bootstrap
     environment:
@@ -178,8 +179,8 @@ services:
   # ── Kong Gateway ────────────────────────────────────────────────────────────
   kong:
     build:
-      context: .
-      dockerfile: Dockerfile.kong
+      context: ../..
+      dockerfile: ../../Dockerfile.kong
     container_name: dataagent-kong
     restart: unless-stopped
     environment:
@@ -217,8 +218,8 @@ services:
   # ── Kafka ───────────────────────────────────────────────────────────────────
   kafka:
     build:
-      context: .
-      dockerfile: Dockerfile.kafka
+      context: ../..
+      dockerfile: ../../Dockerfile.kafka
     container_name: dataagent-kafka
     restart: unless-stopped
     environment:
@@ -371,8 +372,8 @@ services:
   # ── workflow-runtime ────────────────────────────────────────────────────────
   workflow-runtime:
     build:
-      context: .
-      dockerfile: services/workflow-runtime/Dockerfile
+      context: ../..
+      dockerfile: ../../services/workflow-runtime/Dockerfile
     container_name: dataagent-workflow-runtime
     restart: unless-stopped
     ports:
@@ -403,8 +404,8 @@ services:
   # ── flow-builder ────────────────────────────────────────────────────────────
   flow-builder:
     build:
-      context: .
-      dockerfile: services/flow-builder/Dockerfile
+      context: ../..
+      dockerfile: ../../services/flow-builder/Dockerfile
     container_name: dataagent-flow-builder
     restart: unless-stopped
     ports:
@@ -424,8 +425,8 @@ services:
   # ── KB Backend ──────────────────────────────────────────────────────────────
   kb-backend:
     build:
-      context: .
-      dockerfile: Dockerfile.kb
+      context: ../..
+      dockerfile: ../../Dockerfile.kb
     container_name: dataagent-kb-backend
     restart: unless-stopped
     ports:
@@ -447,8 +448,8 @@ services:
   # ── auth-api ────────────────────────────────────────────────────────────────
   auth-api:
     build:
-      context: ./services
-      dockerfile: auth-api/Dockerfile
+      context: ../../services
+      dockerfile: ../../services/auth-api/Dockerfile
     container_name: dataagent-auth-api
     restart: unless-stopped
     ports:
@@ -470,8 +471,8 @@ services:
   # ── minio-service ───────────────────────────────────────────────────────────
   minio-service:
     build:
-      context: ./services
-      dockerfile: minio-service/Dockerfile
+      context: ../../services
+      dockerfile: ../../services/minio-service/Dockerfile
     container_name: dataagent-minio-service
     restart: unless-stopped
     ports:
@@ -489,8 +490,8 @@ services:
   # ── release-worker ──────────────────────────────────────────────────────────
   release-worker:
     build:
-      context: ./services
-      dockerfile: release-worker/Dockerfile
+      context: ../../services
+      dockerfile: ../../services/release-worker/Dockerfile
     container_name: dataagent-release-worker
     restart: unless-stopped
     ports:
@@ -527,7 +528,7 @@ services:
   # ── audit-bridge ────────────────────────────────────────────────────────────
   audit-bridge:
     build:
-      context: ./services/audit-bridge
+      context: ../../services/audit-bridge
     container_name: dataagent-audit-bridge
     restart: unless-stopped
     environment:
@@ -556,7 +557,7 @@ services:
   # ── audit-consumer ──────────────────────────────────────────────────────────
   audit-consumer:
     build:
-      context: ./services/audit-consumer
+      context: ../../services/audit-consumer
     container_name: dataagent-audit-consumer
     restart: unless-stopped
     environment:
@@ -583,7 +584,7 @@ services:
   # ── jwks-refresher ──────────────────────────────────────────────────────────
   jwks-refresher:
     build:
-      context: ./services/jwks-refresher
+      context: ../../services/jwks-refresher
     container_name: dataagent-jwks-refresher
     restart: unless-stopped
     environment:
@@ -606,8 +607,8 @@ services:
   # ── Frontend ────────────────────────────────────────────────────────────────
   frontend:
     build:
-      context: .
-      dockerfile: Dockerfile.dev
+      context: ../..
+      dockerfile: ../../Dockerfile.dev
     container_name: dataagent-frontend
     restart: unless-stopped
     volumes:
