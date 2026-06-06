@@ -27,6 +27,9 @@ infra/certs/*.crt
 infra/certs/*.csr
 infra/certs/*.srl
 
+# Model weights — large binary files, download separately
+model/ollama/weights/*.gguf
+
 # Kafka credential files — contain real passwords; use *.example templates instead
 infra/kafka/kafka-broker-jaas.config
 infra/kafka/admin_release.props
