@@ -1,16 +1,17 @@
 from enum import Enum
 from typing import Any, Optional
+
 from pydantic import BaseModel, Field
 
 
 class SupportedExtension(str, Enum):
-    PDF  = ".pdf"
+    PDF = ".pdf"
     DOCX = ".docx"
     PPTX = ".pptx"
     HTML = ".html"
-    HTM  = ".htm"
-    TXT  = ".txt"
-    MD   = ".md"
+    HTM = ".htm"
+    TXT = ".txt"
+    MD = ".md"
 
 
 class ParsedTable(BaseModel):

@@ -3,19 +3,24 @@ from collections.abc import Generator
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
-try:
-    from docling.datamodel.base_models import InputFormat
-    from docling.datamodel.pipeline_options import PdfPipelineOptions, smolvlm_picture_description
-    from docling.document_converter import DocumentConverter, PdfFormatOption
-    from docling_core.types.doc import PictureItem, SectionHeaderItem, TableItem, TextItem
-    _DOCLING_AVAILABLE = True
-except ImportError:
-    _DOCLING_AVAILABLE = False
-    InputFormat = None  # type: ignore[assignment]
-    DocumentConverter = None  # type: ignore[assignment]
+from docling.datamodel.base_models import InputFormat
+from docling.datamodel.pipeline_options import (
+    PdfPipelineOptions,
+    smolvlm_picture_description,
+)
+from docling.document_converter import DocumentConverter, PdfFormatOption
+from docling_core.types.doc import PictureItem, SectionHeaderItem, TableItem, TextItem
 
-from basemodel.services_databaseconnector.shared_model import HealthCheckLoopConfig, RetryConfig
-from basemodel.services_docling.docling_model import DoclingResult, ParsedChunk, ParsedTable, SupportedExtension
+from basemodel.services_databaseconnector.shared_model import (
+    HealthCheckLoopConfig,
+    RetryConfig,
+)
+from basemodel.services_docling.docling_model import (
+    DoclingResult,
+    ParsedChunk,
+    ParsedTable,
+    SupportedExtension,
+)
 from services.log_set_up import create_logger
 
 log = create_logger("services.docling", "service_docling")
@@ -27,9 +32,6 @@ _worker_use_vlm: bool = False
 
 def _worker_init(use_vlm: bool) -> None:
     global _worker_converter, _worker_use_vlm
-    if not _DOCLING_AVAILABLE:
-        log.warning("docling not installed — DoclingClient will not parse documents")
-        return
     _worker_use_vlm = use_vlm
     if use_vlm:
         pipeline_options = PdfPipelineOptions(
@@ -52,6 +54,7 @@ def _worker_ping() -> bool:
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
+
 
 def _table_description(name: str, headers: list[str], rows: list[list[str]]) -> str:
     col_str = ", ".join(headers) if headers else "unknown columns"
@@ -78,8 +81,8 @@ def _build_parsed_tables(doc) -> list[ParsedTable | None]:
             continue
 
         headers = [cell.text.strip() for cell in data.grid[0]]
-        rows    = [[cell.text.strip() for cell in row] for row in data.grid[1:]]
-        rows    = [r for r in rows if any(r)]
+        rows = [[cell.text.strip() for cell in row] for row in data.grid[1:]]
+        rows = [r for r in rows if any(r)]
         try:
             name = table_item.caption_text(doc).strip() or f"Table_{idx + 1}"
         except Exception:
@@ -88,15 +91,21 @@ def _build_parsed_tables(doc) -> list[ParsedTable | None]:
         last = next((r for r in reversed(result) if r is not None), None)
         if last is not None and last.data["headers"] == headers:
             last.data["rows"].extend(rows)
-            last.description = _table_description(last.table_name, last.data["headers"], last.data["rows"])
-            log.info(f"Merged split table '{last.table_name}': +{len(rows)} continuation row(s)")
+            last.description = _table_description(
+                last.table_name, last.data["headers"], last.data["rows"]
+            )
+            log.info(
+                f"Merged split table '{last.table_name}': +{len(rows)} continuation row(s)"
+            )
             result.append(None)
         else:
-            result.append(ParsedTable(
-                table_name=name,
-                description=_table_description(name, headers, rows),
-                data={"headers": headers, "rows": rows},
-            ))
+            result.append(
+                ParsedTable(
+                    table_name=name,
+                    description=_table_description(name, headers, rows),
+                    data={"headers": headers, "rows": rows},
+                )
+            )
 
     return result
 
@@ -104,7 +113,7 @@ def _build_parsed_tables(doc) -> list[ParsedTable | None]:
 def _iter_chunks(
     doc, parsed_tables: list[ParsedTable | None], max_chars: int
 ) -> Generator[ParsedChunk, None, None]:
-    doc_idx   = 0
+    doc_idx = 0
     chunk_idx = 0
     buf: list[str] = []
 
@@ -119,7 +128,6 @@ def _iter_chunks(
         return None
 
     for item, level in doc.iterate_items():
-
         if isinstance(item, TableItem):
             chunk = flush()
             if chunk:
@@ -171,7 +179,7 @@ def _run_parse(path: Path, max_chunk_chars: int) -> DoclingResult:
         log.info(f"VLM pass: {len(list(doc.pictures))} figure(s) described by SmolVLM")
 
     parsed_tables = _build_parsed_tables(doc)
-    real_count   = sum(1 for t in parsed_tables if t is not None)
+    real_count = sum(1 for t in parsed_tables if t is not None)
     merged_count = len(parsed_tables) - real_count
     log.info(
         f"Extracted {real_count} table(s) from '{path.name}'"
@@ -183,6 +191,7 @@ def _run_parse(path: Path, max_chunk_chars: int) -> DoclingResult:
 
     return DoclingResult(has_figures=has_figures, chunks=chunks)
 
+
 class DoclingClient:
     __slots__ = ("_executor", "_use_vlm", "_connected", "_healthy")
 
@@ -192,7 +201,7 @@ class DoclingClient:
         self._connected: bool = False
         self._healthy: bool = False
 
-    #Protocol surface
+    # Protocol surface
     def set_url(self, url: str) -> None:
         pass
 
@@ -216,7 +225,9 @@ class DoclingClient:
                 return
             except Exception as e:
                 self._healthy = False
-                log.info(f"Docling open attempt {attempt + 1}/{retry.count} failed: {e}")
+                log.info(
+                    f"Docling open attempt {attempt + 1}/{retry.count} failed: {e}"
+                )
         raise RuntimeError("Failed to start Docling process pool after all retries")
 
     async def close(self) -> None:
@@ -227,7 +238,9 @@ class DoclingClient:
         self._healthy = False
         log.info("Docling client closed")
 
-    async def health_check_loop(self, config: HealthCheckLoopConfig = HealthCheckLoopConfig()) -> None:
+    async def health_check_loop(
+        self, config: HealthCheckLoopConfig = HealthCheckLoopConfig()
+    ) -> None:
         """Pings the worker process to confirm it is alive and the model is loaded."""
         log.info("Docling health check loop started")
         while True:
@@ -255,7 +268,9 @@ class DoclingClient:
         return self._connected
 
     # Operations
-    async def parse(self, file_path: str | Path, max_chunk_chars: int = MAX_CHUNK_CHARS) -> DoclingResult:
+    async def parse(
+        self, file_path: str | Path, max_chunk_chars: int = MAX_CHUNK_CHARS
+    ) -> DoclingResult:
         """Submit a parse job to the worker process and await the result."""
         path = Path(file_path)
         try:
@@ -268,7 +283,9 @@ class DoclingClient:
         if self._executor is None:
             raise RuntimeError("DoclingClient is not open — call open() first")
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self._executor, _run_parse, path, max_chunk_chars)
+        return await loop.run_in_executor(
+            self._executor, _run_parse, path, max_chunk_chars
+        )
+
 
 client = DoclingClient()
-

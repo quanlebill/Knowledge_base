@@ -14,6 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Non-root user
 RUN addgroup --system app && adduser --system --ingroup app app
+RUN mkdir -p /app/logs && chown -R app:app /app/logs
 
 COPY --chown=app:app basemodel/ ./basemodel/
 COPY --chown=app:app services/database_connector/ ./services/database_connector/

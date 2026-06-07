@@ -1,0 +1,4 @@
+import os
+
+
+DEV_TENANT_ID = os.environ.get("DEV_TENANT_ID", "00000000-0000-0000-0000-000000000001")

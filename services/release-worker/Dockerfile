@@ -12,7 +12,7 @@ COPY release-worker/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source
-COPY release-worker/main.py .
+COPY release-worker/ .
 COPY shared/ ./shared/
 
 EXPOSE 8100

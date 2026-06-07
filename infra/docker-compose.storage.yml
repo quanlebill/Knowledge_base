@@ -7,8 +7,24 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-admin}
       POSTGRES_HOST_AUTH_METHOD: trust
       POSTGRES_DB: ${POSTGRES_DB:-dataagent}
+    # Override default config inline (no separate postgresql.conf to maintain).
+    # `archive_command` writes WAL segments to /backups/wal — see disaster
+    # recovery in docs/disaster-recovery.md. `max_wal_senders` is set so a
+    # future streaming replica can attach without restarting Postgres.
+    #
+    # `test ! -f` guard makes archiving idempotent — Postgres retries the
+    # command on transient failure and we don't want to overwrite a good
+    # archived segment.
+    command: >
+      postgres
+      -c wal_level=replica
+      -c archive_mode=on
+      -c archive_command='test ! -f /backups/wal/%f && cp %p /backups/wal/%f'
+      -c max_wal_senders=3
+      -c max_replication_slots=3
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - postgres_backups:/backups
       - ../infra/sql/create-extra-dbs.sql:/docker-entrypoint-initdb.d/01-create-dbs.sql:ro
       - ../infra/postgres/init.sql:/docker-entrypoint-initdb.d/02-kb-tables.sql:ro
       - ../infra/sql/init.sql:/docker-entrypoint-initdb.d/03-app-schema.sql:ro
@@ -20,6 +36,57 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  # ─── Postgres logical backup sidecar ──────────────────────────────────────
+  # Schedule: pg_dump every BACKUP_INTERVAL_HOURS (default 6h). Old dumps
+  # cleaned at BACKUP_RETENTION_DAYS (default 7). WAL segments are archived
+  # by Postgres itself (see archive_command above); this sidecar additionally
+  # prunes WAL older than the retention window.
+  #
+  # For point-in-time recovery: restore latest dump + replay WAL up to a
+  # target timestamp. See docs/disaster-recovery.md "Postgres restore".
+  #
+  # NOT a replacement for streaming replication. Use pgBackRest or a
+  # managed service (RDS, Cloud SQL) for prod.
+  postgres-backup:
+    image: postgres:16-alpine
+    container_name: dataagent-postgres-backup
+    restart: unless-stopped
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-admin}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-dev123}
+      PGDATABASE: ${POSTGRES_DB:-dataagent}
+      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-6}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-7}
+    volumes:
+      - postgres_backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Plain shell loop instead of cron — one process, fewer moving parts.
+    # Sleep is measured in seconds inside shell so we convert hours.
+    command: >
+      sh -c '
+        set -eu
+        mkdir -p /backups/dumps /backups/wal
+        echo "[backup] retention=${BACKUP_RETENTION_DAYS}d interval=${BACKUP_INTERVAL_HOURS}h"
+        while :; do
+          ts=$$(date +%Y%m%d_%H%M%S)
+          dump=/backups/dumps/dump_$${ts}.sql.gz
+          echo "[backup] $$(date -Iseconds) writing $${dump}"
+          if pg_dump --format=plain --no-owner --no-privileges | gzip > "$${dump}.tmp"; then
+            mv "$${dump}.tmp" "$${dump}"
+            echo "[backup] OK size=$$(stat -c%s "$${dump}") bytes"
+          else
+            echo "[backup] FAILED — leaving previous dumps in place"
+            rm -f "$${dump}.tmp"
+          fi
+          find /backups/dumps -name "dump_*.sql.gz" -mtime +$${BACKUP_RETENTION_DAYS} -delete
+          find /backups/wal -type f -mtime +$${BACKUP_RETENTION_DAYS} -delete
+          sleep $$((BACKUP_INTERVAL_HOURS * 3600))
+        done
+      '
 
   mongo:
     image: mongo:7.0

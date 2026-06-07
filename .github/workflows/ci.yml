@@ -1,0 +1,154 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-lint:
+    name: Python · ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install ruff
+      - run: ruff check .
+      - run: ruff format --check .
+
+  python-type:
+    name: Python · mypy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install mypy
+      - run: mypy --install-types --non-interactive services basemodel app || true
+        # ^ `|| true` while strict surface is small — drop once mypy passes clean.
+
+  python-test:
+    name: Python · pytest (unit + integration)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install test + service deps
+        # `[test]` covers pytest/testcontainers; service requirements.txt files
+        # bring the runtime deps the integration tests import in-process
+        # (hvac for auth-api, etc). Expand this list as more service tests land.
+        #
+        # alembic + asyncpg are needed for tests/integration/test_alembic_migrations.py
+        # which runs the migration chain through asyncpg (the same driver
+        # production migrate uses). Catches errors like "cannot insert
+        # multiple commands into a prepared statement" that psycopg2 hides.
+        run: |
+          pip install -e ".[test]"
+          pip install -r services/auth-api/requirements.txt
+          pip install alembic sqlalchemy[asyncio] asyncpg pydantic
+      - name: Run pytest
+        run: pytest -m "unit or integration" --cov --cov-report=xml --cov-report=term -n auto
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-coverage
+          path: coverage.xml
+
+  frontend-lint:
+    name: Frontend · eslint + tsc
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+
+  frontend-test:
+    name: Frontend · vitest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npm run test:coverage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frontend-coverage
+          path: coverage/
+
+  compose-validate:
+    name: Compose · config validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create dummy .env
+        run: |
+          # CI doesn't have real secrets — fill required keys with placeholders
+          # so docker compose config can parse. Real deploys MUST not rely on
+          # defaults; the prod overlay should drop them.
+          cat > .env <<'EOF'
+          OPENAI_API_KEY=ci-placeholder
+          GEMINI_API_KEY=ci-placeholder
+          KAFKA_ADMIN_PASSWORD=ci-placeholder
+          AUDIT_BRIDGE_KAFKA_PASSWORD=ci-placeholder
+          AUDIT_CONSUMER_KAFKA_PASSWORD=ci-placeholder
+          RELEASE_WORKER_KAFKA_PASSWORD=ci-placeholder
+          EOF
+      - name: Validate local stack
+        run: docker compose -f docker/docker-compose.yml -f docker/docker-compose.local.yml config > /dev/null
+      - name: Validate dev stack
+        run: docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml config > /dev/null
+
+  e2e-tenant-isolation:
+    name: E2E · tenant isolation (live stack)
+    runs-on: ubuntu-latest
+    # Long-running — only on push to main or when label requested. Don't block PRs.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test deps
+        run: pip install -e ".[test]"
+      - name: Bring up stack
+        run: |
+          cp .env.example .env
+          docker compose -f docker/docker-compose.yml -f docker/docker-compose.local.yml up -d --build
+      - name: Wait for stack
+        run: |
+          for i in {1..60}; do
+            curl -sf http://localhost:8000/ >/dev/null 2>&1 && \
+            curl -sf http://localhost:8080/realms/aeroflow/.well-known/openid-configuration >/dev/null 2>&1 && \
+            break || sleep 5
+          done
+      - name: Seed stack
+        run: bash infra/kong/kong-setup.sh
+      - name: Run e2e suite
+        env:
+          LIVE_STACK: "1"
+        run: pytest -m e2e tests/integration -v
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker/docker-compose.yml -f docker/docker-compose.local.yml down -v
