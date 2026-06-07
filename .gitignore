@@ -34,3 +34,5 @@ model/ollama/weights/*.gguf
 infra/kafka/kafka-broker-jaas.config
 infra/kafka/admin_release.props
 infra/kafka/rw.props
+/testing/
+/logs/

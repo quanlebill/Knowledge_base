@@ -111,4 +111,5 @@ class SearchRequest(BaseModel):
     query_vector: list[float]
     limit: int = 10
     matching_payload: List[MatchingPayload] | None = None
+    match_type: MatchType = MatchType.must
     pagination_config: PaginationConfig | None = None

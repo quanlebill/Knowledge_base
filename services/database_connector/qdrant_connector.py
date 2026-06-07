@@ -87,7 +87,7 @@ def _build_qdrant_filters(
 
 
     if not matching_field:
-        return None
+        return models.Filter(must=matching_require)
 
     if match_type is MatchType.any:
         return models.Filter(
@@ -158,8 +158,8 @@ class QdrantClient:
             await asyncio.sleep(config.interval)
 
     async def open(self, retry: RetryConfig):
-        if self._client is None:
-           return self._client
+        if self._client is not None:
+            return self._client
         log.info("Qdrant Connection established")
         self._create_connection()
         for _ in range(retry.count):
@@ -208,6 +208,9 @@ class QdrantClient:
         if self._client is None:
             raise ConnectionError("Connection must be first established")
         return self._client
+
+    def connect(self) -> AsyncQdrantClient:
+        return self._create_connection()
 
     def _create_connection(self) -> AsyncQdrantClient:
         if self._url is None:
@@ -341,14 +344,12 @@ async def vector_search(client: AsyncQdrantClient, item: SearchRequest) -> Respo
     if not await client.collection_exists(item.collection_name):
         return ResponseModel(code=404, error="Collection does not exist")
 
-    query_filter = None
-    if item.matching_payload is not None:
-        query_filter = _build_qdrant_filters(
-            tenant_id=item.tenant_id,
-            data=item.matching_payload,
-            match_type=MatchType.must,
-            pagination_config=item.pagination_config,
-        )
+    query_filter = _build_qdrant_filters(
+        tenant_id=item.tenant_id,
+        data=item.matching_payload or [],
+        match_type=item.match_type if item.matching_payload else None,
+        pagination_config=item.pagination_config,
+    )
 
     results = await client.query_points(
         collection_name=item.collection_name,
@@ -357,4 +358,4 @@ async def vector_search(client: AsyncQdrantClient, item: SearchRequest) -> Respo
         query_filter=query_filter,
         with_payload=True,
     )
-    return ResponseModel(code = 200, data=list(results))
+    return ResponseModel(code=200, data=results.points)

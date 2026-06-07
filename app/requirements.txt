@@ -6,3 +6,11 @@ asyncpg
 alembic
 neo4j
 qdrant-client
+httpx
+aioboto3
+botocore
+aiokafka
+motor
+imageio[ffmpeg]
+av
+Pillow
