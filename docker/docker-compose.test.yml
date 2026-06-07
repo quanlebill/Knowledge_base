@@ -1,7 +1,7 @@
-# Legacy compatibility fixture for Postgres connector tests
-# Prefer: docker compose -f docker/docker-compose.test.yml up -d
+# Test-only Postgres fixture for integration and Alembic tests
+# Usage: docker compose -f docker/docker-compose.test.yml up -d
 
-name: aeroflow-test
+name: data-agent-test
 
 services:
   postgres-test:

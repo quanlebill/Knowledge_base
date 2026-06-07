@@ -13,7 +13,7 @@ Three concern areas:
                           never land in alembic/versions/.
 
 Requires the test Postgres server (same as postgres_connector tests):
-    docker compose -f testing/postgres_connector/docker-compose.yml up -d
+    docker compose -f docker/docker-compose.test.yml up -d
 
 Run:
     pytest testing/alembic_tests/test_migrations.py -v

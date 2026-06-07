@@ -2,7 +2,7 @@
 Postgres connector tests.
 
 Requires the test Postgres server to be running:
-    docker compose -f testing/postgres_connector/docker-compose.yml up -d
+    docker compose -f docker/docker-compose.test.yml up -d
 
 Run:
     pytest testing/postgres_connector/test_connector.py -v

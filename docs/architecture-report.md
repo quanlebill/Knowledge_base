@@ -717,3 +717,19 @@ Phase 3 (Observability):
 ---
 
 *Báo cáo này được tổng hợp từ codebase `Data-Agentt`, `auth-runbook.md`, và kết quả test thực tế ngày 2026-05-27.*
+## Current Docker Status
+
+This report contains a historical architecture snapshot. The current supported Docker stack has been refactored since this document was written.
+
+Current supported entrypoints:
+
+- `docker/docker-compose.yml`
+- `docker/docker-compose.local.yml`
+- `docker/docker-compose.dev.yml`
+- `docker/docker-compose.test.yml`
+
+Important differences versus the historical snapshot below:
+
+- current local auth uses `dataagent-keycloak` single-node dev mode instead of `keycloak-node1`, `keycloak-node2`, and `keycloak-lb`
+- current supported stack includes MinIO and MongoDB in the Docker path
+- current compose stack is layered across `docker/docker-compose.storage.yml`, `docker/docker-compose.security.yml`, `docker/docker-compose.messaging.yml`, `docker/docker-compose.observability.yml`, and `docker/docker-compose.app.yml`
