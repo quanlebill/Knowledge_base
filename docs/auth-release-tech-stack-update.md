@@ -249,7 +249,7 @@ Keycloak single node là **Single Point of Failure** — auth service down thì 
 
 **Thiết kế HA:**
 
-1. **Tối thiểu 2 Keycloak nodes** (Active/Active) đứng sau Load Balancer (HAProxy/Nginx)
+1. **Tối thiểu 2 Keycloak nodes** (Active/Active) đứng sau Load Balancer (HAProxy)
 2. **Shared PostgreSQL self-hosted** làm backing store chung cho cả cluster
 3. **Infinispan distributed cache** (built-in Keycloak) đồng bộ session giữa các nodes
 4. **Health check** endpoint `/health/ready` để LB tự failover khi 1 node down

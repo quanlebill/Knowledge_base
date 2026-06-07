@@ -3,10 +3,19 @@
 # Uses Kong built-in JWT plugin (community edition)
 # JWT verification: fetch RSA public key from Keycloak JWKS, register in Kong
 #
-# Run after stack is healthy:
-#   bash infra/kong/kong-setup.sh
+# Run after stack is healthy. Since Kong's admin API is locked to the
+# kong-admin-net (see docs/auth-runbook.md "Kong admin hardening"), this
+# script CANNOT be run from the host. Use the compose-managed runner:
 #
-# Requires: curl, jq
+#   docker compose -f docker/docker-compose.yml --profile setup run --rm kong-setup
+#
+# Or, with Phase 3 key-auth enabled:
+#
+#   docker compose -f docker/docker-compose.yml --profile setup run --rm \
+#     -e ENABLE_ADMIN_KEY_AUTH=1 kong-setup
+#
+# Requires: curl, python3 (installed by the compose runner — see
+# docker-compose.security.yml `kong-setup` service).
 
 set -uo pipefail
 
@@ -234,30 +243,51 @@ print(matches[0] if matches else '')
   fi
 }
 
-ISSUER="$KC_BASE/realms/$REALM"
-# JWKS_URI must use the Docker-internal hostname so Kong (running inside Docker) can reach Keycloak.
-# KC_BASE (localhost:8080) works from the host but not from inside the Kong container.
-KONG_KC_HOST="http://aeroflow-keycloak-lb:8080"
+# ISSUER must match the `iss` claim Keycloak actually emits in tokens.
+# Keycloak derives that from `KC_HOSTNAME_URL` (or the request Host header
+# when KC_HOSTNAME_STRICT=false). Browser clients hit http://localhost:8080
+# so tokens carry iss=http://localhost:8080/realms/<realm>. Override via
+# KEYCLOAK_PUBLIC_URL if your deploy uses a different external URL.
+KC_PUBLIC="${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}"
+ISSUER="$KC_PUBLIC/realms/$REALM"
+
+# JWKS_URI is a NETWORK URL — Kong fetches keys via the in-cluster hostname,
+# not the public one. Two URLs by design: public for iss validation, network
+# for JWKS fetch. Mixing them means either tokens reject ("iss mismatch")
+# OR Kong can't reach Keycloak.
+KONG_KC_HOST="${KEYCLOAK_NETWORK_URL:-http://aeroflow-keycloak-lb:8080}"
 JWKS_URI="$KONG_KC_HOST/realms/$REALM/protocol/openid-connect/certs"
 
 # ── 4. aeroflow-jwks plugin — JWKS-based RS256 verify + header inject ──
-# Replaces jwt built-in plugin + pre-function + jwks-refresher service.
-# Uses kong.cache with 300s TTL; invalidates and refetches on kid change.
-echo "🔐 Enabling aeroflow-jwks plugin on aeroflow-backend (JWKS RS256 + 300s cache)..."
+# Per-service `audience` is set so a token issued for service A cannot be
+# replayed against service B. The plugin checks `aud` claim against this
+# value; Keycloak must be configured (audience mappers on aeroflow-frontend
+# client) to include each of these in the token's `aud`. See
+# docs/auth-runbook.md "JWT audience matrix".
+#
+# `grace_period` (10 min) keeps the previous JWKS keys valid for that long
+# after rotation — without it, every token in flight gets a 401 spike the
+# moment Keycloak rolls. `jwks_refresh_interval` (5 min) is how often the
+# cache TTL ticks, but on a kid miss we always lazy-refetch.
+
+KONG_GRACE=600   # seconds; matches Keycloak default access-token TTL (15m floor)
+KONG_REFRESH=300
+
+echo "🔐 Enabling aeroflow-jwks plugin on aeroflow-backend (aud=aeroflow-backend)..."
 upsert_plugin "$KONG_ADMIN/services/aeroflow-backend/plugins" \
-  "{\"name\":\"aeroflow-jwks\",\"config\":{\"jwks_uri\":\"$JWKS_URI\",\"issuer\":\"$ISSUER\",\"jwks_refresh_interval\":300}}" \
+  "{\"name\":\"aeroflow-jwks\",\"config\":{\"jwks_uri\":\"$JWKS_URI\",\"issuer\":\"$ISSUER\",\"audience\":\"aeroflow-backend\",\"jwks_refresh_interval\":$KONG_REFRESH,\"grace_period\":$KONG_GRACE}}" \
   "aeroflow-jwks"
 
 # ── 4b. aeroflow-jwks on release-worker ────────────────────────────────
-echo "🔐 Enabling aeroflow-jwks plugin on release-worker..."
+echo "🔐 Enabling aeroflow-jwks plugin on release-worker (aud=release-worker)..."
 upsert_plugin "$KONG_ADMIN/services/release-worker/plugins" \
-  "{\"name\":\"aeroflow-jwks\",\"config\":{\"jwks_uri\":\"$JWKS_URI\",\"issuer\":\"$ISSUER\",\"jwks_refresh_interval\":300}}" \
+  "{\"name\":\"aeroflow-jwks\",\"config\":{\"jwks_uri\":\"$JWKS_URI\",\"issuer\":\"$ISSUER\",\"audience\":\"release-worker\",\"jwks_refresh_interval\":$KONG_REFRESH,\"grace_period\":$KONG_GRACE}}" \
   "aeroflow-jwks"
 
 # ── 4c. aeroflow-jwks on auth-api ──────────────────────────────────────
-echo "🔐 Enabling aeroflow-jwks plugin on auth-api..."
+echo "🔐 Enabling aeroflow-jwks plugin on auth-api (aud=auth-api)..."
 upsert_plugin "$KONG_ADMIN/services/auth-api/plugins" \
-  "{\"name\":\"aeroflow-jwks\",\"config\":{\"jwks_uri\":\"$JWKS_URI\",\"issuer\":\"$ISSUER\",\"jwks_refresh_interval\":300}}" \
+  "{\"name\":\"aeroflow-jwks\",\"config\":{\"jwks_uri\":\"$JWKS_URI\",\"issuer\":\"$ISSUER\",\"audience\":\"auth-api\",\"jwks_refresh_interval\":$KONG_REFRESH,\"grace_period\":$KONG_GRACE}}" \
   "aeroflow-jwks"
 
 # ── 5. IP restriction ─────────────────────────────────────────────────
@@ -345,13 +375,113 @@ else
   echo "   Run: bash infra/certs/gen-certs.sh   to generate, then re-run this script."
 fi
 
+# ── 11. Admin API key-auth (Phase 3 hardening, OPT-IN) ────────────────
+# OSS Kong's admin endpoint doesn't natively accept plugins. Pattern below
+# uses "Kong-fronting-Kong": expose admin through a regular Kong service +
+# route, then apply key-auth on that route. Services that need to manage
+# Kong call http://kong:8000/_kong_admin/<path> with `apikey: <key>` instead
+# of the raw http://172.30.0.10:8001/<path>.
+#
+# Enable by setting ENABLE_ADMIN_KEY_AUTH=1. Disabled by default because
+# services still call raw admin in this PR — flipping this on without also
+# updating service env vars to use the proxied URL + apikey header will
+# break startup. Phased rollout:
+#
+#   1. Run with the flag in dev/staging
+#   2. Copy generated keys to .env (KONG_ADMIN_API_KEY_AUTH_API, ...)
+#   3. Update services to send `apikey` header + use proxied URL
+#   4. Verify, then flip on in prod
+if [ "${ENABLE_ADMIN_KEY_AUTH:-0}" = "1" ]; then
+  echo "🔒 Phase 3: registering Kong-fronting-Kong admin proxy with key-auth..."
+
+  # Kong admin is bound to 172.30.0.10:8001 on the kong-admin-net interface.
+  # From Kong's OWN container, 127.0.0.1:8001 also reaches it iff KONG_ADMIN_LISTEN
+  # includes a loopback binding — currently it doesn't. So upstream the service
+  # to the explicit admin-net IP, which is reachable from Kong's data plane.
+  ADMIN_UPSTREAM="${KONG_ADMIN_UPSTREAM:-http://172.30.0.10:8001}"
+
+  curl -sf -X PUT "$KONG_ADMIN/services/kong-admin-proxy" \
+    -H "Content-Type: application/json" \
+    -d "{\"name\":\"kong-admin-proxy\",\"url\":\"$ADMIN_UPSTREAM\"}" \
+    > /dev/null
+
+  curl -sf -X PUT "$KONG_ADMIN/services/kong-admin-proxy/routes/kong-admin-route" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "name": "kong-admin-route",
+      "paths": ["/_kong_admin"],
+      "strip_path": true,
+      "methods": ["GET","POST","PUT","PATCH","DELETE","OPTIONS","HEAD"]
+    }' > /dev/null
+
+  upsert_plugin "$KONG_ADMIN/routes/kong-admin-route/plugins" \
+    '{"name":"key-auth","config":{"key_names":["apikey"],"hide_credentials":true}}' \
+    "key-auth"
+
+  # Optional: also restrict by IP to defense-in-depth even if key leaks.
+  upsert_plugin "$KONG_ADMIN/routes/kong-admin-route/plugins" \
+    '{"name":"ip-restriction","config":{"allow":["172.30.0.0/24"]}}' \
+    "ip-restriction"
+
+  # Helper: idempotent consumer + key creation. Writes keys to admin-keys.env
+  # for ops to copy into .env. NEVER commits keys to git — file is gitignored.
+  KEYS_FILE="$SCRIPT_DIR/../certs/admin-keys.env"
+  : > "$KEYS_FILE"
+  chmod 600 "$KEYS_FILE"
+
+  for consumer in auth-api release-worker jwks-refresher; do
+    # Create consumer if not exists (PUT is idempotent)
+    curl -sf -X PUT "$KONG_ADMIN/consumers/$consumer-admin" \
+      -H "Content-Type: application/json" \
+      -d "{\"username\":\"$consumer-admin\"}" > /dev/null
+
+    # Rotate key: delete existing then create fresh. Idempotent re-runs
+    # generate a new key each time — operators see the rotation.
+    EXISTING_KEY_ID=$(curl -sf "$KONG_ADMIN/consumers/$consumer-admin/key-auth" \
+      | python3 -c "
+import sys, json
+data = json.load(sys.stdin).get('data', [])
+print(data[0]['id'] if data else '')" 2>/dev/null || true)
+    if [ -n "$EXISTING_KEY_ID" ]; then
+      curl -sf -X DELETE "$KONG_ADMIN/consumers/$consumer-admin/key-auth/$EXISTING_KEY_ID" > /dev/null || true
+    fi
+
+    NEW_KEY=$(curl -sf -X POST "$KONG_ADMIN/consumers/$consumer-admin/key-auth" \
+      | python3 -c "import sys, json; print(json.load(sys.stdin)['key'])")
+
+    # Upper-snake key var name, e.g. KONG_ADMIN_API_KEY_AUTH_API
+    VAR_NAME=$(echo "KONG_ADMIN_API_KEY_${consumer}" | tr '[:lower:]-' '[:upper:]_')
+    echo "${VAR_NAME}=${NEW_KEY}" >> "$KEYS_FILE"
+    echo "  → ${VAR_NAME} written"
+  done
+
+  echo ""
+  echo "  Admin proxy: http://kong:8000/_kong_admin/<path>"
+  echo "  Header:      apikey: \$${VAR_NAME%_*}_<SERVICE>"
+  echo "  Keys file:   $KEYS_FILE (chmod 600)"
+  echo "  Next step:   copy keys to .env, switch services to proxied URL"
+fi
+
+# ── 12. Note on Kong worker cache ──────────────────────────────────────
+# Kong's pubsub propagates plugin config to workers within a few seconds.
+# Custom-plugin local caches (kong.cache entries keyed off conf values)
+# usually pick up automatically because the cache key changes when config
+# does. If you're hot-patching `issuer` / `audience` on a running stack
+# and see stale "Issuer mismatch" / "Audience mismatch" errors longer than
+# ~10s, run on the host:
+#
+#   docker exec dataagent-kong kong reload
+#
+# (The setup runner can't do this for you — bash:5 has no docker CLI and
+# the runner container doesn't have access to docker.sock by design.)
+
 # ── Summary ────────────────────────────────────────────────────────────
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "✅ Kong configuration complete"
 echo ""
 echo "  Proxy :  http://localhost:8000"
-echo "  Admin :  http://localhost:8001"
+echo "  Admin :  internal only (kong-admin-net 172.30.0.10:8001)"
 echo "  Konga :  http://localhost:1337"
 echo ""
 echo "  JWT:    RS256, issuer=$ISSUER"
@@ -359,4 +489,7 @@ echo "  Route:  /api → aeroflow-backend"
 MTLS_STATUS="NOT configured (run infra/certs/gen-certs.sh first)"
 [ -f "$CERT_FILE" ] && MTLS_STATUS="Configured (Kong presents client cert)"
 echo "  mTLS:   $MTLS_STATUS"
+ADMIN_AUTH_STATUS="disabled (set ENABLE_ADMIN_KEY_AUTH=1 to enable)"
+[ "${ENABLE_ADMIN_KEY_AUTH:-0}" = "1" ] && ADMIN_AUTH_STATUS="enabled via /_kong_admin route"
+echo "  Admin auth: $ADMIN_AUTH_STATUS"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

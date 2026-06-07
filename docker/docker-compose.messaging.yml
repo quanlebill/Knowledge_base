@@ -23,6 +23,12 @@ services:
       KAFKA_SUPER_USERS: "User:admin;User:ANONYMOUS"
       KAFKA_OPTS: "-Djava.security.auth.login.config=/opt/kafka/config/kafka-broker-jaas.config"
       KAFKA_ADMIN_PASSWORD: ${KAFKA_ADMIN_PASSWORD}
+    # Mount JAAS at runtime — overrides whatever was baked at build time.
+    # Lets ops rotate the file (via bootstrap-dev-env.sh) and just restart
+    # the broker; no `docker build kafka` needed. The Dockerfile still COPYs
+    # a default so the image is self-contained when run without compose.
+    volumes:
+      - ../infra/kafka/kafka-broker-jaas.config:/opt/kafka/config/kafka-broker-jaas.config:ro
     ports:
       - "9092:9092"
     healthcheck:

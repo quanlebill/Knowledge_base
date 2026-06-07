@@ -97,13 +97,18 @@ aeroflow-jwks-refresher            Up
 aeroflow-frontend                  Up
 ```
 
-> **Thứ tự khởi động:** postgres → redis → kafka → minio → mongo → elasticsearch → jaeger → openbao → openbao-init → openbao-setup → openbao-secrets-bootstrap → keycloak-node1 → keycloak-node2 → keycloak-lb → kong-migration → kong → jwks-refresher → auth-api → release-worker → celery-worker → audit-bridge → audit-consumer → frontend
+> **Thứ tự khởi động:** postgres → postgres-backup → redis → kafka → minio → mongo → elasticsearch → jaeger → openbao → openbao-init → openbao-setup → openbao-secrets-bootstrap → keycloak-node1 → keycloak-node2 → keycloak-lb → kong-migration → kong → jwks-refresher → auth-api → release-worker → celery-worker → audit-bridge → audit-consumer → frontend
+>
+> **HA + DR posture:** Keycloak HA (2-node + HAProxy LB) là **real** từ 2026-06-07.
+> Postgres single-node với scheduled `pg_dump` + WAL archiving. Tất cả thành phần khác
+> còn single-node. Xem [docs/disaster-recovery.md](./disaster-recovery.md) cho:
+> RPO/RTO targets cụ thể, restore procedures, roadmap HA cho các layer còn lại.
 
 **Port mapping:**
 
 | Container | Host Port | Description |
 |---|---|---|
-| aeroflow-frontend | :5173 | React app (nginx in Docker) |
+| aeroflow-frontend | :5173 | React app (Vite dev server) |
 | aeroflow-kong | :8000 / :8001 | Proxy / Admin |
 | aeroflow-auth-api | :8200 | Auth/Secrets API (direct, no JWT check) |
 | aeroflow-openbao | :8300 | OpenBao vault (internal :8200) |
@@ -121,13 +126,14 @@ aeroflow-frontend                  Up
 |---|---|---|
 | **Frontend** | http://localhost:5173 | Keycloak login |
 | **Kong Proxy** (API gateway) | http://localhost:8000 | JWT Bearer token |
-| Kong Admin API | http://localhost:8001 | — |
+| Kong Admin API | internal only — `kong-admin-net` 172.30.0.10:8001 | see [Kong admin hardening](#kong-admin-hardening) |
 | Konga (Kong UI) | http://localhost:1337 | setup lần đầu |
 | **Auth API** (direct, bypass Kong) | http://localhost:8200 | `X-User-Id`, `X-User-Roles`, `X-Tenant-Id` headers |
 | **Keycloak** (HAProxy LB) | http://localhost:8080/admin | admin / admin |
 | Keycloak Node 1 (direct) | http://localhost:8081/admin | admin / admin |
 | Keycloak Node 2 (direct) | http://localhost:8082/admin | admin / admin |
 | **OpenBao** (Secrets Vault) | http://localhost:8300/ui | Root token từ `/openbao/data/.root-token` |
+| Postgres backup volume | `dataagent_postgres_backups` (named volume) | xem [disaster-recovery.md](./disaster-recovery.md) |
 | **Release Worker** (direct) | http://localhost:8100 | JWT Bearer token |
 | MinIO Console | http://localhost:9001 | minio / minio_secret |
 | MinIO S3 API | http://localhost:9000 | minio / minio_secret |
@@ -140,6 +146,212 @@ aeroflow-frontend                  Up
 > **Note — Auth API trực tiếp vs qua Kong:**  
 > - **Kong (:8000):** JWT bắt buộc; plugin inject `X-User-Id`, `X-Tenant-Id`, `X-User-Roles` từ token → dùng cho mọi test production.  
 > - **Auth API direct (:8200):** Không qua JWT; headers phải truyền thủ công → chỉ dùng cho test/debug nội bộ.
+
+---
+
+## Kong admin hardening
+
+Kong's admin API used to bind `0.0.0.0:8001` inside the container and was
+exposed to the host on port `8900` via a port mapping. Anyone reaching the
+host or the Docker network could create routes, attach plugins, and rewrite
+JWT validation. There was no RBAC, no IP allowlist, and OSS Kong's admin
+endpoint does not natively accept auth plugins.
+
+This section describes the current hardened layout and the rollout path
+for further locking it down.
+
+### Current layout (after 2026-06-07)
+
+Three layers of defense, two active now and one opt-in:
+
+1. **No host port mapping.** The `8900:8001` mapping was removed. Curl from
+   the host machine to `http://localhost:8900` now connection-refuses. Admin
+   is no longer reachable from any external interface.
+2. **Isolated Docker network `kong-admin-net`.** Declared `internal: true`
+   so it has no upstream connectivity. Kong binds admin only to its
+   admin-net IP (`172.30.0.10:8001`). Containers on the default
+   `data-agent-network` see no admin port. Only services that explicitly
+   join `kong-admin-net` can reach admin:
+     - `auth-api` — calls admin from `auth_core._sync_kong()` for the IP
+       allowlist toggle and Kong service/route management
+     - `release-worker` — registers release routes
+     - `jwks-refresher` — rotates the JWT public-key plugin config
+
+   Other services (`workflow-runtime`, `kb-backend`, `flow-builder`,
+   `audit-bridge`, etc.) are NOT on admin-net. If one is compromised, it
+   cannot reach admin to escalate.
+3. **Optional: key-auth via Kong-fronting-Kong** (gated by env var
+   `ENABLE_ADMIN_KEY_AUTH=1` on the `kong-setup` compose runner — see
+   "Phase 3 rollout" below).
+   OSS Kong's admin endpoint doesn't accept plugins directly, so we expose
+   admin via a regular Kong route at `/_kong_admin` that proxies back to
+   the admin IP and runs `key-auth` + `ip-restriction` plugins. Services
+   then call `http://kong:8000/_kong_admin/<path>` with an `apikey` header
+   instead of the raw `http://172.30.0.10:8001/<path>`. Disabled by default
+   because flipping it on without also updating service env vars breaks
+   startup — see the rollout below.
+
+### Verification
+
+After `docker compose up -d` and `kong-setup.sh`, run:
+
+```powershell
+bash infra/scripts/verify_kong_admin_locked.sh
+```
+
+Exits 0 if all three checks pass (host refused, default-net refused,
+admin-net allowed). Non-zero = security regression OR stack broken;
+read the per-line output.
+
+Manual spot-check from the host:
+
+```powershell
+# Should fail — admin not host-reachable any more
+curl --max-time 3 http://localhost:8900/status
+
+# To inspect admin in dev, shell into Kong itself
+docker exec dataagent-kong curl -sf http://172.30.0.10:8001/status
+```
+
+### Phase 3 rollout — enabling key-auth
+
+1. In staging, bring up the stack and run setup with the flag:
+
+   ```powershell
+   docker compose -f docker/docker-compose.yml --profile setup run --rm `
+     -e ENABLE_ADMIN_KEY_AUTH=1 kong-setup
+   ```
+
+2. The script writes generated keys to `infra/certs/admin-keys.env`
+   (`chmod 600`, gitignored). Open the file:
+
+   ```text
+   KONG_ADMIN_API_KEY_AUTH_API=<random>
+   KONG_ADMIN_API_KEY_RELEASE_WORKER=<random>
+   KONG_ADMIN_API_KEY_JWKS_REFRESHER=<random>
+   ```
+
+3. Copy each variable into `.env` and update the relevant service env in
+   `docker/docker-compose.app.yml`:
+   - `auth-api`: add `KONG_ADMIN_API_KEY: ${KONG_ADMIN_API_KEY_AUTH_API}`
+     and change `KONG_ADMIN_URL` to `http://kong:8000/_kong_admin`.
+   - Similar for `release-worker` and `jwks-refresher`.
+4. Update the services' Python code to send `apikey: <key>` header on
+   every admin call. The auth-api `_sync_kong` block in
+   `services/auth-api/auth_core.py` is the largest caller — update there
+   first.
+5. Restart the stack. Run the verification script again. Expected: admin
+   still works from those three services (because they send the key),
+   still refused from default-net containers (because no key + no net).
+6. After verification, flip on in prod via the same flag.
+
+Key rotation is just re-running `kong-setup.sh` with the flag — it deletes
+existing keys and writes fresh ones to the keys file. Operators must then
+update `.env` and restart.
+
+### Why not RBAC (the Kong Enterprise path)?
+
+Kong Enterprise's RBAC plugin handles admin auth natively, no
+Kong-fronting-Kong trick needed. If/when the team adopts Enterprise:
+
+- Drop the `_kong_admin` proxy service/route entirely.
+- Enable `KONG_ENFORCE_RBAC=on` + define roles/permissions.
+- Wire services to use Kong-managed tokens instead of API keys.
+- Update this section to point at the new flow.
+
+The kong-admin-net network isolation (Phase 2) stays valuable in both
+worlds — it's defense-in-depth that doesn't depend on Kong's own auth.
+
+---
+
+## JWT audience + JWKS rotation grace period
+
+Previously the aeroflow-jwks Kong plugin accepted any RS256 token from the
+Keycloak realm, regardless of which client requested it. A token for the
+frontend could be replayed against `release-worker` or `auth-api`. Separately,
+the plugin invalidated its full JWKS cache the moment Keycloak rotated keys,
+causing a 401 spike for every token in flight.
+
+Both are addressed as of 2026-06-07.
+
+### Public URL vs network URL — two URLs for one Keycloak
+
+Keycloak in this stack is reachable via two different URLs depending on who
+is asking, and the wiring HAS to keep them straight:
+
+| Concept | URL in dev | Used by | Set via |
+| ------- | ---------- | ------- | ------- |
+| Public  | `http://localhost:8080` | browser, host-side curl, anything outside the compose network. Source of token's `iss` claim. | `KC_HOSTNAME_URL` on keycloak-node1/2 (env var, overridable via `KEYCLOAK_PUBLIC_URL`) |
+| Network | `http://aeroflow-keycloak-lb:8080` | Kong's JWKS fetch, jwks-refresher, audit-bridge, any service in the compose network | DNS alias on `keycloak-lb` service |
+
+The aeroflow-jwks plugin config holds BOTH:
+
+- `jwks_uri` = network URL (Kong has to reach Keycloak from inside the cluster)
+- `issuer` = public URL (matches what tokens actually carry in `iss`)
+
+Mixing them up surfaces as either "Issuer mismatch" (Kong validates against
+the network URL but tokens carry the public one) or connection-refused
+during JWKS fetch (Kong tries the public URL from inside the cluster).
+
+### Audience matrix
+
+Per-service `audience` is enforced by the plugin. Kong's setup script
+([infra/kong/kong-setup.sh](../infra/kong/kong-setup.sh)) installs:
+
+- aeroflow-backend service → `audience = aeroflow-backend`
+- auth-api service → `audience = auth-api`
+- release-worker service → `audience = release-worker`
+
+Keycloak's `aeroflow-frontend` client gets Audience protocol mappers (one per
+target) via [infra/keycloak/setup-audience-mappers.sh](../infra/keycloak/setup-audience-mappers.sh):
+
+```powershell
+docker compose -f docker/docker-compose.yml --profile setup run --rm `
+  keycloak-audience-setup
+```
+
+After running, tokens issued by `aeroflow-frontend` contain all three
+audiences in the `aud` claim. Kong's plugin checks the route's configured
+audience appears in that list. A token that's missing the audience for the
+called service gets `401 Audience mismatch`.
+
+### Rotation grace period
+
+The plugin's `grace_period` config (default 600s = 10 min) controls how
+long the previous signing key remains acceptable after Keycloak rotates.
+Implementation (see [handler.lua](../infra/kong/plugins/aeroflow-jwks/handler.lua)):
+
+- Cache TTL = `grace_period` (NOT `jwks_refresh_interval`, which becomes
+  cosmetic).
+- On every request: look up the token's `kid` in the cache.
+- If `kid` not found, lazy-merge: fetch fresh JWKS and union with existing
+  cache entries. Old keys stay valid until `grace_period` elapses without
+  any traffic referencing them.
+- This means: at rotation time, the FIRST request with the new `kid`
+  triggers a fresh fetch; old `kid` tokens still verify against cache for
+  the rest of grace_period.
+
+### Manual rotation test (procedural)
+
+The integration test ([tests/integration/test_jwt_audience.py](../tests/integration/test_jwt_audience.py))
+verifies audience matching but does NOT exercise rotation — that needs
+Keycloak admin API calls + timed assertions. Run this procedure manually:
+
+1. Login as `platform-admin` and capture a token. Call this **T_OLD**.
+2. Hit `/api/auth/health` with `Authorization: Bearer $T_OLD` — expect 200.
+3. Rotate Keycloak's `aeroflow` realm signing key:
+   - Keycloak admin UI → Realm Settings → Keys → Active keys → use the
+     three-dot menu → "Make passive" on current key. Or via admin API.
+4. Get a new token. Call this **T_NEW**.
+5. Hit `/api/auth/health` with `Authorization: Bearer $T_NEW` → expect 200.
+   (Plugin lazy-fetches new JWKS, gets new kid in cache.)
+6. **Within 9 minutes**, hit `/api/auth/health` with `Authorization: Bearer $T_OLD`
+   → expect 200 (old kid still in cache, grace period active).
+7. **After 11 minutes**, hit `/api/auth/health` with `Authorization: Bearer $T_OLD`
+   → expect 401 `No JWK for kid` (cache TTL expired, old key not refetched).
+
+If step 6 returns 401, the grace_period config isn't taking effect — check
+that the plugin was reinstalled by the latest `kong-setup.sh`.
 
 ---
 
@@ -248,8 +460,19 @@ SASL mechanism: **PLAIN** (không phải SCRAM-SHA-512)
 
 ## Bước 3 — Setup Kong (chạy một lần)
 
-```bash
-bash infra/kong/kong-setup.sh
+Kong admin API bị lock vào `kong-admin-net` (xem [Kong admin hardening](#kong-admin-hardening))
+nên KHÔNG chạy script từ host. Dùng compose-managed runner — container tạm
+join cả 2 network và chạy script bên trong:
+
+```powershell
+docker compose -f docker/docker-compose.yml --profile setup run --rm kong-setup
+```
+
+Hoặc với Phase 3 key-auth bật:
+
+```powershell
+docker compose -f docker/docker-compose.yml --profile setup run --rm `
+  -e ENABLE_ADMIN_KEY_AUTH=1 kong-setup
 ```
 
 Script tạo:
@@ -263,10 +486,12 @@ Script tạo:
 
 Nếu cert mTLS đã được tạo (`infra/certs/kong-client.crt` tồn tại), script sẽ tự đăng ký thêm.
 
-> **Lưu ý:** Mỗi khi rebuild Kong image (sau khi sửa `handler.lua`), cần restart Kong rồi chạy lại `kong-setup.sh`:
-> ```bash
-> docker compose build kong && docker compose up -d kong
-> bash infra/kong/kong-setup.sh
+> **Lưu ý:** Mỗi khi rebuild Kong image (sau khi sửa `handler.lua`), cần restart Kong rồi chạy lại setup:
+>
+> ```powershell
+> docker compose -f docker/docker-compose.yml build kong
+> docker compose -f docker/docker-compose.yml up -d kong
+> docker compose -f docker/docker-compose.yml --profile setup run --rm kong-setup
 > ```
 
 ---
@@ -1475,10 +1700,12 @@ docker compose down -v && docker compose up -d
 ### Kong aeroflow-jwks chặn requests sau rebuild Kong
 
 Sau khi sửa `handler.lua` và rebuild Kong, cần re-register plugins:
-```bash
-docker compose build kong && docker compose up -d kong
+
+```powershell
+docker compose -f docker/docker-compose.yml build kong
+docker compose -f docker/docker-compose.yml up -d kong
 # Đợi Kong healthy
-bash infra/kong/kong-setup.sh
+docker compose -f docker/docker-compose.yml --profile setup run --rm kong-setup
 ```
 
 ### Release-worker Kafka consumer không nhận message sau ACL setup muộn
@@ -1502,7 +1729,7 @@ docker compose up -d
 
 # Chờ healthy rồi setup
 bash infra/kafka/kafka-setup.sh
-bash infra/kong/kong-setup.sh
+docker compose -f docker/docker-compose.yml --profile setup run --rm kong-setup
 ```
 
 > Sau `down -v`, Keycloak import realm-export.json fresh → user passwords là: `platform-admin=Admin@123456`, `ai-engineer=Engineer@1234`, `executive-viewer=Viewer@123456`.

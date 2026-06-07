@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from auth_core import *
 from schemas import *
+from shared.db_context import get_tenant_db
 
 router = APIRouter()
 
@@ -21,6 +22,32 @@ def list_api_keys(
             return [_fmt_key(r) for r in cur.fetchall()]
     finally:
         conn.close()
+
+
+@router.get("/api/auth/api-keys/list-via-rls")
+def list_api_keys_via_rls(
+    db = Depends(get_tenant_db),
+    user: dict = Depends(require_role("platform-admin")),
+):
+    """RLS-only variant — same data, no WHERE clause in SQL.
+
+    PoC for the rollout in [P0 #2]: trust Postgres RLS to scope rows by
+    tenant rather than relying on every developer to remember `WHERE
+    tenant_id = ...`. The dep `get_tenant_db` opens a connection as
+    `app_user` and SETs `app.tenant_id` from the X-Tenant-Id header. The
+    SELECT below would return ALL tenants' rows on a superuser connection;
+    on app_user it returns only the caller's.
+
+    When all routes have migrated to this pattern, the legacy WHERE-based
+    sibling above can be retired.
+    """
+    with db.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            "SELECT id, name, key_prefix, scope, created_by, last_used_at, "
+            "expires_at, revoked_at, rotated_from, created_at "
+            "FROM api_keys ORDER BY created_at DESC"
+        )
+        return [_fmt_key(r) for r in cur.fetchall()]
 
 
 @router.post("/api/auth/api-keys", status_code=201)
