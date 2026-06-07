@@ -8,6 +8,17 @@ include:
 networks:
   default:
     name: data-agent-network
+  # Isolated network for Kong's admin API. `internal: true` cuts external
+  # connectivity entirely. Only containers that explicitly join this network
+  # can reach Kong admin. Static subnet so Kong can bind admin to a known IP.
+  # See docs/auth-runbook.md "Kong admin hardening" for rollout details.
+  kong-admin-net:
+    name: kong-admin-net
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
 
 volumes:
   postgres_data:

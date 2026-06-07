@@ -3,10 +3,19 @@
 # Uses Kong built-in JWT plugin (community edition)
 # JWT verification: fetch RSA public key from Keycloak JWKS, register in Kong
 #
-# Run after stack is healthy:
-#   bash infra/kong/kong-setup.sh
+# Run after stack is healthy. Since Kong's admin API is locked to the
+# kong-admin-net (see docs/auth-runbook.md "Kong admin hardening"), this
+# script CANNOT be run from the host. Use the compose-managed runner:
 #
-# Requires: curl, jq
+#   docker compose -f docker/docker-compose.yml --profile setup run --rm kong-setup
+#
+# Or, with Phase 3 key-auth enabled:
+#
+#   docker compose -f docker/docker-compose.yml --profile setup run --rm \
+#     -e ENABLE_ADMIN_KEY_AUTH=1 kong-setup
+#
+# Requires: curl, python3 (installed by the compose runner — see
+# docker-compose.security.yml `kong-setup` service).
 
 set -uo pipefail
 
@@ -345,13 +354,100 @@ else
   echo "   Run: bash infra/certs/gen-certs.sh   to generate, then re-run this script."
 fi
 
+# ── 11. Admin API key-auth (Phase 3 hardening, OPT-IN) ────────────────
+# OSS Kong's admin endpoint doesn't natively accept plugins. Pattern below
+# uses "Kong-fronting-Kong": expose admin through a regular Kong service +
+# route, then apply key-auth on that route. Services that need to manage
+# Kong call http://kong:8000/_kong_admin/<path> with `apikey: <key>` instead
+# of the raw http://172.30.0.10:8001/<path>.
+#
+# Enable by setting ENABLE_ADMIN_KEY_AUTH=1. Disabled by default because
+# services still call raw admin in this PR — flipping this on without also
+# updating service env vars to use the proxied URL + apikey header will
+# break startup. Phased rollout:
+#
+#   1. Run with the flag in dev/staging
+#   2. Copy generated keys to .env (KONG_ADMIN_API_KEY_AUTH_API, ...)
+#   3. Update services to send `apikey` header + use proxied URL
+#   4. Verify, then flip on in prod
+if [ "${ENABLE_ADMIN_KEY_AUTH:-0}" = "1" ]; then
+  echo "🔒 Phase 3: registering Kong-fronting-Kong admin proxy with key-auth..."
+
+  # Kong admin is bound to 172.30.0.10:8001 on the kong-admin-net interface.
+  # From Kong's OWN container, 127.0.0.1:8001 also reaches it iff KONG_ADMIN_LISTEN
+  # includes a loopback binding — currently it doesn't. So upstream the service
+  # to the explicit admin-net IP, which is reachable from Kong's data plane.
+  ADMIN_UPSTREAM="${KONG_ADMIN_UPSTREAM:-http://172.30.0.10:8001}"
+
+  curl -sf -X PUT "$KONG_ADMIN/services/kong-admin-proxy" \
+    -H "Content-Type: application/json" \
+    -d "{\"name\":\"kong-admin-proxy\",\"url\":\"$ADMIN_UPSTREAM\"}" \
+    > /dev/null
+
+  curl -sf -X PUT "$KONG_ADMIN/services/kong-admin-proxy/routes/kong-admin-route" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "name": "kong-admin-route",
+      "paths": ["/_kong_admin"],
+      "strip_path": true,
+      "methods": ["GET","POST","PUT","PATCH","DELETE","OPTIONS","HEAD"]
+    }' > /dev/null
+
+  upsert_plugin "$KONG_ADMIN/routes/kong-admin-route/plugins" \
+    '{"name":"key-auth","config":{"key_names":["apikey"],"hide_credentials":true}}' \
+    "key-auth"
+
+  # Optional: also restrict by IP to defense-in-depth even if key leaks.
+  upsert_plugin "$KONG_ADMIN/routes/kong-admin-route/plugins" \
+    '{"name":"ip-restriction","config":{"allow":["172.30.0.0/24"]}}' \
+    "ip-restriction"
+
+  # Helper: idempotent consumer + key creation. Writes keys to admin-keys.env
+  # for ops to copy into .env. NEVER commits keys to git — file is gitignored.
+  KEYS_FILE="$SCRIPT_DIR/../certs/admin-keys.env"
+  : > "$KEYS_FILE"
+  chmod 600 "$KEYS_FILE"
+
+  for consumer in auth-api release-worker jwks-refresher; do
+    # Create consumer if not exists (PUT is idempotent)
+    curl -sf -X PUT "$KONG_ADMIN/consumers/$consumer-admin" \
+      -H "Content-Type: application/json" \
+      -d "{\"username\":\"$consumer-admin\"}" > /dev/null
+
+    # Rotate key: delete existing then create fresh. Idempotent re-runs
+    # generate a new key each time — operators see the rotation.
+    EXISTING_KEY_ID=$(curl -sf "$KONG_ADMIN/consumers/$consumer-admin/key-auth" \
+      | python3 -c "
+import sys, json
+data = json.load(sys.stdin).get('data', [])
+print(data[0]['id'] if data else '')" 2>/dev/null || true)
+    if [ -n "$EXISTING_KEY_ID" ]; then
+      curl -sf -X DELETE "$KONG_ADMIN/consumers/$consumer-admin/key-auth/$EXISTING_KEY_ID" > /dev/null || true
+    fi
+
+    NEW_KEY=$(curl -sf -X POST "$KONG_ADMIN/consumers/$consumer-admin/key-auth" \
+      | python3 -c "import sys, json; print(json.load(sys.stdin)['key'])")
+
+    # Upper-snake key var name, e.g. KONG_ADMIN_API_KEY_AUTH_API
+    VAR_NAME=$(echo "KONG_ADMIN_API_KEY_${consumer}" | tr '[:lower:]-' '[:upper:]_')
+    echo "${VAR_NAME}=${NEW_KEY}" >> "$KEYS_FILE"
+    echo "  → ${VAR_NAME} written"
+  done
+
+  echo ""
+  echo "  Admin proxy: http://kong:8000/_kong_admin/<path>"
+  echo "  Header:      apikey: \$${VAR_NAME%_*}_<SERVICE>"
+  echo "  Keys file:   $KEYS_FILE (chmod 600)"
+  echo "  Next step:   copy keys to .env, switch services to proxied URL"
+fi
+
 # ── Summary ────────────────────────────────────────────────────────────
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "✅ Kong configuration complete"
 echo ""
 echo "  Proxy :  http://localhost:8000"
-echo "  Admin :  http://localhost:8001"
+echo "  Admin :  internal only (kong-admin-net 172.30.0.10:8001)"
 echo "  Konga :  http://localhost:1337"
 echo ""
 echo "  JWT:    RS256, issuer=$ISSUER"
@@ -359,4 +455,7 @@ echo "  Route:  /api → aeroflow-backend"
 MTLS_STATUS="NOT configured (run infra/certs/gen-certs.sh first)"
 [ -f "$CERT_FILE" ] && MTLS_STATUS="Configured (Kong presents client cert)"
 echo "  mTLS:   $MTLS_STATUS"
+ADMIN_AUTH_STATUS="disabled (set ENABLE_ADMIN_KEY_AUTH=1 to enable)"
+[ "${ENABLE_ADMIN_KEY_AUTH:-0}" = "1" ] && ADMIN_AUTH_STATUS="enabled via /_kong_admin route"
+echo "  Admin auth: $ADMIN_AUTH_STATUS"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

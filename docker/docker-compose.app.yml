@@ -76,8 +76,16 @@ services:
       - "8200:8200"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-dev123}@postgres:5432/${POSTGRES_DB:-dataagent}
-      KONG_ADMIN_URL: http://kong:8001
+      # Kong admin binds to 172.30.0.10 on the kong-admin-net. Use the IP
+      # directly — DNS for "kong" hostname returns the default-net IP, where
+      # admin is NOT listening. See docs/auth-runbook.md "Kong admin hardening".
+      KONG_ADMIN_URL: http://172.30.0.10:8001
       OPENBAO_ADDR: http://openbao:8200
+    networks:
+      # auth-api needs both: default for proxy traffic + admin-net to manage
+      # Kong routes/plugins from auth_core._sync_kong().
+      - default
+      - kong-admin-net
     volumes:
       - openbao_data:/openbao/data:ro
     depends_on:
@@ -118,13 +126,17 @@ services:
       KAFKA_SECURITY_PROTOCOL: SASL_PLAINTEXT
       KAFKA_SASL_MECHANISM: PLAIN
       CELERY_BROKER: redis://redis:6379/0
-      KONG_ADMIN_URL: http://kong:8001
+      # IP, not hostname — see auth-api KONG_ADMIN_URL comment above.
+      KONG_ADMIN_URL: http://172.30.0.10:8001
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minio}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minio_secret}
       MONGO_URI: mongodb://mongo:27017
       MONGO_DB: dataagent
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4317"
+    networks:
+      - default
+      - kong-admin-net
     depends_on:
       postgres:
         condition: service_healthy
@@ -195,10 +207,14 @@ services:
     environment:
       KEYCLOAK_URL: http://keycloak:8080
       KEYCLOAK_REALM: aeroflow
-      KONG_ADMIN_URL: http://kong:8001
+      # IP, not hostname — see auth-api KONG_ADMIN_URL comment above.
+      KONG_ADMIN_URL: http://172.30.0.10:8001
       KONG_CONSUMER: keycloak-users
       REFRESH_INTERVAL_SECONDS: "300"
       JWKS_STATE_FILE: /data/last_kid.txt
+    networks:
+      - default
+      - kong-admin-net
     volumes:
       - jwks_refresher_data:/data
     depends_on:

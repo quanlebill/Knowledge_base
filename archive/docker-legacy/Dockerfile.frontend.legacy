@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.4
 # ── Stage 1: Build ────────────────────────────────────────────────────────────
 FROM node:20-slim AS builder
 
@@ -18,7 +19,21 @@ RUN npm run build
 FROM nginx:alpine
 
 COPY --from=builder /build/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Inlined SPA static config (was root nginx.conf — removed when stack moved off
+# the legacy image). Keeps this archived Dockerfile self-contained so a
+# forensic rebuild from the repo root still works.
+COPY <<'EOF' /etc/nginx/conf.d/default.conf
+server {
+    listen 80;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+EOF
 
 EXPOSE 80
 # LEGACY ONLY - archived frontend image

@@ -13,7 +13,7 @@ const HA_NODES = [
 ];
 
 const HA_COMPONENTS = [
-  { component: 'Load Balancer', detail: 'HAProxy / Nginx — health check /health/ready', ok: true },
+  { component: 'Load Balancer', detail: 'HAProxy — health check /health/ready', ok: true },
   { component: 'Session Sync', detail: 'Infinispan distributed cache (built-in Keycloak)', ok: true },
   { component: 'Backing Store', detail: 'PostgreSQL self-hosted (shared by both nodes)', ok: true },
   { component: 'JWKS Grace Period', detail: 'Kong cache 60s grace when Keycloak unreachable', ok: true },

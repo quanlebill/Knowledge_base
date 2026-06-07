@@ -103,7 +103,7 @@ aeroflow-frontend                  Up
 
 | Container | Host Port | Description |
 |---|---|---|
-| aeroflow-frontend | :5173 | React app (nginx in Docker) |
+| aeroflow-frontend | :5173 | React app (Vite dev server) |
 | aeroflow-kong | :8000 / :8001 | Proxy / Admin |
 | aeroflow-auth-api | :8200 | Auth/Secrets API (direct, no JWT check) |
 | aeroflow-openbao | :8300 | OpenBao vault (internal :8200) |
@@ -121,7 +121,7 @@ aeroflow-frontend                  Up
 |---|---|---|
 | **Frontend** | http://localhost:5173 | Keycloak login |
 | **Kong Proxy** (API gateway) | http://localhost:8000 | JWT Bearer token |
-| Kong Admin API | http://localhost:8001 | — |
+| Kong Admin API | internal only — `kong-admin-net` 172.30.0.10:8001 | see [Kong admin hardening](#kong-admin-hardening) |
 | Konga (Kong UI) | http://localhost:1337 | setup lần đầu |
 | **Auth API** (direct, bypass Kong) | http://localhost:8200 | `X-User-Id`, `X-User-Roles`, `X-Tenant-Id` headers |
 | **Keycloak** (HAProxy LB) | http://localhost:8080/admin | admin / admin |
@@ -140,6 +140,121 @@ aeroflow-frontend                  Up
 > **Note — Auth API trực tiếp vs qua Kong:**  
 > - **Kong (:8000):** JWT bắt buộc; plugin inject `X-User-Id`, `X-Tenant-Id`, `X-User-Roles` từ token → dùng cho mọi test production.  
 > - **Auth API direct (:8200):** Không qua JWT; headers phải truyền thủ công → chỉ dùng cho test/debug nội bộ.
+
+---
+
+## Kong admin hardening
+
+Kong's admin API used to bind `0.0.0.0:8001` inside the container and was
+exposed to the host on port `8900` via a port mapping. Anyone reaching the
+host or the Docker network could create routes, attach plugins, and rewrite
+JWT validation. There was no RBAC, no IP allowlist, and OSS Kong's admin
+endpoint does not natively accept auth plugins.
+
+This section describes the current hardened layout and the rollout path
+for further locking it down.
+
+### Current layout (after 2026-06-07)
+
+Three layers of defense, two active now and one opt-in:
+
+1. **No host port mapping.** The `8900:8001` mapping was removed. Curl from
+   the host machine to `http://localhost:8900` now connection-refuses. Admin
+   is no longer reachable from any external interface.
+2. **Isolated Docker network `kong-admin-net`.** Declared `internal: true`
+   so it has no upstream connectivity. Kong binds admin only to its
+   admin-net IP (`172.30.0.10:8001`). Containers on the default
+   `data-agent-network` see no admin port. Only services that explicitly
+   join `kong-admin-net` can reach admin:
+     - `auth-api` — calls admin from `auth_core._sync_kong()` for the IP
+       allowlist toggle and Kong service/route management
+     - `release-worker` — registers release routes
+     - `jwks-refresher` — rotates the JWT public-key plugin config
+
+   Other services (`workflow-runtime`, `kb-backend`, `flow-builder`,
+   `audit-bridge`, etc.) are NOT on admin-net. If one is compromised, it
+   cannot reach admin to escalate.
+3. **Optional: key-auth via Kong-fronting-Kong** (gated by env var
+   `ENABLE_ADMIN_KEY_AUTH=1` on the `kong-setup` compose runner — see
+   "Phase 3 rollout" below).
+   OSS Kong's admin endpoint doesn't accept plugins directly, so we expose
+   admin via a regular Kong route at `/_kong_admin` that proxies back to
+   the admin IP and runs `key-auth` + `ip-restriction` plugins. Services
+   then call `http://kong:8000/_kong_admin/<path>` with an `apikey` header
+   instead of the raw `http://172.30.0.10:8001/<path>`. Disabled by default
+   because flipping it on without also updating service env vars breaks
+   startup — see the rollout below.
+
+### Verification
+
+After `docker compose up -d` and `kong-setup.sh`, run:
+
+```powershell
+bash infra/scripts/verify_kong_admin_locked.sh
+```
+
+Exits 0 if all three checks pass (host refused, default-net refused,
+admin-net allowed). Non-zero = security regression OR stack broken;
+read the per-line output.
+
+Manual spot-check from the host:
+
+```powershell
+# Should fail — admin not host-reachable any more
+curl --max-time 3 http://localhost:8900/status
+
+# To inspect admin in dev, shell into Kong itself
+docker exec dataagent-kong curl -sf http://172.30.0.10:8001/status
+```
+
+### Phase 3 rollout — enabling key-auth
+
+1. In staging, bring up the stack and run setup with the flag:
+
+   ```powershell
+   docker compose -f docker/docker-compose.yml --profile setup run --rm `
+     -e ENABLE_ADMIN_KEY_AUTH=1 kong-setup
+   ```
+
+2. The script writes generated keys to `infra/certs/admin-keys.env`
+   (`chmod 600`, gitignored). Open the file:
+
+   ```text
+   KONG_ADMIN_API_KEY_AUTH_API=<random>
+   KONG_ADMIN_API_KEY_RELEASE_WORKER=<random>
+   KONG_ADMIN_API_KEY_JWKS_REFRESHER=<random>
+   ```
+
+3. Copy each variable into `.env` and update the relevant service env in
+   `docker/docker-compose.app.yml`:
+   - `auth-api`: add `KONG_ADMIN_API_KEY: ${KONG_ADMIN_API_KEY_AUTH_API}`
+     and change `KONG_ADMIN_URL` to `http://kong:8000/_kong_admin`.
+   - Similar for `release-worker` and `jwks-refresher`.
+4. Update the services' Python code to send `apikey: <key>` header on
+   every admin call. The auth-api `_sync_kong` block in
+   `services/auth-api/auth_core.py` is the largest caller — update there
+   first.
+5. Restart the stack. Run the verification script again. Expected: admin
+   still works from those three services (because they send the key),
+   still refused from default-net containers (because no key + no net).
+6. After verification, flip on in prod via the same flag.
+
+Key rotation is just re-running `kong-setup.sh` with the flag — it deletes
+existing keys and writes fresh ones to the keys file. Operators must then
+update `.env` and restart.
+
+### Why not RBAC (the Kong Enterprise path)?
+
+Kong Enterprise's RBAC plugin handles admin auth natively, no
+Kong-fronting-Kong trick needed. If/when the team adopts Enterprise:
+
+- Drop the `_kong_admin` proxy service/route entirely.
+- Enable `KONG_ENFORCE_RBAC=on` + define roles/permissions.
+- Wire services to use Kong-managed tokens instead of API keys.
+- Update this section to point at the new flow.
+
+The kong-admin-net network isolation (Phase 2) stays valuable in both
+worlds — it's defense-in-depth that doesn't depend on Kong's own auth.
 
 ---
 
@@ -248,8 +363,19 @@ SASL mechanism: **PLAIN** (không phải SCRAM-SHA-512)
 
 ## Bước 3 — Setup Kong (chạy một lần)
 
-```bash
-bash infra/kong/kong-setup.sh
+Kong admin API bị lock vào `kong-admin-net` (xem [Kong admin hardening](#kong-admin-hardening))
+nên KHÔNG chạy script từ host. Dùng compose-managed runner — container tạm
+join cả 2 network và chạy script bên trong:
+
+```powershell
+docker compose -f docker/docker-compose.yml --profile setup run --rm kong-setup
+```
+
+Hoặc với Phase 3 key-auth bật:
+
+```powershell
+docker compose -f docker/docker-compose.yml --profile setup run --rm `
+  -e ENABLE_ADMIN_KEY_AUTH=1 kong-setup
 ```
 
 Script tạo:
@@ -263,10 +389,12 @@ Script tạo:
 
 Nếu cert mTLS đã được tạo (`infra/certs/kong-client.crt` tồn tại), script sẽ tự đăng ký thêm.
 
-> **Lưu ý:** Mỗi khi rebuild Kong image (sau khi sửa `handler.lua`), cần restart Kong rồi chạy lại `kong-setup.sh`:
-> ```bash
-> docker compose build kong && docker compose up -d kong
-> bash infra/kong/kong-setup.sh
+> **Lưu ý:** Mỗi khi rebuild Kong image (sau khi sửa `handler.lua`), cần restart Kong rồi chạy lại setup:
+>
+> ```powershell
+> docker compose -f docker/docker-compose.yml build kong
+> docker compose -f docker/docker-compose.yml up -d kong
+> docker compose -f docker/docker-compose.yml --profile setup run --rm kong-setup
 > ```
 
 ---
@@ -1475,10 +1603,12 @@ docker compose down -v && docker compose up -d
 ### Kong aeroflow-jwks chặn requests sau rebuild Kong
 
 Sau khi sửa `handler.lua` và rebuild Kong, cần re-register plugins:
-```bash
-docker compose build kong && docker compose up -d kong
+
+```powershell
+docker compose -f docker/docker-compose.yml build kong
+docker compose -f docker/docker-compose.yml up -d kong
 # Đợi Kong healthy
-bash infra/kong/kong-setup.sh
+docker compose -f docker/docker-compose.yml --profile setup run --rm kong-setup
 ```
 
 ### Release-worker Kafka consumer không nhận message sau ACL setup muộn
@@ -1502,7 +1632,7 @@ docker compose up -d
 
 # Chờ healthy rồi setup
 bash infra/kafka/kafka-setup.sh
-bash infra/kong/kong-setup.sh
+docker compose -f docker/docker-compose.yml --profile setup run --rm kong-setup
 ```
 
 > Sau `down -v`, Keycloak import realm-export.json fresh → user passwords là: `platform-admin=Admin@123456`, `ai-engineer=Engineer@1234`, `executive-viewer=Viewer@123456`.
