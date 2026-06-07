@@ -158,7 +158,7 @@ services:
   kong-migration:
     build:
       context: ../..
-      dockerfile: ../../Dockerfile.kong
+      dockerfile: infra/kong/Dockerfile
     container_name: dataagent-kong-migration
     command: kong migrations bootstrap
     environment:
@@ -180,7 +180,7 @@ services:
   kong:
     build:
       context: ../..
-      dockerfile: ../../Dockerfile.kong
+      dockerfile: infra/kong/Dockerfile
     container_name: dataagent-kong
     restart: unless-stopped
     environment:
@@ -219,7 +219,7 @@ services:
   kafka:
     build:
       context: ../..
-      dockerfile: ../../Dockerfile.kafka
+      dockerfile: infra/kafka/Dockerfile
     container_name: dataagent-kafka
     restart: unless-stopped
     environment:
@@ -426,7 +426,7 @@ services:
   kb-backend:
     build:
       context: ../..
-      dockerfile: ../../Dockerfile.kb
+      dockerfile: services/kb-backend/Dockerfile
     container_name: dataagent-kb-backend
     restart: unless-stopped
     ports:
@@ -608,7 +608,7 @@ services:
   frontend:
     build:
       context: ../..
-      dockerfile: ../../Dockerfile.dev
+      dockerfile: docker/Dockerfile.dev
     container_name: dataagent-frontend
     restart: unless-stopped
     volumes:
@@ -628,3 +628,6 @@ services:
         condition: service_healthy
     networks:
       - data-agent-network
+# LEGACY ONLY - archived Docker stack snapshot
+# Do not use for current local, dev, or test workflows.
+# Supported entrypoints live under docker/docker-compose*.yml.

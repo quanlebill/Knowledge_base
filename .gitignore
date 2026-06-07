@@ -17,6 +17,7 @@ data_agent.egg-info/
 .idea/
 
 docs/
+logs/
 CLAUDE.md
 .claude/settings.json
 .claude/settings.local.json

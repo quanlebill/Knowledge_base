@@ -1,196 +1,155 @@
 # GTEL Data Agent
 
-Multi-tenant AI agent platform — LangGraph + LightRAG + LiteLLM.
+Multi-tenant AI agent platform with workflow runtime, flow builder, auth and gateway services, storage layers, and observability tooling.
 
-## Yêu cầu
+## Docker First
 
-- Docker + Docker Compose v2
-- API keys: `GEMINI_API_KEY`, `OPENAI_API_KEY` (embedding)
+The active Docker entrypoints live under [docker/](</C:/Users/Admin/Documents/Data Agent/Data-Agent/docker>).
 
-## Cài đặt lần đầu
+For the current refactored stack summary, see [docs/current-docker-stack.md](</C:/Users/Admin/Documents/Data Agent/Data-Agent/docs/current-docker-stack.md>).
 
-```bash
-cp .env.example .env
-# Điền GEMINI_API_KEY và OPENAI_API_KEY vào .env
+Use these files as the current source of truth:
+
+- [docker/docker-compose.yml](</C:/Users/Admin/Documents/Data Agent/Data-Agent/docker/docker-compose.yml>): aggregate entrypoint that includes the stack layers
+- [docker/docker-compose.storage.yml](</C:/Users/Admin/Documents/Data Agent/Data-Agent/docker/docker-compose.storage.yml>): storage layer
+- [docker/docker-compose.security.yml](</C:/Users/Admin/Documents/Data Agent/Data-Agent/docker/docker-compose.security.yml>): auth, gateway, and secret-management layer
+- [docker/docker-compose.messaging.yml](</C:/Users/Admin/Documents/Data Agent/Data-Agent/docker/docker-compose.messaging.yml>): messaging layer
+- [docker/docker-compose.observability.yml](</C:/Users/Admin/Documents/Data Agent/Data-Agent/docker/docker-compose.observability.yml>): observability and AI-support layer
+- [docker/docker-compose.app.yml](</C:/Users/Admin/Documents/Data Agent/Data-Agent/docker/docker-compose.app.yml>): application and frontend layer
+- [docker/docker-compose.local.yml](</C:/Users/Admin/Documents/Data Agent/Data-Agent/docker/docker-compose.local.yml>): local developer override
+- [docker/docker-compose.dev.yml](</C:/Users/Admin/Documents/Data Agent/Data-Agent/docker/docker-compose.dev.yml>): shared dev server override
+- [docker/docker-compose.test.yml](</C:/Users/Admin/Documents/Data Agent/Data-Agent/docker/docker-compose.test.yml>): test-only PostgreSQL fixture
+
+This repository still contains older Docker artifacts and legacy docs. For now, do not use root-level `docker compose up` commands that omit the `docker/` paths.
+
+## Prerequisites
+
+- Docker Desktop with Docker Compose v2
+- A local [`.env`](</C:/Users/Admin/Documents/Data Agent/Data-Agent/.env>) created from [`.env.example`](</C:/Users/Admin/Documents/Data Agent/Data-Agent/.env.example>)
+
+Bootstrap once:
+
+```powershell
+Copy-Item .env.example .env
 ```
 
-## Chạy
+Then fill in the required values in `.env`, especially:
 
-**Local** — máy cá nhân:
+- `OPENAI_API_KEY`
+- `GEMINI_API_KEY`
+- `KAFKA_ADMIN_PASSWORD`
+- `AUDIT_BRIDGE_KAFKA_PASSWORD`
+- `AUDIT_CONSUMER_KAFKA_PASSWORD`
+- `RELEASE_WORKER_KAFKA_PASSWORD`
 
-```bash
-docker-compose -f docker-compose.yml -f docker-compose.local.yml down
-docker-compose -f docker-compose.yml -f docker-compose.local.yml up -d
+## Official Docker Commands
+
+### Local machine
+
+Start or refresh the full local stack:
+
+```powershell
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.local.yml up -d --build
 ```
 
-**Dev server** — server dev chung của team:
+Stop the local stack and keep data:
 
-```bash
-docker-compose -f docker-compose.yml -f docker-compose.dev.yml down
-docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+```powershell
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.local.yml down
 ```
 
-> `down` trước `up` để tránh lỗi network orphan khi Docker Desktop restart. Migrate + seed chạy tự động mỗi lần. Seed dùng `ON CONFLICT DO NOTHING` — không bị duplicate.
+Stop the local stack and remove volumes:
 
-## Services
-
-| Service | URL | Mô tả |
-|---|---|---|
-| workflow-runtime | http://localhost:8001 | FastAPI — LangGraph pipeline |
-| LiteLLM | http://localhost:4000 | LLM gateway |
-| Langfuse | http://localhost:3001 | Observability UI |
-| PostgreSQL | localhost:5432 | `dataagent` / `langfuse` / `litellm` |
-| MongoDB | localhost:27017 | Flow nodes/edges |
-| Redis | localhost:6379 | Cache + pub/sub |
-
-## Migration
-
-Migrations chạy tự động khi `docker-compose up`. Để chạy tay:
-
-```bash
-cd services/workflow-runtime
-alembic upgrade head        # apply tất cả migrations
-alembic downgrade -1        # rollback 1 bước
-alembic revision -m "tên"  # tạo migration mới
+```powershell
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.local.yml down -v
 ```
 
-## Test API
+### Shared dev server
 
-```bash
-# Health check
-curl http://localhost:8001/health
+Start the shared dev shape:
 
-# Chat
-curl -X POST http://localhost:8001/api/conversations/run \
-  -H "Content-Type: application/json" \
-  -d '{"query": "xin chào", "agent_id": "00000000-0000-0000-0000-000000000030"}'
-
-# Test LiteLLM
-curl http://localhost:4000/v1/models \
-  -H "Authorization: Bearer sk-dev"
+```powershell
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up -d --build
 ```
 
-## Dừng
+Stop the shared dev shape:
 
-```bash
-docker-compose down          # giữ data
-docker-compose down -v       # xóa luôn volume (reset DB)
+```powershell
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml down
 ```
 
----
+### Compose validation
 
-# AeroFlow AI OS — Knowledge Base UI
+Check the resolved local config:
 
-Enterprise Knowledge Operations Center for RAG orchestration. Manages document ingestion, chunking, embedding, conflict resolution, policy management, and graph-based retrieval across Bronze / Silver / Gold data layers.
-
-## Stack
-
-| Layer | Technology |
-|---|---|
-| Frontend | React 19 + TypeScript + Vite (port 3000) |
-| Backend | FastAPI + Python 3.13 (port 8000) |
-| Database | PostgreSQL 16 (internal only) |
-| Vector DB | Qdrant (internal only) |
-| Graph DB | Neo4j (internal only) |
-
-## Run with Docker (Recommended)
-
-**Prerequisites:** Docker Desktop
-
-### 1. Start all services
-
-```bash
-docker compose up -d
+```powershell
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.local.yml config
 ```
 
-This starts 5 containers: `frontend`, `backend`, `postgres`, `qdrant`, `neo4j`.
+Check the resolved shared-dev config:
 
-### 2. Seed the database
-
-On first run the database is empty. Seed it with sample data:
-
-```bash
-docker exec aeroflow-backend bash -c "cd /app && python testing/mockdata/seed.py"
+```powershell
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml config
 ```
 
-> Run this once. Re-running will duplicate data — reset the volume first if needed (see below).
+### Test fixture
 
-### 3. Open the app
+Start the isolated PostgreSQL fixture used by connector and Alembic tests:
 
+```powershell
+docker compose -f docker/docker-compose.test.yml up -d
 ```
-http://localhost:3000
+
+Stop the test fixture:
+
+```powershell
+docker compose -f docker/docker-compose.test.yml down -v
 ```
 
-## Service URLs
+## Runtime Shape
+
+The current base stack includes these service groups:
+
+- Storage: PostgreSQL, MongoDB, Redis, MinIO
+- Search and graph: Qdrant, Neo4j
+- Security and gateway: Keycloak, Kong, OpenBao
+- Messaging: Kafka
+- Observability and AI tooling: LiteLLM, Langfuse, Jaeger, Elasticsearch
+- Application services: workflow-runtime, flow-builder, kb-backend, auth-api, minio-service, release-worker, audit-bridge, audit-consumer, jwks-refresher
+- Frontend: Vite dev server on `5173`
+
+The local and shared-dev overrides both add:
+
+- `migrate`
+- `seed`
+
+Separate intent-specific Docker paths also exist:
+
+- Test-only: `docker/docker-compose.test.yml`
+- Standalone model experiment: `model/ollama/docker/docker-compose.yml`
+- Legacy archive: `archive/docker-legacy/`
+
+## Common URLs
 
 | Service | URL |
 |---|---|
-| Frontend | http://localhost:3000 |
-| Backend API | http://localhost:8000 |
-| API Docs (Swagger) | http://localhost:8000/docs |
+| Frontend | http://localhost:5173 |
+| Kong proxy | http://localhost:8000 |
+| Kong admin | http://localhost:8900 |
+| workflow-runtime | http://localhost:8001 |
+| flow-builder | http://localhost:8002 |
+| kb-backend | http://localhost:8050 |
+| auth-api | http://localhost:8200 |
+| minio-service | http://localhost:8400 |
+| Keycloak | http://localhost:8080 |
+| Langfuse | http://localhost:3001 |
+| LiteLLM | http://localhost:4000 |
+| MinIO console | http://localhost:9001 |
+| Jaeger | http://localhost:16686 |
 
-> PostgreSQL, Qdrant, and Neo4j are internal to the Docker network and not accessible from the host.
+## Notes
 
-## Rebuild after code changes
-
-```bash
-docker compose build backend && docker compose up -d backend
-docker compose build frontend && docker compose up -d frontend
-docker compose build && docker compose up -d
-```
-
-## Reset the database
-
-```bash
-docker compose down -v
-docker compose up -d
-docker exec aeroflow-backend bash -c "cd /app && python testing/mockdata/seed.py"
-```
-
-## Run Locally (without Docker)
-
-**Prerequisites:** Node.js, Python 3.13, running PostgreSQL / Qdrant / Neo4j instances
-
-### Frontend
-
-```bash
-npm install
-npm run dev
-npm run build
-```
-
-### Backend
-
-```bash
-pip install -e .
-cd server
-uvicorn main:app --reload --port 8000
-```
-
-## Project Structure
-
-```
-├── src/                        # React frontend
-│   ├── components/knowledge/   # Knowledge Operations Center UI
-│   └── lib/
-│       └── mockApi.ts
-│
-├── server/                     # FastAPI backend
-│   ├── main.py
-│   ├── router.py
-│   └── basemodel/
-│
-├── services/
-│   ├── database_connector/
-│   └── parse_for_ui/
-│
-├── database/
-│   └── Postgres/init.sql
-│
-├── testing/
-│   └── mockdata/seed.py
-│
-├── docker-compose.yml
-├── Dockerfile
-└── Dockerfile.frontend
-```
+- `docker compose config` requires a real [`.env`](</C:/Users/Admin/Documents/Data Agent/Data-Agent/.env>) because several services reference `env_file: ../.env`.
+- `docker/docker-compose.yml` is now an aggregate compose entrypoint that includes the layer-specific stack files under `docker/`.
+- `docker/docker-compose.test.yml` is the supported test fixture for the refactored Docker stack.
+- Renaming the compose files to `compose*.yml` is deferred to a later step so we can first align docs, scripts, and build contexts safely.
