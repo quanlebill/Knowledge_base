@@ -151,5 +151,5 @@ Separate intent-specific Docker paths also exist:
 
 - `docker compose config` requires a real [`.env`](</C:/Users/Admin/Documents/Data Agent/Data-Agent/.env>) because several services reference `env_file: ../.env`.
 - `docker/docker-compose.yml` is now an aggregate compose entrypoint that includes the layer-specific stack files under `docker/`.
-- `docker/docker-compose.test.yml` is the supported test fixture; `testing/postgres_connector/docker-compose.yml` remains only as a compatibility copy during the transition.
+- `docker/docker-compose.test.yml` is the supported test fixture for the refactored Docker stack.
 - Renaming the compose files to `compose*.yml` is deferred to a later step so we can first align docs, scripts, and build contexts safely.
