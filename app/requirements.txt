@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+pydantic
+sqlalchemy[asyncio]
+asyncpg
+alembic
+neo4j
+qdrant-client

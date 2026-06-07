@@ -1,0 +1,38 @@
+services:
+  llama:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    expose:
+      - "11434"
+    volumes:
+      - ../weights:/models
+    environment:
+      MODEL_PATH: /models/model.gguf
+      N_CTX: "4096"
+      N_GPU_LAYERS: "0"
+      N_THREADS: "8"
+      KV_CACHE_TYPE: f16
+      USE_MMAP: "true"
+      USE_MLOCK: "true"
+      VERBOSE: "false"
+    deploy:
+      resources:
+        limits:
+          cpus: "8"
+          memory: 6G
+        reservations:
+          memory: 1G
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    cap_add:
+      - IPC_LOCK
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:11434/health')" ]
+      interval: 30s
+      timeout: 10s
+      start_period: 90s
+      retries: 3

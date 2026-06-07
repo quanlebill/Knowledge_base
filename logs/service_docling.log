@@ -1,0 +1,630 @@
+2026-06-02 17:19:33 | INFO     | services.docling | Parsing 'attention_is_all_you_need.pdf' with Docling
+2026-06-02 17:20:22 | INFO     | services.docling | Docling produced 48957 chars of markdown for 'attention_is_all_you_need.pdf'
+2026-06-02 17:20:22 | INFO     | services.docling | Extracted 4 table(s) from 'attention_is_all_you_need.pdf'
+2026-06-02 17:20:22 | INFO     | services.docling | Produced 39 chunk(s) from 'attention_is_all_you_need.pdf'
+2026-06-02 17:31:25 | INFO     | services.docling | Parsing 'no_tables.md' with Docling
+2026-06-02 17:31:25 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 17:31:25 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 17:31:25 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 17:31:25 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 17:31:25 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 17:31:25 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 17:31:25 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 17:31:25 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 17:31:44 | INFO     | services.docling | Parsing 'no_tables.md' with Docling
+2026-06-02 17:32:11 | INFO     | services.docling | Parsing 'no_tables.md' with Docling
+2026-06-02 17:32:16 | INFO     | services.docling | Docling produced 460 chars of markdown for 'no_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Extracted 0 table(s) from 'no_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Produced 4 chunk(s) from 'no_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 17:32:16 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 17:32:16 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 17:32:16 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 17:32:16 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 17:32:16 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 17:32:16 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 17:32:16 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 17:32:16 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Produced 6 chunk(s) from 'sample_with_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 17:32:16 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 17:32:16 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 17:32:35 | INFO     | services.docling | Parsing 'attention_is_all_you_need.pdf' with Docling
+2026-06-02 17:33:14 | INFO     | services.docling | Docling produced 48957 chars of markdown for 'attention_is_all_you_need.pdf'
+2026-06-02 17:33:14 | INFO     | services.docling | Extracted 4 table(s) from 'attention_is_all_you_need.pdf'
+2026-06-02 17:33:14 | INFO     | services.docling | Produced 39 chunk(s) from 'attention_is_all_you_need.pdf'
+2026-06-02 18:42:19 | INFO     | services.docling | Docling DocumentConverter loaded
+2026-06-02 18:42:19 | INFO     | services.docling | Parsing 'no_tables.md' with Docling
+2026-06-02 18:42:19 | INFO     | services.docling | Docling produced 460 chars of markdown for 'no_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Extracted 0 table(s) from 'no_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Produced 4 chunk(s) from 'no_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 18:42:19 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 18:42:19 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 18:42:19 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 18:42:19 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 18:42:19 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 18:42:19 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 18:42:19 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 18:42:19 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Produced 6 chunk(s) from 'sample_with_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 18:42:19 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 18:42:19 | INFO     | services.docling | Parsing 'attention_is_all_you_need.pdf' with Docling
+2026-06-02 18:43:08 | INFO     | services.docling | Docling produced 48957 chars of markdown for 'attention_is_all_you_need.pdf'
+2026-06-02 18:43:08 | INFO     | services.docling | Extracted 4 table(s) from 'attention_is_all_you_need.pdf'
+2026-06-02 18:43:08 | INFO     | services.docling | Produced 39 chunk(s) from 'attention_is_all_you_need.pdf'
+2026-06-02 18:43:09 | INFO     | services.docling | Docling client closed
+2026-06-02 18:54:43 | INFO     | services.docling | Docling DocumentConverter loaded (4 worker thread(s))
+2026-06-02 18:54:43 | INFO     | services.docling | Parsing 'no_tables.md' with Docling
+2026-06-02 18:54:43 | INFO     | services.docling | Docling produced 460 chars of markdown for 'no_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Extracted 0 table(s) from 'no_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Produced 4 chunk(s) from 'no_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 18:54:43 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 18:54:43 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 18:54:43 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 18:54:43 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 18:54:43 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 18:54:43 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 18:54:43 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 18:54:43 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Produced 6 chunk(s) from 'sample_with_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 18:54:43 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 18:54:43 | INFO     | services.docling | Parsing 'attention_is_all_you_need.pdf' with Docling
+2026-06-02 18:55:12 | INFO     | services.docling | Docling produced 48957 chars of markdown for 'attention_is_all_you_need.pdf'
+2026-06-02 18:55:12 | INFO     | services.docling | Extracted 4 table(s) from 'attention_is_all_you_need.pdf'
+2026-06-02 18:55:12 | INFO     | services.docling | Produced 39 chunk(s) from 'attention_is_all_you_need.pdf'
+2026-06-02 18:55:12 | INFO     | services.docling | Docling client closed
+2026-06-02 21:39:59 | INFO     | services.docling | Docling DocumentConverter loaded (2 worker thread(s))
+2026-06-02 21:39:59 | INFO     | services.docling | Parsing 'attention_is_all_you_need.pdf' with Docling
+2026-06-02 21:40:44 | INFO     | services.docling | Docling produced 48957 chars of markdown for 'attention_is_all_you_need.pdf'
+2026-06-02 21:40:44 | INFO     | services.docling | Extracted 4 table(s) from 'attention_is_all_you_need.pdf'
+2026-06-02 21:40:44 | INFO     | services.docling | Produced 39 chunk(s) from 'attention_is_all_you_need.pdf'
+2026-06-02 21:40:44 | INFO     | services.docling | Docling client closed
+2026-06-02 21:41:57 | INFO     | services.docling | Docling DocumentConverter loaded (2 worker thread(s))
+2026-06-02 21:41:57 | INFO     | services.docling | Parsing 'attention_is_all_you_need.pdf' with Docling
+2026-06-02 21:42:32 | INFO     | services.docling | Docling produced 48957 chars of markdown for 'attention_is_all_you_need.pdf'
+2026-06-02 21:42:32 | INFO     | services.docling | Extracted 4 table(s) from 'attention_is_all_you_need.pdf'
+2026-06-02 21:42:32 | INFO     | services.docling | Produced 39 chunk(s) from 'attention_is_all_you_need.pdf'
+2026-06-02 21:42:32 | INFO     | services.docling | Docling client closed
+2026-06-02 23:07:29 | INFO     | services.docling | Merged split table 'Table 1': +1 continuation row(s)
+2026-06-02 23:07:29 | INFO     | services.docling | Merged split table 'Table 1': +1 continuation row(s)
+2026-06-02 23:07:29 | INFO     | services.docling | Merged split table 'T': +1 continuation row(s)
+2026-06-02 23:07:29 | INFO     | services.docling | Merged split table 'T': +1 continuation row(s)
+2026-06-02 23:07:29 | INFO     | services.docling | Docling process pool ready (use_vlm=False)
+2026-06-02 23:07:34 | INFO     | services.docling | Worker process ready (use_vlm=False)
+2026-06-02 23:07:34 | INFO     | services.docling | Parsing 'no_tables.md' with Docling
+2026-06-02 23:07:34 | INFO     | services.docling | Extracted 0 table(s) from 'no_tables.md'
+2026-06-02 23:07:34 | INFO     | services.docling | Docling produced 460 chars of markdown for 'no_tables.md'
+2026-06-02 23:07:34 | INFO     | services.docling | Produced 4 chunk(s) from 'no_tables.md'
+2026-06-02 23:07:34 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:07:34 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:07:34 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:07:34 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:07:34 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:07:34 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:07:34 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:07:34 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:07:34 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:07:34 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:07:34 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:07:34 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:07:34 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:07:34 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:07:34 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:07:34 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:07:34 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:07:34 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:07:34 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:07:34 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:07:34 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:07:34 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:07:34 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:07:34 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:07:34 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:07:34 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:07:34 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:07:34 | INFO     | services.docling | Produced 6 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:07:34 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:07:34 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:07:34 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:07:34 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:07:35 | INFO     | services.docling | Docling client closed
+2026-06-02 23:07:41 | INFO     | services.docling | Docling process pool ready (use_vlm=False)
+2026-06-02 23:07:46 | INFO     | services.docling | Worker process ready (use_vlm=False)
+2026-06-02 23:07:46 | INFO     | services.docling | Parsing 'attention_is_all_you_need.pdf' with Docling
+2026-06-02 23:08:16 | INFO     | services.docling | Extracted 4 table(s) from 'attention_is_all_you_need.pdf'
+2026-06-02 23:08:16 | INFO     | services.docling | Docling produced 48957 chars of markdown for 'attention_is_all_you_need.pdf'
+2026-06-02 23:08:16 | INFO     | services.docling | Produced 41 chunk(s) from 'attention_is_all_you_need.pdf'
+2026-06-02 23:08:17 | INFO     | services.docling | Docling client closed
+2026-06-02 23:11:27 | INFO     | services.docling | Merged split table 'Table 1': +1 continuation row(s)
+2026-06-02 23:11:27 | INFO     | services.docling | Merged split table 'Table 1': +1 continuation row(s)
+2026-06-02 23:11:27 | INFO     | services.docling | Merged split table 'T': +1 continuation row(s)
+2026-06-02 23:11:27 | INFO     | services.docling | Merged split table 'T': +1 continuation row(s)
+2026-06-02 23:11:27 | INFO     | services.docling | Docling process pool ready (use_vlm=False)
+2026-06-02 23:11:32 | INFO     | services.docling | Worker process ready (use_vlm=False)
+2026-06-02 23:11:32 | INFO     | services.docling | Parsing 'no_tables.md' with Docling
+2026-06-02 23:11:32 | INFO     | services.docling | Extracted 0 table(s) from 'no_tables.md'
+2026-06-02 23:11:32 | INFO     | services.docling | Docling produced 460 chars of markdown for 'no_tables.md'
+2026-06-02 23:11:32 | INFO     | services.docling | Produced 4 chunk(s) from 'no_tables.md'
+2026-06-02 23:11:32 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:11:32 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:11:32 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:11:32 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:11:32 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:11:32 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:11:32 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:11:32 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:11:32 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:11:32 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:11:32 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:11:32 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:11:32 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:11:32 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:11:32 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:11:32 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:11:32 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:11:32 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:11:32 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:11:32 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:11:32 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:11:32 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:11:32 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:11:32 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:11:32 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:11:32 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:11:32 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:11:32 | INFO     | services.docling | Produced 6 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:11:32 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:11:32 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:11:32 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:11:32 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:11:33 | INFO     | services.docling | Docling client closed
+2026-06-02 23:14:36 | INFO     | services.docling | Docling process pool ready (use_vlm=False)
+2026-06-02 23:14:37 | INFO     | services.docling | Docling process pool ready (use_vlm=False)
+2026-06-02 23:14:54 | INFO     | services.docling | Docling process pool ready (use_vlm=False)
+2026-06-02 23:14:59 | INFO     | services.docling | Worker process ready (use_vlm=False)
+2026-06-02 23:14:59 | INFO     | services.docling | Parsing 'attention_is_all_you_need.pdf' with Docling
+2026-06-02 23:15:28 | INFO     | services.docling | Extracted 4 table(s) from 'attention_is_all_you_need.pdf'
+2026-06-02 23:15:29 | INFO     | services.docling | Docling produced 48957 chars of markdown for 'attention_is_all_you_need.pdf'
+2026-06-02 23:15:29 | INFO     | services.docling | Produced 41 chunk(s) from 'attention_is_all_you_need.pdf'
+2026-06-02 23:15:29 | INFO     | services.docling | Docling client closed
+2026-06-02 23:22:05 | INFO     | services.docling | Merged split table 'Table 1': +1 continuation row(s)
+2026-06-02 23:22:05 | INFO     | services.docling | Merged split table 'Table 1': +1 continuation row(s)
+2026-06-02 23:22:05 | INFO     | services.docling | Merged split table 'T': +1 continuation row(s)
+2026-06-02 23:22:05 | INFO     | services.docling | Merged split table 'T': +1 continuation row(s)
+2026-06-02 23:22:05 | INFO     | services.docling | Docling process pool ready (use_vlm=False)
+2026-06-02 23:22:10 | INFO     | services.docling | Worker process ready (use_vlm=False)
+2026-06-02 23:22:10 | INFO     | services.docling | Parsing 'no_tables.md' with Docling
+2026-06-02 23:22:10 | INFO     | services.docling | Extracted 0 table(s) from 'no_tables.md'
+2026-06-02 23:22:10 | INFO     | services.docling | Docling produced 460 chars of markdown for 'no_tables.md'
+2026-06-02 23:22:10 | INFO     | services.docling | Produced 4 chunk(s) from 'no_tables.md'
+2026-06-02 23:22:10 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:22:10 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:22:10 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:22:10 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:22:10 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:22:10 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:22:10 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:22:10 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:22:10 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:22:10 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:22:10 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:22:10 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:22:10 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:22:10 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:22:10 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:22:10 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:22:10 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:22:10 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:22:10 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:22:10 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:22:10 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:22:10 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:22:10 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:22:10 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:22:10 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:22:10 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:22:10 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:22:10 | INFO     | services.docling | Produced 6 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:22:10 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:22:10 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:22:10 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:22:10 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:22:11 | INFO     | services.docling | Docling client closed
+2026-06-02 23:26:27 | INFO     | services.docling | Merged split table 'Table 1': +1 continuation row(s)
+2026-06-02 23:26:27 | INFO     | services.docling | Merged split table 'Table 1': +1 continuation row(s)
+2026-06-02 23:26:27 | INFO     | services.docling | Merged split table 'T': +1 continuation row(s)
+2026-06-02 23:26:27 | INFO     | services.docling | Merged split table 'T': +1 continuation row(s)
+2026-06-02 23:26:27 | INFO     | services.docling | Docling process pool ready (use_vlm=False)
+2026-06-02 23:26:33 | INFO     | services.docling | Worker process ready (use_vlm=False)
+2026-06-02 23:26:33 | INFO     | services.docling | Parsing 'no_tables.md' with Docling
+2026-06-02 23:26:33 | INFO     | services.docling | Extracted 0 table(s) from 'no_tables.md'
+2026-06-02 23:26:33 | INFO     | services.docling | Docling produced 460 chars of markdown for 'no_tables.md'
+2026-06-02 23:26:33 | INFO     | services.docling | Produced 4 chunk(s) from 'no_tables.md'
+2026-06-02 23:26:33 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:26:33 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:26:33 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:26:33 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:26:33 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:26:33 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:26:33 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:26:33 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:26:33 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:26:33 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:26:33 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:26:33 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:26:33 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:26:33 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:26:33 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:26:33 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:26:33 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:26:33 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:26:33 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:26:33 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:26:33 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:26:33 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:26:33 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:26:33 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:26:33 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:26:33 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:26:33 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:26:33 | INFO     | services.docling | Produced 6 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:26:33 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:26:33 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:26:33 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:26:33 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:26:34 | INFO     | services.docling | Docling client closed
+2026-06-02 23:28:46 | INFO     | services.docling | Merged split table 'Table 1': +1 continuation row(s)
+2026-06-02 23:28:46 | INFO     | services.docling | Merged split table 'Table 1': +1 continuation row(s)
+2026-06-02 23:28:46 | INFO     | services.docling | Merged split table 'T': +1 continuation row(s)
+2026-06-02 23:28:46 | INFO     | services.docling | Merged split table 'T': +1 continuation row(s)
+2026-06-02 23:28:46 | INFO     | services.docling | Docling process pool ready (use_vlm=False)
+2026-06-02 23:28:52 | INFO     | services.docling | Worker process ready (use_vlm=False)
+2026-06-02 23:28:52 | INFO     | services.docling | Parsing 'no_tables.md' with Docling
+2026-06-02 23:28:52 | INFO     | services.docling | Extracted 0 table(s) from 'no_tables.md'
+2026-06-02 23:28:52 | INFO     | services.docling | Docling produced 460 chars of markdown for 'no_tables.md'
+2026-06-02 23:28:52 | INFO     | services.docling | Produced 4 chunk(s) from 'no_tables.md'
+2026-06-02 23:28:52 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:28:52 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:28:52 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:28:52 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:28:52 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:28:52 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:28:52 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:28:52 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:28:52 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:28:52 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:28:52 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:28:52 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:28:52 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:28:52 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:28:52 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:28:52 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:28:52 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:28:52 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:28:52 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:28:52 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:28:52 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:28:52 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:28:52 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:28:52 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:28:52 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:28:52 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:28:52 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:28:52 | INFO     | services.docling | Produced 6 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:28:52 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:28:52 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:28:52 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:28:52 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:28:53 | INFO     | services.docling | Docling client closed
+2026-06-02 23:30:09 | INFO     | services.docling | Merged split table 'Table 1': +1 continuation row(s)
+2026-06-02 23:30:09 | INFO     | services.docling | Merged split table 'Table 1': +1 continuation row(s)
+2026-06-02 23:30:09 | INFO     | services.docling | Merged split table 'T': +1 continuation row(s)
+2026-06-02 23:30:09 | INFO     | services.docling | Merged split table 'T': +1 continuation row(s)
+2026-06-02 23:30:09 | INFO     | services.docling | Docling process pool ready (use_vlm=False)
+2026-06-02 23:30:15 | INFO     | services.docling | Worker process ready (use_vlm=False)
+2026-06-02 23:30:15 | INFO     | services.docling | Parsing 'no_tables.md' with Docling
+2026-06-02 23:30:15 | INFO     | services.docling | Extracted 0 table(s) from 'no_tables.md'
+2026-06-02 23:30:15 | INFO     | services.docling | Docling produced 460 chars of markdown for 'no_tables.md'
+2026-06-02 23:30:15 | INFO     | services.docling | Produced 4 chunk(s) from 'no_tables.md'
+2026-06-02 23:30:15 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:30:15 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:30:15 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:30:15 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:30:15 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:30:15 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:30:15 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:30:15 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:30:15 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:30:15 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:30:15 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:30:15 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:30:15 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:30:15 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:30:15 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:30:15 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:30:15 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:30:15 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:30:15 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:30:15 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:30:15 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:30:15 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:30:15 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:30:15 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:30:15 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:30:15 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:30:15 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:30:15 | INFO     | services.docling | Produced 6 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:30:15 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:30:15 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:30:15 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:30:15 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:30:16 | INFO     | services.docling | Docling client closed
+2026-06-02 23:40:52 | INFO     | services.docling | Merged split table 'Table 1': +1 continuation row(s)
+2026-06-02 23:40:52 | INFO     | services.docling | Merged split table 'Table 1': +1 continuation row(s)
+2026-06-02 23:40:52 | INFO     | services.docling | Merged split table 'T': +1 continuation row(s)
+2026-06-02 23:40:52 | INFO     | services.docling | Merged split table 'T': +1 continuation row(s)
+2026-06-02 23:40:52 | INFO     | services.docling | Docling process pool ready (use_vlm=False)
+2026-06-02 23:40:57 | INFO     | services.docling | Worker process ready (use_vlm=False)
+2026-06-02 23:40:57 | INFO     | services.docling | Parsing 'no_tables.md' with Docling
+2026-06-02 23:40:57 | INFO     | services.docling | Extracted 0 table(s) from 'no_tables.md'
+2026-06-02 23:40:57 | INFO     | services.docling | Docling produced 460 chars of markdown for 'no_tables.md'
+2026-06-02 23:40:57 | INFO     | services.docling | Produced 4 chunk(s) from 'no_tables.md'
+2026-06-02 23:40:57 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:40:57 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:40:57 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:40:57 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:40:57 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:40:57 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:40:57 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:40:57 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:40:57 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:40:57 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:40:57 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:40:57 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:40:57 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:40:57 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:40:57 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:40:57 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:40:57 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:40:57 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:40:57 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:40:57 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:40:57 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:40:57 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:40:57 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:40:57 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:40:57 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:40:57 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:40:57 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:40:57 | INFO     | services.docling | Produced 6 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:40:57 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:40:57 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:40:57 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:40:57 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:40:58 | INFO     | services.docling | Docling client closed
+2026-06-02 23:41:30 | INFO     | services.docling | Merged split table 'Table 1': +1 continuation row(s)
+2026-06-02 23:41:30 | INFO     | services.docling | Merged split table 'Table 1': +1 continuation row(s)
+2026-06-02 23:41:30 | INFO     | services.docling | Merged split table 'T': +1 continuation row(s)
+2026-06-02 23:41:30 | INFO     | services.docling | Merged split table 'T': +1 continuation row(s)
+2026-06-02 23:41:30 | INFO     | services.docling | Docling process pool ready (use_vlm=False)
+2026-06-02 23:41:35 | INFO     | services.docling | Worker process ready (use_vlm=False)
+2026-06-02 23:41:35 | INFO     | services.docling | Parsing 'no_tables.md' with Docling
+2026-06-02 23:41:35 | INFO     | services.docling | Extracted 0 table(s) from 'no_tables.md'
+2026-06-02 23:41:35 | INFO     | services.docling | Docling produced 460 chars of markdown for 'no_tables.md'
+2026-06-02 23:41:35 | INFO     | services.docling | Produced 4 chunk(s) from 'no_tables.md'
+2026-06-02 23:41:35 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:41:35 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:41:35 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:41:35 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:41:35 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:41:35 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:41:35 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:41:35 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:41:35 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:41:35 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:41:35 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:41:35 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:41:35 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:41:35 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:41:35 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:41:35 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:41:35 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:41:35 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:41:35 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:41:35 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:41:35 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:41:35 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:41:35 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:41:35 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:41:35 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:41:35 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:41:35 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:41:35 | INFO     | services.docling | Produced 6 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:41:35 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:41:35 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:41:35 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:41:35 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:41:36 | INFO     | services.docling | Docling client closed
+2026-06-02 23:44:39 | INFO     | services.docling | Merged split table 'Table 1': +1 continuation row(s)
+2026-06-02 23:44:39 | INFO     | services.docling | Merged split table 'Table 1': +1 continuation row(s)
+2026-06-02 23:44:39 | INFO     | services.docling | Merged split table 'T': +1 continuation row(s)
+2026-06-02 23:44:39 | INFO     | services.docling | Merged split table 'T': +1 continuation row(s)
+2026-06-02 23:44:39 | INFO     | services.docling | Docling process pool ready (use_vlm=False)
+2026-06-02 23:44:45 | INFO     | services.docling | Worker process ready (use_vlm=False)
+2026-06-02 23:44:45 | INFO     | services.docling | Parsing 'no_tables.md' with Docling
+2026-06-02 23:44:45 | INFO     | services.docling | Extracted 0 table(s) from 'no_tables.md'
+2026-06-02 23:44:45 | INFO     | services.docling | Docling produced 460 chars of markdown for 'no_tables.md'
+2026-06-02 23:44:45 | INFO     | services.docling | Produced 4 chunk(s) from 'no_tables.md'
+2026-06-02 23:44:45 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:44:45 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:44:45 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:44:45 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:44:45 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:44:45 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:44:45 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:44:45 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:44:45 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:44:45 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:44:45 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:44:45 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:44:45 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:44:45 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:44:45 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:44:45 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:44:45 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:44:45 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:44:45 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:44:45 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:44:45 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:44:45 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:44:45 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:44:45 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:44:45 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:44:45 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:44:45 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:44:45 | INFO     | services.docling | Produced 6 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:44:45 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:44:45 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:44:45 | INFO     | services.docling | Docling produced 1442 chars of markdown for 'sample_with_tables.md'
+2026-06-02 23:44:45 | INFO     | services.docling | Produced 5 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:44:46 | INFO     | services.docling | Docling client closed
+2026-06-02 23:57:27 | INFO     | services.docling | Merged split table 'Table 1': +1 continuation row(s)
+2026-06-02 23:57:27 | INFO     | services.docling | Merged split table 'T': +1 continuation row(s)
+2026-06-02 23:57:27 | INFO     | services.docling | Merged split table 'T': +1 continuation row(s)
+2026-06-02 23:57:27 | INFO     | services.docling | Merged split table 'T': +1 continuation row(s)
+2026-06-02 23:57:27 | INFO     | services.docling | Docling process pool ready (use_vlm=False)
+2026-06-02 23:57:32 | INFO     | services.docling | Worker process ready (use_vlm=False)
+2026-06-02 23:57:32 | INFO     | services.docling | Parsing 'no_tables.md' with Docling
+2026-06-02 23:57:33 | INFO     | services.docling | Extracted 0 table(s) from 'no_tables.md'
+2026-06-02 23:57:33 | INFO     | services.docling | Produced 4 chunk(s) from 'no_tables.md'
+2026-06-02 23:57:33 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:57:33 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:57:33 | INFO     | services.docling | Produced 8 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:57:33 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:57:33 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:57:33 | INFO     | services.docling | Produced 8 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:57:33 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:57:33 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:57:33 | INFO     | services.docling | Produced 8 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:57:33 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:57:33 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:57:33 | INFO     | services.docling | Produced 8 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:57:33 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:57:33 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:57:33 | INFO     | services.docling | Produced 8 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:57:33 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:57:33 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:57:33 | INFO     | services.docling | Produced 8 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:57:33 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-02 23:57:33 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-02 23:57:33 | INFO     | services.docling | Produced 8 chunk(s) from 'sample_with_tables.md'
+2026-06-02 23:57:33 | INFO     | services.docling | Docling client closed
+2026-06-03 00:12:17 | INFO     | services.docling | Merged split table 'Table 1': +1 continuation row(s)
+2026-06-03 00:12:17 | INFO     | services.docling | Merged split table 'T': +1 continuation row(s)
+2026-06-03 00:12:17 | INFO     | services.docling | Merged split table 'T': +1 continuation row(s)
+2026-06-03 00:12:17 | INFO     | services.docling | Merged split table 'T': +1 continuation row(s)
+2026-06-03 00:12:17 | INFO     | services.docling | Docling process pool ready (use_vlm=False)
+2026-06-03 00:12:23 | INFO     | services.docling | Worker process ready (use_vlm=False)
+2026-06-03 00:12:23 | INFO     | services.docling | Parsing 'no_tables.md' with Docling
+2026-06-03 00:12:23 | INFO     | services.docling | Extracted 0 table(s) from 'no_tables.md'
+2026-06-03 00:12:23 | INFO     | services.docling | Produced 4 chunk(s) from 'no_tables.md'
+2026-06-03 00:12:23 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-03 00:12:23 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-03 00:12:23 | INFO     | services.docling | Produced 8 chunk(s) from 'sample_with_tables.md'
+2026-06-03 00:12:23 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-03 00:12:23 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-03 00:12:23 | INFO     | services.docling | Produced 8 chunk(s) from 'sample_with_tables.md'
+2026-06-03 00:12:23 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-03 00:12:23 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-03 00:12:23 | INFO     | services.docling | Produced 8 chunk(s) from 'sample_with_tables.md'
+2026-06-03 00:12:23 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-03 00:12:23 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-03 00:12:23 | INFO     | services.docling | Produced 8 chunk(s) from 'sample_with_tables.md'
+2026-06-03 00:12:23 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-03 00:12:23 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-03 00:12:23 | INFO     | services.docling | Produced 8 chunk(s) from 'sample_with_tables.md'
+2026-06-03 00:12:23 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-03 00:12:23 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-03 00:12:23 | INFO     | services.docling | Produced 8 chunk(s) from 'sample_with_tables.md'
+2026-06-03 00:12:23 | INFO     | services.docling | Parsing 'sample_with_tables.md' with Docling
+2026-06-03 00:12:23 | INFO     | services.docling | Extracted 2 table(s) from 'sample_with_tables.md'
+2026-06-03 00:12:23 | INFO     | services.docling | Produced 8 chunk(s) from 'sample_with_tables.md'
+2026-06-03 00:12:23 | INFO     | services.docling | Parsing 'attention_is_all_you_need.pdf' with Docling
+2026-06-03 00:13:00 | INFO     | services.docling | Extracted 4 table(s) from 'attention_is_all_you_need.pdf'
+2026-06-03 00:13:00 | INFO     | services.docling | Produced 47 chunk(s) from 'attention_is_all_you_need.pdf'
+2026-06-03 00:13:02 | INFO     | services.docling | Docling client closed

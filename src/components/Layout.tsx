@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAppState } from '../AppStateContext';
+import { useAuth } from '../lib/AuthProvider';
 import { NAV_ITEMS, ROLES, ENVIRONMENTS, MODULE_SUB_ITEMS, SubNavItem } from '../constants';
 import {
   Search, Bell, LogOut, Cpu, LayoutGrid, ChevronDown, Terminal,
@@ -34,9 +35,9 @@ const PALETTE_GROUPS = [
     { label: 'Workflow Engine',     module: 'ai-runtime', sub: 'WORKFLOWS' },
   ]},
   { category: 'Deployment', items: [
-    { label: 'Release Pipeline',    module: 'release-management', sub: 'PIPELINE' },
-    { label: 'Validation Center',   module: 'release-management', sub: 'VALIDATION' },
-    { label: 'Rollback Center',     module: 'release-management', sub: 'ROLLBACK' },
+    { label: 'Deployments',    module: 'release-management', sub: 'DEPLOYMENTS' },
+    { label: 'Release History', module: 'release-management', sub: 'HISTORY'     },
+    { label: 'Rollback Center', module: 'release-management', sub: 'ROLLBACK'    },
   ]},
 ];
 
@@ -286,6 +287,7 @@ const TopBar = ({
   onSearchOpen: () => void;
 }) => {
   const { role, setRole, tenant, setTenant, user, isExpertMode, setIsExpertMode } = useAppState();
+  const { logout } = useAuth();
 
   return (
     <header className="h-14 bg-white border-b border-[#D6C79F] px-4 lg:px-5 flex items-center justify-between shrink-0 z-20">
@@ -389,6 +391,13 @@ const TopBar = ({
           <div className="w-8 h-8 rounded-full bg-[#111111] flex items-center justify-center text-[#D9B86C] text-[12px] font-bold shrink-0 border border-[#B88719]">
             {user.name?.[0] ?? 'A'}
           </div>
+          <button
+            onClick={logout}
+            title="Sign out"
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-[#3F3F3F] hover:text-[#9F1D1D] hover:bg-[#FEE2E2] border border-transparent hover:border-[#FCA5A5] transition-colors"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
       </div>
     </header>
@@ -398,6 +407,7 @@ const TopBar = ({
 /* ─── Mobile Full-Screen Drawer ───────────────────────────────────── */
 const MobileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
   const { role, industry, user, activeModule, navigate, subTab, setSubTab } = useAppState();
+  const { logout } = useAuth();
 
   const filtered = NAV_ITEMS.filter(item => {
     const roleMatch = item.roles.includes(role);
@@ -498,7 +508,10 @@ const MobileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => voi
                   <div className="text-[10px] text-[#5F5F5F]">{role.replace(/_/g, ' ')}</div>
                 </div>
               </div>
-              <button className="w-full flex items-center gap-2 px-3 py-2 text-[#3F3F3F] hover:text-[#111111] hover:bg-[#F8EBC4] rounded-xl text-xs font-medium transition-colors border border-transparent hover:border-[#D6C79F]">
+              <button
+                onClick={logout}
+                className="w-full flex items-center gap-2 px-3 py-2 text-[#3F3F3F] hover:text-[#111111] hover:bg-[#F8EBC4] rounded-xl text-xs font-medium transition-colors border border-transparent hover:border-[#D6C79F]"
+              >
                 <LogOut className="w-3.5 h-3.5" />
                 Sign out
               </button>

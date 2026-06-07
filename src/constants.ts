@@ -43,6 +43,9 @@ import {
   ShieldHalf,
   BookOpen,
   Code,
+  MessageSquare,
+  MessageCircle,
+  ScrollText,
 } from 'lucide-react';
 import { Role, Industry, NavItem } from './types';
 
@@ -50,7 +53,7 @@ export const NAV_ITEMS: NavItem[] = [
   // Core Modules
   { id: 'dashboard',          label: 'Executive Pulse',      icon: LayoutDashboard, roles: ['EXECUTIVE', 'PLATFORM_ADMIN'] },
   { id: 'knowledge-ops',      label: 'Knowledge Base',       icon: Database,        roles: ['PLATFORM_ADMIN', 'AI_ENGINEER'] },
-  { id: 'ai-runtime',         label: 'AI Runtime',           icon: Bot,             roles: ['AI_ENGINEER', 'PLATFORM_ADMIN', 'BUSINESS_OPERATOR'] },
+  { id: 'ai-runtime',         label: 'AI Runtime',           icon: Bot,             roles: ['AI_ENGINEER', 'PLATFORM_ADMIN'] },
   { id: 'operations-center',  label: 'Operations Center',    icon: Activity,        roles: ['PLATFORM_ADMIN', 'AI_ENGINEER'] },
   { id: 'release-management', label: 'Deployment Center',    icon: Zap,             roles: ['AI_ENGINEER', 'PLATFORM_ADMIN'] },
   { id: 'governance',         label: 'Governance & Audit',   icon: ShieldCheck,     roles: ['PLATFORM_ADMIN', 'EXECUTIVE'] },
@@ -59,7 +62,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'national-ops', label: 'National Ops', icon: Globe, roles: ['EXECUTIVE', 'PLATFORM_ADMIN'], industry: 'GOVERNMENT' },
 
   // System
-  { id: 'settings', label: 'Settings', icon: Settings, roles: ['PLATFORM_ADMIN', 'AI_ENGINEER', 'BUSINESS_OPERATOR', 'EXECUTIVE'] },
+  { id: 'settings', label: 'Settings', icon: Settings, roles: ['PLATFORM_ADMIN', 'AI_ENGINEER', 'EXECUTIVE'] },
 ];
 
 export interface SubNavItem {
@@ -78,27 +81,25 @@ export const MODULE_SUB_ITEMS: Record<string, SubNavItem[]> = {
   'dashboard': [],
 
   'knowledge-ops': [
-    { id: 'FLEET',      label: 'Fleet Overview',      icon: Database },
-    { id: 'CONNECTORS', label: 'Register Connectors', icon: Globe },
-    { id: 'INGEST',     label: 'Ingest Knowledge',    icon: Plus,        comingSoon: false },
-    { id: 'INVENTORY',  label: 'Bronze · Silver · Gold', icon: Layers },
-    { id: 'PIPELINES',  label: 'Job Center',          icon: Activity },
-    { id: 'CONFLICTS',  label: 'Conflict Manager',    icon: ShieldAlert, badge: 12 },
-    { id: 'GRAPH',      label: 'Knowledge Graph',     icon: Network },
-    { id: 'PLAYGROUND', label: 'Playground',          icon: Sparkles },
-    { id: 'EMBEDDINGS', label: 'Embedding Mgmt',      icon: Hash },
-    { id: 'GOVERNANCE', label: 'Audit & Lineage',     icon: ShieldCheck },
+    { id: 'FLEET',     label: 'Fleet Overview', icon: Database },
+    { id: 'INVENTORY', label: 'Data Layers',    icon: Layers },
+    { id: 'KNOWLEDGE', label: 'Knowledge Hub',  icon: Network },
+    { id: 'CONFLICTS', label: 'Conflicts',      icon: ShieldAlert, badge: 12 },
+    { id: 'POLICY',    label: 'Policies',       icon: ShieldCheck },
   ],
 
   'ai-runtime': [
-    { id: 'AGENTS',     label: 'Agent Registry',  icon: Bot },
-    { id: 'CLI',        label: 'CLI',             icon: Terminal },
-    { id: 'NEW_AGENT',  label: 'New Agent',       icon: Plus },
-    { id: 'CONFIG',     label: 'Config Registry', icon: Sliders },
-    { id: 'TRACES',     label: 'Recent Traces',   icon: History },
-    { id: 'PROVISION',  label: 'Quick Provision', icon: Zap },
-    { id: 'RUNS',       label: 'Run Registry',    icon: Activity },
-    { id: 'WORKFLOWS',  label: 'Workflow Engine', icon: Layers },
+    { id: 'PLAYGROUND',    label: 'Playground',      icon: MessageSquare },
+    { id: 'AGENTS',        label: 'Agent Registry',  icon: Bot },
+    { id: 'NEW_AGENT',     label: 'New Agent',       icon: Plus },
+    { id: 'WORKFLOWS',     label: 'Workflow Engine', icon: Layers },
+    { id: 'CONVERSATIONS', label: 'Conversations',   icon: MessageCircle },
+    { id: 'LOGS',          label: 'Logs',            icon: ScrollText },
+    { id: 'CLI',           label: 'CLI',             icon: Terminal },
+    { id: 'CONFIG',        label: 'Config Registry', icon: Sliders },
+    { id: 'TRACES',        label: 'Recent Traces',   icon: History },
+    { id: 'PROVISION',     label: 'Quick Provision', icon: Zap },
+    { id: 'RUNS',          label: 'Run Registry',    icon: Activity },
   ],
 
   'operations-center': [
@@ -109,14 +110,9 @@ export const MODULE_SUB_ITEMS: Record<string, SubNavItem[]> = {
   ],
 
   'release-management': [
-    { id: 'OVERVIEW',   label: 'Overview',             icon: LayoutGrid },
-    { id: 'PIPELINE',   label: 'Release Pipeline',     icon: Rocket },
-    { id: 'PACKAGE',    label: 'Package Builder',      icon: Package },
-    { id: 'ENV',        label: 'Environment Mgmt',     icon: Server },
-    { id: 'VALIDATION', label: 'Validation Center',    icon: ShieldCheck },
-    { id: 'ROLLBACK',   label: 'Rollback Center',      icon: RefreshCcw },
-    { id: 'HISTORY',    label: 'Release History',      icon: History },
-    { id: 'DRIFT',      label: 'Drift Detection',      icon: AlertTriangle },
+    { id: 'DEPLOYMENTS', label: 'Deployments',    icon: Rocket     },
+    { id: 'HISTORY',     label: 'Release History', icon: History    },
+    { id: 'ROLLBACK',    label: 'Rollback Center', icon: RefreshCcw },
   ],
 
   'governance': [
@@ -154,10 +150,9 @@ export const INDUSTRIES = [
 ];
 
 export const ROLES = [
-  { id: 'PLATFORM_ADMIN',    label: 'Platform Admin' },
-  { id: 'AI_ENGINEER',       label: 'AI Engineer' },
-  { id: 'BUSINESS_OPERATOR', label: 'Business Operator' },
-  { id: 'EXECUTIVE',         label: 'Executive' },
+  { id: 'PLATFORM_ADMIN', label: 'Platform Admin' },
+  { id: 'AI_ENGINEER',    label: 'AI Engineer' },
+  { id: 'EXECUTIVE',      label: 'Executive' },
 ];
 
 export const ENVIRONMENTS: { id: string }[] = [
