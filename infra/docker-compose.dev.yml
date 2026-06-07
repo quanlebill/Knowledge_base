@@ -1,5 +1,5 @@
-# Shared dev server — migrate + seed, chạy trên server dev chung của team
-# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+# Shared dev server - run migrate + seed for the team dev shape
+# Usage: docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up -d --build
 
 services:
   migrate:

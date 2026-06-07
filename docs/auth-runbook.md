@@ -2834,3 +2834,33 @@ curl -s -w "HTTP:%{http_code}" -X POST -H "Authorization: Bearer $T2_TOKEN" \
 | HSM status | List filter | Filters Transit keys by `{tenant_id[:8]}-` prefix |
 | Audit log | tenant_id column | All events scoped to tenant |
 | Response | 404 on cross-access | Secrets not found (not 403) — prevents ID enumeration |
+## Current Docker Status
+
+This runbook contains historical sections from an earlier auth and release stack shape.
+
+Current supported Docker entrypoints:
+
+- `docker/docker-compose.yml`
+- `docker/docker-compose.local.yml`
+- `docker/docker-compose.dev.yml`
+- `docker/docker-compose.test.yml`
+
+Current local startup command:
+
+```bash
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.local.yml up -d --build
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.local.yml ps
+```
+
+Current shared-dev startup command:
+
+```bash
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up -d --build
+```
+
+Current local stack differences versus older sections below:
+
+- uses `dataagent-keycloak` single-node dev mode instead of `keycloak-node1`, `keycloak-node2`, and `keycloak-lb`
+- does not include historical `konga`, `openbao-init`, `openbao-setup`, or `openbao-secrets-bootstrap` services
+- uses `dataagent-kong` admin port `8900` instead of `8001` on the host
+- uses layered compose files under `docker/` rather than a single root-level `docker compose up -d`

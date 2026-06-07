@@ -55,12 +55,12 @@ Kafka Audit Pipeline (push-based, at-least-once):
 | `aeroflow-keycloak-1` | Dockerfile.keycloak | 8081→8080 | Keycloak node 1 (Active), import realm |
 | `aeroflow-keycloak-2` | Dockerfile.keycloak | 8082→8080 | Keycloak node 2 (Active), join cluster |
 | `aeroflow-keycloak-lb` | haproxy:2.8-alpine | 8080 | HAProxy LB trước 2 Keycloak nodes |
-| `aeroflow-kong-migration` | Dockerfile.kong | — | Kong DB migration (run-once) |
-| `aeroflow-kong` | Dockerfile.kong | 8000, 8001 | Kong Gateway + Admin API |
+| `aeroflow-kong-migration` | `infra/kong/Dockerfile` | — | Kong DB migration (run-once) |
+| `aeroflow-kong` | `infra/kong/Dockerfile` | 8000, 8001 | Kong Gateway + Admin API |
 | `aeroflow-konga` | pantsel/konga | 1337 | Kong Admin UI |
 | `aeroflow-kafka` | apache/kafka:3.7.0 | 9092 | Kafka KRaft, SASL/PLAIN (dev) |
 | `aeroflow-audit-consumer` | services/audit-consumer | — | Kafka → PostgreSQL audit_logs |
-| `aeroflow-frontend` | Dockerfile.dev | 5173→3000 | Vite dev server |
+| `aeroflow-frontend` | `docker/Dockerfile.dev` | 5173→3000 | Vite dev server |
 
 ---
 
@@ -279,8 +279,11 @@ Khi có backend service:
 ```
 Data-Agentt/
 ├── docker-compose.yml              ← 10 containers (services)
-├── Dockerfile.dev                  ← Frontend Vite dev container
-├── Dockerfile.kong                 ← Kong 3.6 + aeroflow-jwks plugin
+├── docker/
+│   └── Dockerfile.dev              ← Frontend Vite dev container
+├── infra/
+│   └── kong/
+│       └── Dockerfile              ← Kong 3.6 + aeroflow-jwks plugin
 ├── Dockerfile.keycloak             ← Maven build SPI JAR → Keycloak 24.0
 ├── infra/
 │   ├── sql/
@@ -343,3 +346,31 @@ Không yêu cầu Java/Maven trên máy host. Maven chạy trong container riên
 | Kong Admin API | Port 8001 exposed | Không expose ra internet |
 | audit_logs | app user có toàn quyền | Revoke UPDATE/DELETE cho app user |
 | PostgreSQL HA | Single instance | Primary + Replica, pgBouncer |
+## Current Docker Status
+
+This document now serves as a design snapshot plus current-state note.
+
+The current supported local stack does not run the older Keycloak HA pair, HAProxy LB, or Konga topology shown in historical sections below.
+
+Current active auth-related services in the supported Docker stack:
+
+- `dataagent-keycloak`
+- `dataagent-kong`
+- `dataagent-kong-migration`
+- `dataagent-kafka`
+- `dataagent-audit-bridge`
+- `dataagent-audit-consumer`
+- `dataagent-jwks-refresher`
+- `dataagent-frontend`
+
+Supported Docker entrypoints:
+
+- `docker/docker-compose.yml`
+- `docker/docker-compose.local.yml`
+- `docker/docker-compose.dev.yml`
+
+Current local startup command:
+
+```bash
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.local.yml up -d --build
+```

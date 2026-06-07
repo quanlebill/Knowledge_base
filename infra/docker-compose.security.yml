@@ -1,0 +1,92 @@
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    container_name: dataagent-keycloak
+    restart: unless-stopped
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-dataagent}
+      KC_DB_USERNAME: ${POSTGRES_USER:-admin}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-dev123}
+      KC_DB_SCHEMA: keycloak
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+    volumes:
+      - ../infra/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  kong-migration:
+    build:
+      context: ..
+      dockerfile: infra/kong/Dockerfile
+    container_name: dataagent-kong-migration
+    command: kong migrations bootstrap
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: postgres
+      KONG_PG_PORT: 5432
+      KONG_PG_DATABASE: ${POSTGRES_DB:-dataagent}
+      KONG_PG_USER: ${POSTGRES_USER:-admin}
+      KONG_PG_PASSWORD: ${POSTGRES_PASSWORD:-dev123}
+      KONG_PG_SCHEMA: kong
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+
+  kong:
+    build:
+      context: ..
+      dockerfile: infra/kong/Dockerfile
+    container_name: dataagent-kong
+    restart: unless-stopped
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: postgres
+      KONG_PG_PORT: 5432
+      KONG_PG_DATABASE: ${POSTGRES_DB:-dataagent}
+      KONG_PG_USER: ${POSTGRES_USER:-admin}
+      KONG_PG_PASSWORD: ${POSTGRES_PASSWORD:-dev123}
+      KONG_PG_SCHEMA: kong
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+      KONG_PROXY_LISTEN: "0.0.0.0:8000"
+      KONG_PLUGINS: bundled,aeroflow-jwks
+    ports:
+      - "8000:8000"
+      - "8900:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kong-migration:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  openbao:
+    image: ${OPENBAO_IMAGE:-openbao/openbao:latest}
+    container_name: dataagent-openbao
+    restart: unless-stopped
+    ports:
+      - "8300:8200"
+    command: server -config=/openbao/config/config.hcl
+    cap_add: [IPC_LOCK]
+    environment:
+      BAO_SKIP_DROP_ROOT: "true"
+    volumes:
+      - openbao_data:/openbao/data
+      - ../infra/openbao:/openbao/config:ro
