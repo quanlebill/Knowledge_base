@@ -1,0 +1,268 @@
+# KB UI Testing stack — local development only, no auth/secrets required.
+#
+# Services: postgres · mongo · qdrant · neo4j · minio · kafka · llama · litellm · kb-backend
+#
+# Prerequisites:
+#   Place your GGUF model at model/ollama/weights/model.gguf
+#
+# Usage:
+#   cd infra
+#   docker compose -f docker-compose.kb-ui-testing.yml up -d
+#   # Frontend: npm run dev  (port 3000 → calls kb-backend on port 8050)
+
+name: kb-ui-testing
+
+networks:
+  kb-test:
+    driver: bridge
+
+volumes:
+  pg_data:
+  mongo_data:
+  minio_data:
+  qdrant_data:
+  neo4j_data:
+  neo4j_logs:
+
+services:
+
+  # ── PostgreSQL ────────────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: kb-test-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:            aeroflow
+      POSTGRES_DB:              aeroflow
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks: [kb-test]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aeroflow -d aeroflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── MongoDB ───────────────────────────────────────────────────────────────────
+
+  mongo:
+    image: mongo:7.0
+    container_name: kb-test-mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: kb_staging
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks: [kb-test]
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── Qdrant ────────────────────────────────────────────────────────────────────
+
+  qdrant:
+    image: qdrant/qdrant:v1.13.6
+    container_name: kb-test-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks: [kb-test]
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── Neo4j ─────────────────────────────────────────────────────────────────────
+
+  neo4j:
+    image: neo4j:5.19-community
+    container_name: kb-test-neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: none
+      NEO4J_server_memory_heap_initial__size: 512m
+      NEO4J_server_memory_heap_max__size:    512m
+      NEO4J_server_memory_pagecache_size:    256m
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    networks: [kb-test]
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://localhost:7474"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ── MinIO ─────────────────────────────────────────────────────────────────────
+
+  minio:
+    image: minio/minio:RELEASE.2024-01-16T16-07-38Z
+    container_name: kb-test-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER:     minio
+      MINIO_ROOT_PASSWORD: miniominio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    networks: [kb-test]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  minio-init:
+    image: minio/mc
+    container_name: kb-test-minio-init
+    restart: "no"
+    networks: [kb-test]
+    entrypoint: >
+      sh -c "
+        mc alias set local http://minio:9000 minio miniominio &&
+        mc mb --ignore-existing local/knowledge-base &&
+        echo 'MinIO: knowledge-base bucket ready.'
+      "
+    depends_on:
+      minio:
+        condition: service_healthy
+
+  # ── Kafka (KRaft, no auth) ────────────────────────────────────────────────────
+
+  kafka:
+    image: apache/kafka:3.7.1
+    container_name: kb-test-kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID:            1
+      KAFKA_PROCESS_ROLES:      broker,controller
+      KAFKA_LISTENERS:          PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR:         1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR:            1
+      CLUSTER_ID: kb-ui-test-cluster-01
+    ports:
+      - "9092:9092"
+    networks: [kb-test]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  # ── Llama — local llama-cpp-python inference server ──────────────────────────
+  # Requires model/ollama/weights/model.gguf
+
+  llama:
+    build:
+      context: ../model/ollama
+      dockerfile: docker/Dockerfile
+    container_name: kb-test-llama
+    restart: unless-stopped
+    expose:
+      - "11434"
+    volumes:
+      - ../model/ollama/weights:/models
+    environment:
+      MODEL_PATH:    /models/model.gguf
+      N_CTX:         "4096"
+      N_GPU_LAYERS:  "0"
+      N_THREADS:     "8"
+      KV_CACHE_TYPE: f16
+      USE_MMAP:      "true"
+      USE_MLOCK:     "false"
+      VERBOSE:       "false"
+    networks: [kb-test]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:11434/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  # ── LiteLLM — routes to local llama ──────────────────────────────────────────
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-stable
+    container_name: kb-test-litellm
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./litellm/config.kb-test.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    networks: [kb-test]
+    depends_on:
+      llama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4000/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  # ── KB Backend ────────────────────────────────────────────────────────────────
+
+  kb-backend:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.kb
+    container_name: kb-test-backend
+    restart: unless-stopped
+    ports:
+      - "8050:8000"
+    environment:
+      POSTGRES_URL:     postgresql+asyncpg://aeroflow@postgres/aeroflow_kb
+      MONGO_URL:        mongodb://mongo:27017/kb_staging
+      MINIO_URL:        http://minio:miniominio@minio:9000
+      KAFKA_URL:        kafka:9092
+      QDRANT_URL:       http://qdrant:6333
+      NEO4J_URL:        bolt://neo4j:7687
+      LITELLM_BASE_URL: http://litellm:4000
+      LLAMA_BASE_URL:   http://llama:11434
+      MINIO_BUCKET:     knowledge-base
+    networks: [kb-test]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
+      litellm:
+        condition: service_started
