@@ -22,6 +22,32 @@ function New-RandomPassword {
     -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 24 | ForEach-Object { [char]$_ })
 }
 
+# UTF-8 without BOM. PS 5.1's `Set-Content -Encoding utf8` writes WITH BOM,
+# which breaks parsers that don't expect it (Java JAAS, some Linux tools).
+# Always go through these helpers for files non-PowerShell tools will read.
+$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+
+function Read-Utf8File($path) {
+    $bytes = [System.IO.File]::ReadAllBytes((Resolve-Path $path).Path)
+    $content = $Utf8NoBom.GetString($bytes)
+    # Strip UTF-8 BOM if present. UTF8Encoding($false) only controls BOM on
+    # WRITE; decoding bytes that contain a BOM leaves the U+FEFF char in
+    # the string. docker compose, .env parsers, etc. don't recognize it and
+    # treat the BOM line as garbage — every env var loaded from that .env
+    # ends up "not set". Bit me on the dev session 2026-06-07.
+    if ($content.Length -gt 0 -and $content[0] -eq [char]0xFEFF) {
+        $content = $content.Substring(1)
+    }
+    return $content
+}
+
+function Write-Utf8FileNoBom($path, $content) {
+    $resolved = if (Test-Path $path) { (Resolve-Path $path).Path } else {
+        Join-Path (Resolve-Path (Split-Path -Parent $path)).Path (Split-Path -Leaf $path)
+    }
+    [System.IO.File]::WriteAllText($resolved, $content, $Utf8NoBom)
+}
+
 # ─── 1. .env ───────────────────────────────────────────────────────────────
 $envFile = ".env"
 if (Test-Path $envFile) {
@@ -55,7 +81,7 @@ $kafkaPlaceholders = @(
     "REPLACE_WITH_NOTIFICATION_CONSUMER_PASSWORD"
 )
 
-$jaasContent = Get-Content $jaasFile -Raw
+$jaasContent = Read-Utf8File $jaasFile
 $jaasUpdated = $false
 foreach ($placeholder in $kafkaPlaceholders) {
     if ($jaasContent -match $placeholder) {
@@ -64,7 +90,7 @@ foreach ($placeholder in $kafkaPlaceholders) {
     }
 }
 if ($jaasUpdated) {
-    Set-Content -Path $jaasFile -Value $jaasContent -Encoding utf8
+    Write-Utf8FileNoBom $jaasFile $jaasContent
     Write-Host "[OK]Substituted Kafka passwords in kafka-broker-jaas.config" -ForegroundColor Green
 } else {
     Write-Host "[--]Kafka JAAS already has real passwords (no placeholders found)" -ForegroundColor DarkGray
@@ -89,7 +115,7 @@ $envVars = @{
     "LANGFUSE_INIT_PASSWORD"             = "admin123"
 }
 
-$envContent = Get-Content $envFile
+$envContent = (Read-Utf8File $envFile) -split "`r?`n"
 $envOutput = @()
 $replacedKeys = @{}
 
@@ -109,7 +135,7 @@ foreach ($line in $envContent) {
     }
 }
 
-Set-Content -Path $envFile -Value $envOutput -Encoding utf8
+Write-Utf8FileNoBom $envFile ($envOutput -join "`n")
 $count = $replacedKeys.Keys.Count
 if ($count -gt 0) {
     Write-Host "[OK]Filled $count required env vars in .env with dev defaults" -ForegroundColor Green

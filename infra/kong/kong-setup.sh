@@ -243,30 +243,51 @@ print(matches[0] if matches else '')
   fi
 }
 
-ISSUER="$KC_BASE/realms/$REALM"
-# JWKS_URI must use the Docker-internal hostname so Kong (running inside Docker) can reach Keycloak.
-# KC_BASE (localhost:8080) works from the host but not from inside the Kong container.
-KONG_KC_HOST="http://aeroflow-keycloak-lb:8080"
+# ISSUER must match the `iss` claim Keycloak actually emits in tokens.
+# Keycloak derives that from `KC_HOSTNAME_URL` (or the request Host header
+# when KC_HOSTNAME_STRICT=false). Browser clients hit http://localhost:8080
+# so tokens carry iss=http://localhost:8080/realms/<realm>. Override via
+# KEYCLOAK_PUBLIC_URL if your deploy uses a different external URL.
+KC_PUBLIC="${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}"
+ISSUER="$KC_PUBLIC/realms/$REALM"
+
+# JWKS_URI is a NETWORK URL — Kong fetches keys via the in-cluster hostname,
+# not the public one. Two URLs by design: public for iss validation, network
+# for JWKS fetch. Mixing them means either tokens reject ("iss mismatch")
+# OR Kong can't reach Keycloak.
+KONG_KC_HOST="${KEYCLOAK_NETWORK_URL:-http://aeroflow-keycloak-lb:8080}"
 JWKS_URI="$KONG_KC_HOST/realms/$REALM/protocol/openid-connect/certs"
 
 # ── 4. aeroflow-jwks plugin — JWKS-based RS256 verify + header inject ──
-# Replaces jwt built-in plugin + pre-function + jwks-refresher service.
-# Uses kong.cache with 300s TTL; invalidates and refetches on kid change.
-echo "🔐 Enabling aeroflow-jwks plugin on aeroflow-backend (JWKS RS256 + 300s cache)..."
+# Per-service `audience` is set so a token issued for service A cannot be
+# replayed against service B. The plugin checks `aud` claim against this
+# value; Keycloak must be configured (audience mappers on aeroflow-frontend
+# client) to include each of these in the token's `aud`. See
+# docs/auth-runbook.md "JWT audience matrix".
+#
+# `grace_period` (10 min) keeps the previous JWKS keys valid for that long
+# after rotation — without it, every token in flight gets a 401 spike the
+# moment Keycloak rolls. `jwks_refresh_interval` (5 min) is how often the
+# cache TTL ticks, but on a kid miss we always lazy-refetch.
+
+KONG_GRACE=600   # seconds; matches Keycloak default access-token TTL (15m floor)
+KONG_REFRESH=300
+
+echo "🔐 Enabling aeroflow-jwks plugin on aeroflow-backend (aud=aeroflow-backend)..."
 upsert_plugin "$KONG_ADMIN/services/aeroflow-backend/plugins" \
-  "{\"name\":\"aeroflow-jwks\",\"config\":{\"jwks_uri\":\"$JWKS_URI\",\"issuer\":\"$ISSUER\",\"jwks_refresh_interval\":300}}" \
+  "{\"name\":\"aeroflow-jwks\",\"config\":{\"jwks_uri\":\"$JWKS_URI\",\"issuer\":\"$ISSUER\",\"audience\":\"aeroflow-backend\",\"jwks_refresh_interval\":$KONG_REFRESH,\"grace_period\":$KONG_GRACE}}" \
   "aeroflow-jwks"
 
 # ── 4b. aeroflow-jwks on release-worker ────────────────────────────────
-echo "🔐 Enabling aeroflow-jwks plugin on release-worker..."
+echo "🔐 Enabling aeroflow-jwks plugin on release-worker (aud=release-worker)..."
 upsert_plugin "$KONG_ADMIN/services/release-worker/plugins" \
-  "{\"name\":\"aeroflow-jwks\",\"config\":{\"jwks_uri\":\"$JWKS_URI\",\"issuer\":\"$ISSUER\",\"jwks_refresh_interval\":300}}" \
+  "{\"name\":\"aeroflow-jwks\",\"config\":{\"jwks_uri\":\"$JWKS_URI\",\"issuer\":\"$ISSUER\",\"audience\":\"release-worker\",\"jwks_refresh_interval\":$KONG_REFRESH,\"grace_period\":$KONG_GRACE}}" \
   "aeroflow-jwks"
 
 # ── 4c. aeroflow-jwks on auth-api ──────────────────────────────────────
-echo "🔐 Enabling aeroflow-jwks plugin on auth-api..."
+echo "🔐 Enabling aeroflow-jwks plugin on auth-api (aud=auth-api)..."
 upsert_plugin "$KONG_ADMIN/services/auth-api/plugins" \
-  "{\"name\":\"aeroflow-jwks\",\"config\":{\"jwks_uri\":\"$JWKS_URI\",\"issuer\":\"$ISSUER\",\"jwks_refresh_interval\":300}}" \
+  "{\"name\":\"aeroflow-jwks\",\"config\":{\"jwks_uri\":\"$JWKS_URI\",\"issuer\":\"$ISSUER\",\"audience\":\"auth-api\",\"jwks_refresh_interval\":$KONG_REFRESH,\"grace_period\":$KONG_GRACE}}" \
   "aeroflow-jwks"
 
 # ── 5. IP restriction ─────────────────────────────────────────────────
@@ -440,6 +461,19 @@ print(data[0]['id'] if data else '')" 2>/dev/null || true)
   echo "  Keys file:   $KEYS_FILE (chmod 600)"
   echo "  Next step:   copy keys to .env, switch services to proxied URL"
 fi
+
+# ── 12. Note on Kong worker cache ──────────────────────────────────────
+# Kong's pubsub propagates plugin config to workers within a few seconds.
+# Custom-plugin local caches (kong.cache entries keyed off conf values)
+# usually pick up automatically because the cache key changes when config
+# does. If you're hot-patching `issuer` / `audience` on a running stack
+# and see stale "Issuer mismatch" / "Audience mismatch" errors longer than
+# ~10s, run on the host:
+#
+#   docker exec dataagent-kong kong reload
+#
+# (The setup runner can't do this for you — bash:5 has no docker CLI and
+# the runner container doesn't have access to docker.sock by design.)
 
 # ── Summary ────────────────────────────────────────────────────────────
 echo ""

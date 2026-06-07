@@ -97,7 +97,12 @@ aeroflow-jwks-refresher            Up
 aeroflow-frontend                  Up
 ```
 
-> **Thứ tự khởi động:** postgres → redis → kafka → minio → mongo → elasticsearch → jaeger → openbao → openbao-init → openbao-setup → openbao-secrets-bootstrap → keycloak-node1 → keycloak-node2 → keycloak-lb → kong-migration → kong → jwks-refresher → auth-api → release-worker → celery-worker → audit-bridge → audit-consumer → frontend
+> **Thứ tự khởi động:** postgres → postgres-backup → redis → kafka → minio → mongo → elasticsearch → jaeger → openbao → openbao-init → openbao-setup → openbao-secrets-bootstrap → keycloak-node1 → keycloak-node2 → keycloak-lb → kong-migration → kong → jwks-refresher → auth-api → release-worker → celery-worker → audit-bridge → audit-consumer → frontend
+>
+> **HA + DR posture:** Keycloak HA (2-node + HAProxy LB) là **real** từ 2026-06-07.
+> Postgres single-node với scheduled `pg_dump` + WAL archiving. Tất cả thành phần khác
+> còn single-node. Xem [docs/disaster-recovery.md](./disaster-recovery.md) cho:
+> RPO/RTO targets cụ thể, restore procedures, roadmap HA cho các layer còn lại.
 
 **Port mapping:**
 
@@ -128,6 +133,7 @@ aeroflow-frontend                  Up
 | Keycloak Node 1 (direct) | http://localhost:8081/admin | admin / admin |
 | Keycloak Node 2 (direct) | http://localhost:8082/admin | admin / admin |
 | **OpenBao** (Secrets Vault) | http://localhost:8300/ui | Root token từ `/openbao/data/.root-token` |
+| Postgres backup volume | `dataagent_postgres_backups` (named volume) | xem [disaster-recovery.md](./disaster-recovery.md) |
 | **Release Worker** (direct) | http://localhost:8100 | JWT Bearer token |
 | MinIO Console | http://localhost:9001 | minio / minio_secret |
 | MinIO S3 API | http://localhost:9000 | minio / minio_secret |
@@ -255,6 +261,97 @@ Kong-fronting-Kong trick needed. If/when the team adopts Enterprise:
 
 The kong-admin-net network isolation (Phase 2) stays valuable in both
 worlds — it's defense-in-depth that doesn't depend on Kong's own auth.
+
+---
+
+## JWT audience + JWKS rotation grace period
+
+Previously the aeroflow-jwks Kong plugin accepted any RS256 token from the
+Keycloak realm, regardless of which client requested it. A token for the
+frontend could be replayed against `release-worker` or `auth-api`. Separately,
+the plugin invalidated its full JWKS cache the moment Keycloak rotated keys,
+causing a 401 spike for every token in flight.
+
+Both are addressed as of 2026-06-07.
+
+### Public URL vs network URL — two URLs for one Keycloak
+
+Keycloak in this stack is reachable via two different URLs depending on who
+is asking, and the wiring HAS to keep them straight:
+
+| Concept | URL in dev | Used by | Set via |
+| ------- | ---------- | ------- | ------- |
+| Public  | `http://localhost:8080` | browser, host-side curl, anything outside the compose network. Source of token's `iss` claim. | `KC_HOSTNAME_URL` on keycloak-node1/2 (env var, overridable via `KEYCLOAK_PUBLIC_URL`) |
+| Network | `http://aeroflow-keycloak-lb:8080` | Kong's JWKS fetch, jwks-refresher, audit-bridge, any service in the compose network | DNS alias on `keycloak-lb` service |
+
+The aeroflow-jwks plugin config holds BOTH:
+
+- `jwks_uri` = network URL (Kong has to reach Keycloak from inside the cluster)
+- `issuer` = public URL (matches what tokens actually carry in `iss`)
+
+Mixing them up surfaces as either "Issuer mismatch" (Kong validates against
+the network URL but tokens carry the public one) or connection-refused
+during JWKS fetch (Kong tries the public URL from inside the cluster).
+
+### Audience matrix
+
+Per-service `audience` is enforced by the plugin. Kong's setup script
+([infra/kong/kong-setup.sh](../infra/kong/kong-setup.sh)) installs:
+
+- aeroflow-backend service → `audience = aeroflow-backend`
+- auth-api service → `audience = auth-api`
+- release-worker service → `audience = release-worker`
+
+Keycloak's `aeroflow-frontend` client gets Audience protocol mappers (one per
+target) via [infra/keycloak/setup-audience-mappers.sh](../infra/keycloak/setup-audience-mappers.sh):
+
+```powershell
+docker compose -f docker/docker-compose.yml --profile setup run --rm `
+  keycloak-audience-setup
+```
+
+After running, tokens issued by `aeroflow-frontend` contain all three
+audiences in the `aud` claim. Kong's plugin checks the route's configured
+audience appears in that list. A token that's missing the audience for the
+called service gets `401 Audience mismatch`.
+
+### Rotation grace period
+
+The plugin's `grace_period` config (default 600s = 10 min) controls how
+long the previous signing key remains acceptable after Keycloak rotates.
+Implementation (see [handler.lua](../infra/kong/plugins/aeroflow-jwks/handler.lua)):
+
+- Cache TTL = `grace_period` (NOT `jwks_refresh_interval`, which becomes
+  cosmetic).
+- On every request: look up the token's `kid` in the cache.
+- If `kid` not found, lazy-merge: fetch fresh JWKS and union with existing
+  cache entries. Old keys stay valid until `grace_period` elapses without
+  any traffic referencing them.
+- This means: at rotation time, the FIRST request with the new `kid`
+  triggers a fresh fetch; old `kid` tokens still verify against cache for
+  the rest of grace_period.
+
+### Manual rotation test (procedural)
+
+The integration test ([tests/integration/test_jwt_audience.py](../tests/integration/test_jwt_audience.py))
+verifies audience matching but does NOT exercise rotation — that needs
+Keycloak admin API calls + timed assertions. Run this procedure manually:
+
+1. Login as `platform-admin` and capture a token. Call this **T_OLD**.
+2. Hit `/api/auth/health` with `Authorization: Bearer $T_OLD` — expect 200.
+3. Rotate Keycloak's `aeroflow` realm signing key:
+   - Keycloak admin UI → Realm Settings → Keys → Active keys → use the
+     three-dot menu → "Make passive" on current key. Or via admin API.
+4. Get a new token. Call this **T_NEW**.
+5. Hit `/api/auth/health` with `Authorization: Bearer $T_NEW` → expect 200.
+   (Plugin lazy-fetches new JWKS, gets new kid in cache.)
+6. **Within 9 minutes**, hit `/api/auth/health` with `Authorization: Bearer $T_OLD`
+   → expect 200 (old kid still in cache, grace period active).
+7. **After 11 minutes**, hit `/api/auth/health` with `Authorization: Bearer $T_OLD`
+   → expect 401 `No JWK for kid` (cache TTL expired, old key not refetched).
+
+If step 6 returns 401, the grace_period config isn't taking effect — check
+that the plugin was reinstalled by the latest `kong-setup.sh`.
 
 ---
 

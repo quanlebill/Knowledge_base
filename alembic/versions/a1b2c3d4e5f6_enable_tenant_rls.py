@@ -97,12 +97,15 @@ END
 $$;
 """
 
-_GRANT_SCHEMA = """
-GRANT USAGE ON SCHEMA public TO app_user;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_user;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-    GRANT USAGE, SELECT ON SEQUENCES TO app_user;
-"""
+# asyncpg (the driver this migration runs through) rejects multiple SQL
+# statements in one prepared-statement call. Pass each grant individually.
+# Single-statement DO blocks are fine because the block IS one statement.
+_GRANT_USAGE_SCHEMA   = "GRANT USAGE ON SCHEMA public TO app_user"
+_GRANT_SELECT_SEQ     = "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_user"
+_GRANT_DEFAULT_SEQ    = (
+    "ALTER DEFAULT PRIVILEGES IN SCHEMA public "
+    "GRANT USAGE, SELECT ON SEQUENCES TO app_user"
+)
 
 _REVERT_RLS = r"""
 DO $$
@@ -124,22 +127,27 @@ END
 $$;
 """
 
-_REVOKE_SCHEMA = """
-REVOKE USAGE ON SCHEMA public FROM app_user;
-REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM app_user;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-    REVOKE USAGE, SELECT ON SEQUENCES FROM app_user;
-"""
+# asyncpg constraint — same as GRANT block above.
+_REVOKE_USAGE_SCHEMA   = "REVOKE USAGE ON SCHEMA public FROM app_user"
+_REVOKE_SELECT_SEQ     = "REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM app_user"
+_REVOKE_DEFAULT_SEQ    = (
+    "ALTER DEFAULT PRIVILEGES IN SCHEMA public "
+    "REVOKE USAGE, SELECT ON SEQUENCES FROM app_user"
+)
 
 
 def upgrade() -> None:
     op.execute(_CREATE_APP_USER)
-    op.execute(_GRANT_SCHEMA)
+    op.execute(_GRANT_USAGE_SCHEMA)
+    op.execute(_GRANT_SELECT_SEQ)
+    op.execute(_GRANT_DEFAULT_SEQ)
     op.execute(_APPLY_RLS)
 
 
 def downgrade() -> None:
     op.execute(_REVERT_RLS)
-    op.execute(_REVOKE_SCHEMA)
+    op.execute(_REVOKE_USAGE_SCHEMA)
+    op.execute(_REVOKE_SELECT_SEQ)
+    op.execute(_REVOKE_DEFAULT_SEQ)
     # Do NOT drop the role — other systems (k8s secrets, vault policies)
     # may still reference it. Drop explicitly via SQL when ops sign off.

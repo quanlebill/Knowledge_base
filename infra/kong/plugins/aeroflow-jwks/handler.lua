@@ -90,11 +90,50 @@ local function load_jwks(jwks_uri)
 end
 
 local function fetch_keys(conf)
+  -- Cache TTL = grace_period so old keys stay available after Keycloak rotates.
+  -- Without this, the cache TTL would track refresh_interval and a rotation
+  -- mid-cycle could invalidate keys signing tokens that are still in flight.
   return kong.cache:get(
     "aeroflow_jwks|" .. conf.jwks_uri,
-    { ttl = conf.jwks_refresh_interval },
+    { ttl = conf.grace_period or 600 },
     load_jwks, conf.jwks_uri
   )
+end
+
+-- Lazy merge: fetch fresh JWKS and union it with the keys we already have
+-- in cache, then atomically replace the cache entry. The point is that the
+-- OLD keys do NOT get evicted just because Keycloak rolled a new kid — any
+-- token signed with the old key remains verifiable up to grace_period.
+--
+-- Returns the merged set (caller should look up the kid in it). Returns the
+-- input `current_keys` unchanged if the fresh fetch fails (graceful
+-- degradation: better to trust the slightly-stale cache than reject all
+-- traffic when Keycloak is briefly down).
+local function refresh_and_merge(conf, current_keys)
+  local fresh, err = load_jwks(conf.jwks_uri)
+  if not fresh then
+    kong.log.warn("JWKS refresh failed during grace merge: ", err)
+    return current_keys
+  end
+
+  local merged = {}
+  if current_keys then
+    for k, v in pairs(current_keys) do merged[k] = v end
+  end
+  -- Fresh keys overwrite stale entries with the same kid (defensive — kid
+  -- is supposed to be unique per key, but if Keycloak ever reissues a kid
+  -- with new material we prefer the new one).
+  for k, v in pairs(fresh) do merged[k] = v end
+
+  -- Replace cache entry by invalidate + re-warm. kong.cache doesn't expose
+  -- a direct `set`, so we use `:get` with a fetcher that returns the merged
+  -- set immediately.
+  local cache_key = "aeroflow_jwks|" .. conf.jwks_uri
+  kong.cache:invalidate(cache_key)
+  kong.cache:get(cache_key, { ttl = conf.grace_period or 600 }, function()
+    return merged
+  end)
+  return merged
 end
 
 -- ── RS256 verify ────────────────────────────────────────────────────────
@@ -156,13 +195,14 @@ function AeroflowJwks:access(conf)
     return kong.response.exit(503, { message = "Authentication service unavailable" })
   end
 
-  -- 5. Find key by kid
+  -- 5. Find key by kid. If we don't have it, the most likely cause is that
+  -- Keycloak rotated since our last cache fill. Merge fresh keys into the
+  -- cache rather than invalidating — that preserves any old kids still in
+  -- flight (grace_period covers them).
   local kid = header.kid
   local pem = (kid and keys[kid]) or keys["default"]
   if not pem then
-    -- kid rotated — invalidate cache and retry once
-    kong.cache:invalidate("aeroflow_jwks|" .. conf.jwks_uri)
-    keys, kerr = fetch_keys(conf)
+    keys = refresh_and_merge(conf, keys)
     pem = keys and ((kid and keys[kid]) or keys["default"])
   end
   if not pem then

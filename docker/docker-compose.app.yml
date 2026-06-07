@@ -172,8 +172,8 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
-      keycloak:
-        condition: service_started
+      keycloak-lb:
+        condition: service_healthy
 
   audit-consumer:
     build:
@@ -218,8 +218,8 @@ services:
     volumes:
       - jwks_refresher_data:/data
     depends_on:
-      keycloak:
-        condition: service_started
+      keycloak-lb:
+        condition: service_healthy
       kong:
         condition: service_healthy
 
@@ -240,7 +240,7 @@ services:
       VITE_KEYCLOAK_CLIENT: aeroflow-frontend
       VITE_API_BASE_URL: http://localhost:8000
     depends_on:
-      keycloak:
-        condition: service_started
+      keycloak-lb:
+        condition: service_healthy
       kong:
         condition: service_healthy
