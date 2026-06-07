@@ -20,7 +20,7 @@ services:
       resources:
         limits:
           cpus: "8"
-          memory: 6G
+          memory: 10G
         reservations:
           memory: 1G
     ulimits:

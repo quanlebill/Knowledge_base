@@ -207,3 +207,36 @@ class FilterPolicyResponse(BaseModel):
 class ExtractionPolicyResponse(BaseModel):
     base: str
     custom: str
+
+
+# ── Mutation / action responses ───────────────────────────────────────────────
+
+class StatusResponse(BaseModel):
+    status: str
+
+class ConfigActivateResponse(BaseModel):
+    status: str
+    config_id: str
+
+class VersionCreatedResponse(BaseModel):
+    version_id: str | None = None
+    version_number: int
+
+class ConfigCreatedResponse(BaseModel):
+    config_id: str | None = None
+    version_number: int
+
+class PolicyCreatedResponse(BaseModel):
+    policy_id: str | None = None
+
+class ConflictResolvedResponse(BaseModel):
+    conflict_id: str
+    status: str
+
+class ToggleCollectionResponse(BaseModel):
+    collection_id: str
+    active: bool
+
+class RowUpdateResponse(BaseModel):
+    status: str
+    row: dict[str, Any]

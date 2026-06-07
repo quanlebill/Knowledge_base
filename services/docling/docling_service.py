@@ -3,10 +3,16 @@ from collections.abc import Generator
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
-from docling.datamodel.base_models import InputFormat
-from docling.datamodel.pipeline_options import PdfPipelineOptions, smolvlm_picture_description
-from docling.document_converter import DocumentConverter, PdfFormatOption
-from docling_core.types.doc import PictureItem, SectionHeaderItem, TableItem, TextItem
+try:
+    from docling.datamodel.base_models import InputFormat
+    from docling.datamodel.pipeline_options import PdfPipelineOptions, smolvlm_picture_description
+    from docling.document_converter import DocumentConverter, PdfFormatOption
+    from docling_core.types.doc import PictureItem, SectionHeaderItem, TableItem, TextItem
+    _DOCLING_AVAILABLE = True
+except ImportError:
+    _DOCLING_AVAILABLE = False
+    InputFormat = None  # type: ignore[assignment]
+    DocumentConverter = None  # type: ignore[assignment]
 
 from basemodel.services_databaseconnector.shared_model import HealthCheckLoopConfig, RetryConfig
 from basemodel.services_docling.docling_model import DoclingResult, ParsedChunk, ParsedTable, SupportedExtension
@@ -21,6 +27,9 @@ _worker_use_vlm: bool = False
 
 def _worker_init(use_vlm: bool) -> None:
     global _worker_converter, _worker_use_vlm
+    if not _DOCLING_AVAILABLE:
+        log.warning("docling not installed — DoclingClient will not parse documents")
+        return
     _worker_use_vlm = use_vlm
     if use_vlm:
         pipeline_options = PdfPipelineOptions(
