@@ -1,10 +1,7 @@
 {
   "name": "AeroFlow AI OS",
   "description": "Multi-tenant Enterprise AI Operating System for RAG orchestration, Agentic workflows, and Industry intelligence.",
-  "requestFramePermissions": [
-    "camera",
-    "microphone"
-  ],
+  "requestFramePermissions": ["camera", "microphone"],
   "majorCapabilities": [
     "AI Governance",
     "Agentic Runtime",

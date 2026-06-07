@@ -3,11 +3,36 @@ __pycache__/
 *.pyc
 *.pyo
 .venv/
+venv/
+env/
+.python-version
 build/
 dist/
 coverage/
+htmlcov/
+.coverage
+.coverage.*
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.cache/
+.hypothesis/
+.ipynb_checkpoints/
 .DS_Store
 data_agent.egg-info/
+*.egg-info/
+
+# Frontend generated artifacts
+.next/
+.nuxt/
+.vite/
+.turbo/
+out/
+storybook-static/
+playwright-report/
+test-results/
 
 .env*
 !.env.example
@@ -15,9 +40,13 @@ data_agent.egg-info/
 
 .claude/
 .idea/
+.vscode/
 
 docs/
 logs/
+tmp/
+temp/
+.tmp/
 CLAUDE.md
 .claude/settings.json
 .claude/settings.local.json
