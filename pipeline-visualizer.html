@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Knowledge Pipeline Visualizer</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#FAF6ED 0%,#F5F0E8 100%);min-height:100vh;padding:24px 16px;color:#1E1B15}
+.container{max-width:1500px;margin:0 auto}
+
+/* ── Header ── */
+.hdr{text-align:center;margin-bottom:24px}
+.hdr h1{font-size:2em;color:#1E1B15;margin-bottom:4px}
+.hdr p{color:#5A5A5A;font-size:.9em}
+
+/* ── Upload ── */
+.upload-card{background:#fff;border:2px solid #B88719;border-radius:1rem;padding:1.25rem;margin-bottom:1rem;box-shadow:0 4px 12px rgba(184,135,25,.1)}
+.upload-row{display:flex;gap:1rem;align-items:center}
+.drop-zone{flex:1;border:2px dashed #B88719;border-radius:.75rem;padding:1.25rem;text-align:center;cursor:pointer;transition:.2s}
+.drop-zone:hover,.drop-zone.over{background:#FAF6ED;border-color:#8A5A00}
+.drop-zone svg{width:2rem;height:2rem;color:#B88719;margin:0 auto .4rem;display:block}
+.drop-zone p{font-weight:600;color:#1E1B15;font-size:.9em}
+.drop-zone small{color:#777;font-size:.8em}
+.upload-btn{padding:.7rem 1.5rem;background:#B88719;color:#fff;border:none;border-radius:.75rem;font-weight:700;cursor:pointer;white-space:nowrap;font-size:.9rem;transition:.2s}
+.upload-btn:hover:not(:disabled){background:#8A5A00}
+.upload-btn:disabled{background:#CCC;cursor:not-allowed}
+input[type=file]{display:none}
+
+/* ── Doc info strip ── */
+.doc-strip{background:#F5F0E8;border-left:4px solid #B88719;padding:.65rem 1rem;border-radius:.5rem;margin-bottom:1rem;font-size:.85em;display:flex;gap:1.5rem;flex-wrap:wrap}
+.doc-strip span{color:#5A5A5A}
+.doc-strip strong{color:#1E1B15}
+.hidden{display:none!important}
+
+/* ── Promote buttons ── */
+.promote-row{display:flex;gap:.75rem;margin-bottom:1rem;flex-wrap:wrap}
+.promo-btn{padding:.55rem 1.25rem;border:none;border-radius:.75rem;font-weight:700;cursor:pointer;font-size:.88rem;transition:.2s;display:flex;align-items:center;gap:.4rem}
+.promo-btn.silver{background:#4A5568;color:#fff}
+.promo-btn.silver:hover:not(:disabled){background:#2D3748}
+.promo-btn.gold{background:#B88719;color:#fff}
+.promo-btn.gold:hover:not(:disabled){background:#8A5A00}
+.promo-btn:disabled{opacity:.45;cursor:not-allowed}
+.promo-btn .spinner{width:.9em;height:.9em;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
+
+/* ── Total timer bar ── */
+.total-bar{display:flex;justify-content:space-between;align-items:center;background:linear-gradient(90deg,#1E1B15,#2A2620);color:#FAF6ED;padding:.75rem 1.25rem;border-radius:.75rem;margin-bottom:1rem;box-shadow:0 4px 14px rgba(184,135,25,.12)}
+.total-bar .lbl{font-weight:700;letter-spacing:.06em;font-size:.82em}
+.total-bar .sub{font-size:.7em;opacity:.6;margin-top:.1rem}
+.total-bar .val{font-family:'Courier New',monospace;font-size:1.4em;font-weight:700;color:#FFD080}
+
+/* ── Progress bar ── */
+.progress-wrap{margin-bottom:1rem}
+.progress-bar{height:.35rem;background:#BFA66A;border-radius:.25rem;overflow:hidden}
+.progress-fill{height:100%;background:linear-gradient(90deg,#B88719,#8A5A00);transition:width .5s}
+.progress-text{text-align:right;font-size:.75em;color:#888;margin-top:.25rem}
+
+/* ── Main split layout ── */
+.main-split{display:grid;grid-template-columns:420px 1fr;gap:1rem;align-items:start}
+@media(max-width:900px){.main-split{grid-template-columns:1fr}}
+
+/* ── Left: pipeline stages ── */
+.pipeline-left{}
+
+/* ── Tier section ── */
+.tier-section{margin-bottom:.75rem}
+.tier-hdr{display:flex;align-items:center;justify-content:space-between;padding:.5rem .9rem;border-radius:.5rem;font-weight:700;letter-spacing:.04em;color:#fff;font-size:.82em;margin-bottom:.5rem}
+.tier-hdr.bronze{background:#92620A}
+.tier-hdr.silver{background:#4A5568}
+.tier-hdr.gold{background:#B88719}
+.tier-agg{font-family:'Courier New',monospace;font-size:.88em;background:rgba(255,255,255,.18);padding:.15rem .45rem;border-radius:.35rem}
+.tier-body{border-left:3px solid #D4C4A8;margin-left:.4rem;padding-left:.65rem;display:flex;flex-direction:column;gap:.5rem}
+
+/* ── Stage card ── */
+.stage-card{border:2px solid #D4C4A8;border-radius:.65rem;background:#fff;overflow:hidden;transition:border-color .3s,box-shadow .3s}
+.stage-card.idle{border-color:#D4C4A8}
+.stage-card.processing{border-color:#B88719;box-shadow:0 4px 16px rgba(184,135,25,.15)}
+.stage-card.complete{border-color:#22C55E;background:#F0FDF4}
+.stage-card.error{border-color:#EF4444;background:#FEF2F2}
+.stage-hdr{display:flex;align-items:center;gap:.65rem;padding:.8rem 1rem}
+.stage-card.idle .stage-hdr{background:#F5F0E8}
+.stage-card.processing .stage-hdr{background:#B88719;color:#fff}
+.stage-card.complete .stage-hdr{background:#DCFCE7;color:#166534}
+.stage-card.error .stage-hdr{background:#FEE2E2;color:#991B1B}
+.stage-icon{width:2.2rem;height:2.2rem;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1.1rem}
+.stage-card.idle .stage-icon{background:#D4C4A8}
+.stage-card.processing .stage-icon{background:#fff;animation:spin 2s linear infinite}
+.stage-card.complete .stage-icon{background:#22C55E;color:#fff}
+.stage-card.error .stage-icon{background:#EF4444;color:#fff}
+.stage-info{flex:1}
+.stage-title{font-weight:700;font-size:.88em}
+.stage-desc{font-size:.75em;opacity:.8;margin-top:.1rem}
+.stage-timer{font-family:'Courier New',monospace;font-size:.8em;font-weight:700;padding:.25rem .5rem;border-radius:.35rem;background:rgba(255,255,255,.55);color:#1E1B15;min-width:4.5rem;text-align:center;border:1px solid rgba(0,0,0,.08)}
+.stage-card.processing .stage-timer{background:rgba(255,255,255,.95);color:#B88719;animation:pulse 1.2s ease-in-out infinite}
+.stage-card.complete .stage-timer{background:#DCFCE7;color:#166534;border-color:rgba(22,197,94,.4)}
+.stage-body{padding:.75rem 1rem;border-top:1px solid #E5E7EB;display:none;font-size:.82em}
+.stage-card.processing .stage-body,.stage-card.complete .stage-body,.stage-card.error .stage-body{display:block}
+
+/* ── Silver chunk list (left) ── */
+.silver-list{display:flex;flex-direction:column;gap:.3rem;margin-top:.4rem}
+.sc-item{display:flex;align-items:center;gap:.5rem;padding:.35rem .55rem;border-radius:.4rem;background:#F9F7F3;border:1px solid #E5E7EB;cursor:pointer;transition:.15s;font-size:.8em}
+.sc-item:hover{background:#F0EBE0;border-color:#B88719}
+.sc-item.selected{background:#FFF8EC;border-color:#B88719;box-shadow:0 0 0 2px rgba(184,135,25,.2)}
+.sc-item .sc-idx{font-family:'Courier New',monospace;font-weight:700;color:#B88719;min-width:2rem}
+.sc-item .sc-prev{flex:1;color:#555;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-item .sc-badge{font-size:.7em;font-weight:700;padding:.1rem .35rem;border-radius:.25rem;flex-shrink:0}
+.sc-badge.accepted{background:#DCFCE7;color:#166534}
+.sc-badge.rejected{background:#FEE2E2;color:#991B1B}
+.sc-badge.pending{background:#FEF9C3;color:#854D0E}
+
+/* ── Gold chunk list (left) ── */
+.gold-list{display:flex;flex-direction:column;gap:.3rem;margin-top:.4rem}
+.gc-item{display:flex;align-items:center;gap:.5rem;padding:.35rem .55rem;border-radius:.4rem;background:#F9F7F3;border:1px solid #E5E7EB;cursor:pointer;transition:.15s;font-size:.8em}
+.gc-item:hover{background:#F0EBE0;border-color:#B88719}
+.gc-item.selected{background:#FFF8EC;border-color:#B88719;box-shadow:0 0 0 2px rgba(184,135,25,.2)}
+.gc-item .gc-dot{width:.55rem;height:.55rem;border-radius:50%;flex-shrink:0}
+.gc-item.processing .gc-dot{background:#B88719;animation:pulse 1s ease-in-out infinite}
+.gc-item.committed .gc-dot{background:#22C55E}
+.gc-item.skipped .gc-dot{background:#94A3B8}
+.gc-item.failed .gc-dot{background:#EF4444}
+.gc-item .gc-idx{font-family:'Courier New',monospace;font-weight:700;color:#B88719;min-width:2rem}
+.gc-item .gc-prev{flex:1;color:#555;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gc-item .gc-badge{font-size:.68em;font-weight:700;padding:.08rem .3rem;border-radius:.25rem;flex-shrink:0}
+.gc-item.processing .gc-badge{background:#FEF3C7;color:#92400E}
+.gc-item.committed .gc-badge{background:#DCFCE7;color:#166534}
+.gc-item.skipped .gc-badge{background:#E2E8F0;color:#475569}
+.gc-item.failed .gc-badge{background:#FEE2E2;color:#991B1B}
+
+/* ── Right: detail panel ── */
+.detail-panel{background:#fff;border:1.5px solid #D4C4A8;border-radius:.75rem;position:sticky;top:16px;max-height:calc(100vh - 32px);overflow-y:auto;display:flex;flex-direction:column}
+.detail-panel-hdr{padding:.8rem 1rem;border-bottom:1px solid #E5E7EB;background:#F9F7F3;border-radius:.75rem .75rem 0 0;flex-shrink:0}
+.detail-panel-hdr h3{font-size:.88em;font-weight:700;color:#1E1B15}
+.detail-panel-hdr .dpid{font-size:.75em;color:#888;margin-top:.15rem;font-family:'Courier New',monospace}
+.detail-panel-empty{display:flex;align-items:center;justify-content:center;min-height:300px;color:#AAA;font-size:.88em;text-align:center;padding:2rem;flex:1}
+.detail-panel-body{padding:.9rem 1rem;flex:1}
+
+/* ── Detail sections ── */
+.d-section{margin-bottom:.9rem;border:1px solid #F0EBE0;border-radius:.55rem;overflow:hidden}
+.d-section:last-child{margin-bottom:0}
+.d-sec-hdr{display:flex;align-items:center;gap:.4rem;padding:.5rem .75rem;background:#F5F0E8;font-size:.72em;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#555;cursor:pointer;user-select:none}
+.d-sec-hdr .dot{width:.4rem;height:.4rem;border-radius:50%;flex-shrink:0}
+.d-sec-hdr .dtimer{margin-left:auto;font-family:'Courier New',monospace;font-size:.85em;color:#B88719;background:#FFF8EC;padding:.1rem .3rem;border-radius:.25rem}
+.d-sec-body{padding:.65rem .75rem;font-size:.83em}
+.d-sec-body.collapsed{display:none}
+
+/* ── Full content block ── */
+.full-text-wrap{position:relative}
+.full-text{background:#1E1B15;color:#93C5FD;padding:.65rem .8rem;border-radius:.4rem;font-family:'Courier New',monospace;font-size:.8em;line-height:1.55;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:hidden;transition:max-height .3s}
+.full-text.expanded{max-height:2000px}
+.expand-btn{display:block;width:100%;padding:.3rem;text-align:center;background:#F5F0E8;border:none;border-radius:0 0 .4rem .4rem;cursor:pointer;font-size:.75em;color:#B88719;font-weight:700;transition:.15s}
+.expand-btn:hover{background:#EDE3D0}
+
+/* ── Entity tags ── */
+.tag-row{display:flex;flex-wrap:wrap;gap:.3rem;margin-top:.3rem}
+.tag{padding:.18rem .5rem;border-radius:.3rem;font-size:.77em;font-weight:600;white-space:nowrap}
+.tag.entity{background:#EDE9FE;color:#5B21B6}
+.tag.intent{background:#DBEAFE;color:#1D4ED8}
+
+/* ── Entity description list ── */
+.ent-list{display:flex;flex-direction:column;gap:.2rem;margin-top:.4rem}
+.ent-row{font-size:.78em;color:#6B7280}
+.ent-row .ename{font-weight:700;color:#5B21B6}
+
+/* ── Relationship list ── */
+.rel-list{display:flex;flex-direction:column;gap:.25rem;margin-top:.3rem}
+.rel-item{display:flex;align-items:center;gap:.4rem;font-size:.79em;background:#EFF6FF;padding:.25rem .5rem;border-radius:.3rem}
+.rel-from,.rel-to{font-weight:700;color:#1D4ED8}
+.rel-type{font-family:'Courier New',monospace;font-size:.82em;color:#7C3AED;background:#F5F3FF;padding:.08rem .32rem;border-radius:.22rem}
+.rel-arrow{color:#94A3B8;font-weight:700}
+
+/* ── Canon table ── */
+.canon-table{width:100%;border-collapse:collapse;font-size:.79em;margin-top:.3rem}
+.canon-table td{padding:.22rem .38rem;border-bottom:1px solid #F3F4F6;vertical-align:middle}
+.canon-table tr:last-child td{border-bottom:none}
+.canon-raw{color:#374151;font-weight:600}
+.canon-can{font-family:'Courier New',monospace;color:#059669}
+.canon-sim{color:#888;font-size:.74em}
+.action-badge{font-size:.7em;font-weight:700;padding:.08rem .32rem;border-radius:.22rem}
+.action-badge.new{background:#DCFCE7;color:#166534}
+.action-badge.matched_hard{background:#DBEAFE;color:#1D4ED8}
+.action-badge.matched_soft{background:#E0F2FE;color:#0369A1}
+
+/* ── Info lines ── */
+.info-line{display:flex;align-items:center;gap:.4rem;font-size:.81em;padding:.28rem .45rem;border-radius:.32rem;margin-top:.3rem}
+.info-line.ok{background:#F0FDF4;color:#166534}
+.info-line.warn{background:#FEF9C3;color:#854D0E}
+.info-line.err{background:#FEF2F2;color:#991B1B}
+.info-line .icon{font-size:.88em}
+
+/* ── Store timing chips ── */
+.store-chips{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.35rem}
+.store-chip{display:flex;align-items:center;gap:.3rem;padding:.2rem .5rem;border-radius:.35rem;font-size:.75em;font-weight:600}
+.store-chip.pg{background:#EFF6FF;color:#1D4ED8}
+.store-chip.qd{background:#F0FDF4;color:#166534}
+.store-chip.n4{background:#F5F3FF;color:#5B21B6}
+.store-chip .sicon{font-size:1em}
+
+/* ── Section labels ── */
+.sec-lbl{font-size:.7em;font-weight:700;letter-spacing:.08em;color:#888;text-transform:uppercase;margin-bottom:.35rem;margin-top:.75rem}
+.sec-lbl:first-child{margin-top:0}
+.raw-answer-list{margin-top:.5rem;display:flex;flex-direction:column;gap:.35rem}
+.raw-answer-item{}
+.raw-lbl{color:#6366F1;cursor:pointer}
+.raw-lbl:hover{color:#4F46E5}
+.raw-llm{background:#0F0E0B;color:#A3E635;font-size:.72em;padding:.7rem .85rem;border-radius:.5rem;white-space:pre-wrap;word-break:break-all;max-height:260px;overflow-y:auto;margin-top:.3rem;border:1px solid #2A2620}
+.raw-llm.collapsed{display:none}
+
+/* ── Summary box ── */
+.summary-box{background:#1E1B15;color:#A7F3D0;padding:.55rem .75rem;border-radius:.4rem;font-family:'Courier New',monospace;font-size:.8em;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+
+/* ── Animations ── */
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="hdr">
+    <h1>Knowledge Pipeline Visualizer</h1>
+    <p>Full transparency — every chunk, every entity, every canonical mapping, in real time</p>
+  </div>
+
+  <!-- Upload -->
+  <div class="upload-card">
+    <div class="upload-row">
+      <div class="drop-zone" id="dropZone">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"/>
+        </svg>
+        <p id="fileName">Select a document</p>
+        <small>PDF, DOCX, TXT supported</small>
+      </div>
+      <button class="upload-btn" id="uploadBtn" disabled>Upload to BRONZE</button>
+      <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.txt,.json">
+    </div>
+  </div>
+
+  <!-- Doc info -->
+  <div class="doc-strip hidden" id="docStrip">
+    <span><strong>File:</strong> <span id="docName"></span></span>
+    <span><strong>Size:</strong> <span id="docSize"></span></span>
+    <span><strong>ID:</strong> <code id="docId" style="font-size:.85em"></code></span>
+  </div>
+
+  <!-- Promote buttons -->
+  <div class="promote-row hidden" id="promoteRow">
+    <button class="promo-btn silver hidden" id="promoSilverBtn"><span>Promote to Silver</span></button>
+    <button class="promo-btn gold hidden" id="promoGoldBtn"><span>Promote to Gold</span></button>
+  </div>
+
+  <!-- Total timer -->
+  <div class="total-bar hidden" id="totalBar">
+    <div>
+      <div class="lbl">TOTAL PIPELINE TIME</div>
+      <div class="sub" id="totalBarSub">Running…</div>
+    </div>
+    <div class="val" id="totalBarVal">—</div>
+  </div>
+
+  <!-- Progress bar -->
+  <div class="progress-wrap hidden" id="progressWrap">
+    <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+    <div class="progress-text"><span id="progressPct">0</span>%</div>
+  </div>
+
+  <!-- Main split: pipeline left + detail right -->
+  <div class="main-split hidden" id="mainSplit">
+
+    <!-- Left: pipeline stages -->
+    <div class="pipeline-left" id="pipelineLeft">
+
+      <!-- Bronze tier -->
+      <div class="tier-section">
+        <div class="tier-hdr bronze">
+          <span>BRONZE · Ingestion</span>
+          <span class="tier-agg" id="tierAgg-bronze">Σ —</span>
+        </div>
+        <div class="tier-body">
+          <div class="stage-card idle" id="stage-bronze">
+            <div class="stage-hdr">
+              <div class="stage-icon">💾</div>
+              <div class="stage-info">
+                <div class="stage-title">Upload &amp; Register</div>
+                <div class="stage-desc">MinIO + Postgres</div>
+              </div>
+              <div class="stage-timer" id="timer-bronze">⏱ —</div>
+            </div>
+            <div class="stage-body" id="body-bronze"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Silver tier -->
+      <div class="tier-section">
+        <div class="tier-hdr silver">
+          <span>SILVER · Parsing &amp; Filtering</span>
+          <span class="tier-agg" id="tierAgg-silver">Σ —</span>
+        </div>
+        <div class="tier-body">
+          <div class="stage-card idle" id="stage-silver">
+            <div class="stage-hdr">
+              <div class="stage-icon">✂️</div>
+              <div class="stage-info">
+                <div class="stage-title">Chunking &amp; Filtering</div>
+                <div class="stage-desc">Docling parse → policy filter</div>
+              </div>
+              <div class="stage-timer" id="timer-silver">⏱ —</div>
+            </div>
+            <div class="stage-body" id="body-silver"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Gold tier -->
+      <div class="tier-section">
+        <div class="tier-hdr gold">
+          <span>GOLD · Extraction &amp; Graph</span>
+          <span class="tier-agg" id="tierAgg-gold">Σ —</span>
+        </div>
+        <div class="tier-body">
+          <div class="stage-card idle" id="stage-gold">
+            <div class="stage-hdr">
+              <div class="stage-icon">⭐</div>
+              <div class="stage-info">
+                <div class="stage-title">LLM Extract → Neo4j Commit</div>
+                <div class="stage-desc">entities · relations · embed · conflict</div>
+              </div>
+              <div class="stage-timer" id="timer-gold">⏱ —</div>
+            </div>
+            <div class="stage-body" id="body-gold"></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /pipeline-left -->
+
+    <!-- Right: detail panel -->
+    <div class="detail-panel" id="detailPanel">
+      <div class="detail-panel-hdr">
+        <h3 id="dpTitle">Select a chunk to inspect</h3>
+        <div class="dpid" id="dpSubtitle"></div>
+      </div>
+      <div class="detail-panel-empty" id="dpEmpty">
+        Click any chunk in the pipeline to see its full content and processing details.
+      </div>
+      <div class="detail-panel-body hidden" id="dpBody"></div>
+    </div>
+
+  </div><!-- /main-split -->
+
+</div><!-- /container -->
+
+<script>
+const API = 'http://localhost:8050';
+
+// ── State ─────────────────────────────────────────────────────────────────────
+const S = {
+  file: null, docId: null, eventSource: null, pipelineDone: false,
+  t: { pipelineStart:null, pipelineEnd:null, bronze:{s:null,e:null}, silver:{s:null,e:null}, gold:{s:null,e:null} },
+  // silver chunks: index → {index, preview, fullText, length, tableInvolved, tableName, status, filterReason}
+  chunks: {},
+  // gold chunks: index → {index, preview, fullContent, length, status, stage1, stage2, canonicalize, embed, storeTiming, conflict, blockId, skipReason, error}
+  goldChunks: {},
+  goldTotal: 0, goldDone: 0,
+  silverStats: null, goldStats: null,
+  activeIdx: null,    // which chunk is shown in detail panel
+  activeType: null,   // 'silver' | 'gold'
+};
+let tickerRef = null;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function fmt(ms){ if(ms==null||ms<0)return'—'; const s=ms/1000,m=Math.floor(s/60); return m>0?`${m}:${(s-m*60).toFixed(1).padStart(4,'0')}`:`${s.toFixed(1)}s`; }
+function fmtMs(ms){ if(ms==null)return'—'; return ms<1000?`${ms}ms`:`${(ms/1000).toFixed(2)}s`; }
+function esc(s){ const d=document.createElement('div'); d.textContent=String(s??''); return d.innerHTML; }
+function $id(id){ return document.getElementById(id); }
+function startTicker(){ if(tickerRef)return; tickerRef=setInterval(tickTimers,150); }
+function stopTicker(){ if(tickerRef){clearInterval(tickerRef);tickerRef=null;} tickTimers(); }
+function tierMs(t){ return t.s==null?null:(t.e??Date.now())-t.s; }
+function pipelineMs(){ return S.t.pipelineStart==null?null:(S.t.pipelineEnd??Date.now())-S.t.pipelineStart; }
+
+function tickTimers(){
+  ['bronze','silver','gold'].forEach(t=>{
+    const el=$id(`timer-${t}`); if(el) el.textContent=`⏱ ${fmt(tierMs(S.t[t]))}`;
+    const ag=$id(`tierAgg-${t}`); if(ag) ag.textContent=`Σ ${fmt(tierMs(S.t[t]))}`;
+  });
+  const tv=$id('totalBarVal'); if(tv) tv.textContent=fmt(pipelineMs());
+}
+
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+const dropZone=$id('dropZone'), fileInput=$id('fileInput'), fileNameEl=$id('fileName');
+const uploadBtn=$id('uploadBtn'), docStrip=$id('docStrip');
+const promoteRow=$id('promoteRow'), promoSilverBtn=$id('promoSilverBtn'), promoGoldBtn=$id('promoGoldBtn');
+const totalBar=$id('totalBar'), progressWrap=$id('progressWrap'), mainSplit=$id('mainSplit');
+
+// ── File select ───────────────────────────────────────────────────────────────
+dropZone.addEventListener('click',()=>fileInput.click());
+dropZone.addEventListener('dragover',e=>{e.preventDefault();dropZone.classList.add('over')});
+dropZone.addEventListener('dragleave',()=>dropZone.classList.remove('over'));
+dropZone.addEventListener('drop',e=>{e.preventDefault();dropZone.classList.remove('over');if(e.dataTransfer.files[0])setFile(e.dataTransfer.files[0])});
+fileInput.addEventListener('change',e=>{ if(e.target.files[0]) setFile(e.target.files[0]) });
+function setFile(f){ S.file=f; fileNameEl.textContent=f.name; uploadBtn.disabled=false; }
+
+// ── Upload → Bronze ───────────────────────────────────────────────────────────
+uploadBtn.addEventListener('click', async ()=>{
+  if(!S.file) return;
+  uploadBtn.disabled=true;
+  setStage('bronze','processing');
+  S.t.bronze.s=Date.now(); S.t.pipelineStart=S.t.bronze.s;
+  startTicker();
+  mainSplit.classList.remove('hidden');
+  totalBar.classList.remove('hidden');
+  progressWrap.classList.remove('hidden');
+  setProgress(5);
+  try {
+    const fd=new FormData();
+    fd.append('file',S.file);
+    fd.append('abstract',`Demo ingestion of ${S.file.name}`);
+    fd.append('language','english');
+    fd.append('source_type','doc');
+    fd.append('doc_metadata',JSON.stringify({doc_type:'Doc/PDF',author:'Demo User',published_date:new Date().toISOString().split('T')[0]}));
+    const resp=await fetch(`${API}/api/pipeline/ingestion/bronze`,{method:'POST',body:fd,headers:{'X-Role':'PLATFORM_ADMIN'}});
+    if(!resp.ok){const txt=await resp.text();throw new Error(`Upload failed: ${resp.status} ${txt.substring(0,200)}`);}
+    const result=await resp.json();
+    S.docId=result.data_id;
+    S.t.bronze.e=Date.now();
+    setStage('bronze','complete');
+    $id('body-bronze').innerHTML=`<div class="sec-lbl">Result</div><div class="summary-box">${esc(JSON.stringify({data_id:result.data_id,name:result.name,path:result.path,layer:result.layer},null,2))}</div>`;
+    $id('docName').textContent=S.file.name;
+    $id('docSize').textContent=`${(S.file.size/1024).toFixed(1)} KB`;
+    $id('docId').textContent=S.docId;
+    docStrip.classList.remove('hidden');
+    connectStream(S.docId);
+    promoteRow.classList.remove('hidden');
+    promoSilverBtn.classList.remove('hidden');
+    setProgress(15);
+  } catch(err) {
+    S.t.bronze.e=Date.now();
+    setStage('bronze','error');
+    $id('body-bronze').innerHTML=`<div class="info-line err"><span class="icon">✗</span>${esc(err.message)}</div>`;
+    stopTicker();
+  }
+});
+
+// ── Promote to Silver ─────────────────────────────────────────────────────────
+promoSilverBtn.addEventListener('click', async ()=>{
+  promoSilverBtn.disabled=true;
+  promoSilverBtn.innerHTML='<span class="spinner"></span> Queuing…';
+  try {
+    const resp=await fetch(`${API}/api/pipeline/ingestion/promote/${S.docId}/silver`,{method:'POST',headers:{'X-Role':'PLATFORM_ADMIN'}});
+    if(!resp.ok) throw new Error(`Silver promotion failed: ${resp.status}`);
+    promoSilverBtn.innerHTML='<span>Promoting to Silver…</span>';
+    setStage('silver','processing');
+    S.t.silver.s=Date.now();
+    setProgress(25);
+  } catch(err) {
+    promoSilverBtn.disabled=false;
+    promoSilverBtn.innerHTML='<span>Promote to Silver</span>';
+    alert(err.message);
+  }
+});
+
+// ── Promote to Gold ───────────────────────────────────────────────────────────
+promoGoldBtn.addEventListener('click', async ()=>{
+  promoGoldBtn.disabled=true;
+  promoGoldBtn.innerHTML='<span class="spinner"></span> Queuing…';
+  try {
+    const resp=await fetch(`${API}/api/pipeline/ingestion/promote/${S.docId}/gold`,{method:'POST',headers:{'X-Role':'PLATFORM_ADMIN'}});
+    if(!resp.ok) throw new Error(`Gold promotion failed: ${resp.status}`);
+    promoGoldBtn.innerHTML='<span>Promoting to Gold…</span>';
+    setStage('gold','processing');
+    S.t.gold.s=Date.now();
+    setProgress(55);
+  } catch(err) {
+    promoGoldBtn.disabled=false;
+    promoGoldBtn.innerHTML='<span>Promote to Gold</span>';
+    alert(err.message);
+  }
+});
+
+// ── SSE Stream ────────────────────────────────────────────────────────────────
+function connectStream(dataId){
+  if(S.eventSource) S.eventSource.close();
+  S.pipelineDone=false;
+  const es=new EventSource(`${API}/api/pipeline/ingestion/documents/${dataId}/stream`);
+  S.eventSource=es;
+  es.onmessage=e=>{ try{handleEvent(JSON.parse(e.data));}catch(ex){console.warn('SSE parse error',ex);} };
+  es.onerror=()=>{ if(!S.pipelineDone) console.warn('SSE error — will retry'); };
+}
+
+// ── Event handlers ────────────────────────────────────────────────────────────
+function handleEvent(msg){
+  const {event,payload}=msg;
+
+  // Once the pipeline is done the EventSource is closed. Guard against any
+  // late-arriving duplicates that arrive before the close propagates.
+  if(S.pipelineDone && event!=='pipeline.done' && event!=='pipeline.error') return;
+
+  if(event==='silver.start'){
+    setStage('silver','processing');
+    if(!S.t.silver.s) S.t.silver.s=Date.now();
+    updateSilverStats();
+  }
+  else if(event==='silver.chunk.found'){
+    S.chunks[payload.index]={
+      index:payload.index, preview:payload.preview, fullText:payload.preview,
+      length:payload.length, tableInvolved:payload.table_involved,
+      tableName:payload.table_name, status:'pending', filterReason:null,
+    };
+    ensureSilverItem(payload.index);
+    updateSilverItem(payload.index);
+    updateSilverStats();
+  }
+  else if(event==='silver.filter.blocked'){
+    const c=S.chunks[payload.index];
+    if(c){c.status='rejected';c.filterReason=`${payload.method}: ${payload.reason}`;}
+    updateSilverItem(payload.index);
+    updateSilverStats();
+    if(S.activeIdx===payload.index&&S.activeType==='silver') renderDetailPanel();
+  }
+  else if(event==='silver.filter.accepted'){
+    const c=S.chunks[payload.index];
+    if(c) c.status='accepted';
+    updateSilverItem(payload.index);
+    updateSilverStats();
+    if(S.activeIdx===payload.index&&S.activeType==='silver') renderDetailPanel();
+  }
+  else if(event==='silver.complete'){
+    S.silverStats=payload;
+    S.t.silver.e=Date.now();
+    setStage('silver','complete');
+    updateSilverStats();
+    promoGoldBtn.classList.remove('hidden');
+    promoGoldBtn.disabled=false;
+    promoGoldBtn.innerHTML='<span>Promote to Gold</span>';
+    setProgress(50);
+  }
+
+  else if(event==='gold.start'){
+    S.goldTotal=payload.total_chunks;
+    setStage('gold','processing');
+    if(!S.t.gold.s) S.t.gold.s=Date.now();
+    updateGoldStats();
+  }
+  else if(event==='gold.chunk.start'){
+    S.goldChunks[payload.index]={
+      index:payload.index, preview:(payload.content||payload.preview||'').slice(0,200),
+      fullContent:payload.content||payload.preview||'',
+      length:payload.length, status:'processing',
+      stage1:null, stage2:null, canonicalize:null, embed:null,
+      storeTiming:null, conflict:null, blockId:null, skipReason:null, error:null,
+    };
+    ensureGoldItem(payload.index);
+    updateGoldItem(payload.index);
+    updateGoldStats();
+    // auto-focus this chunk in the detail panel
+    selectChunk(payload.index, 'gold');
+  }
+  else if(event==='gold.stage1.complete'){
+    const gc=S.goldChunks[payload.index];
+    if(gc) gc.stage1={summary:payload.summary,entities:payload.entities,intents:payload.intents,fallback:payload.used_fallback,duration_ms:payload.duration_ms,attempts:payload.attempts||1,rawAnswers:payload.raw_answers||[]};
+    if(S.activeIdx===payload.index) renderDetailPanel();
+  }
+  else if(event==='gold.stage2.complete'){
+    const gc=S.goldChunks[payload.index];
+    if(gc) gc.stage2={relationships:payload.relationships,duration_ms:payload.duration_ms,retries:payload.retries||0,rawAnswers:payload.raw_answers||[]};
+    if(S.activeIdx===payload.index) renderDetailPanel();
+  }
+  else if(event==='gold.canonicalize'){
+    const gc=S.goldChunks[payload.index];
+    if(gc) gc.canonicalize=payload.mappings;
+    if(S.activeIdx===payload.index) renderDetailPanel();
+  }
+  else if(event==='gold.embed.complete'){
+    const gc=S.goldChunks[payload.index];
+    if(gc) gc.embed={dim:payload.dim,entityCount:payload.entity_count,duration_ms:payload.duration_ms};
+    if(S.activeIdx===payload.index) renderDetailPanel();
+  }
+  else if(event==='gold.store.timing'){
+    const gc=S.goldChunks[payload.index];
+    if(gc) gc.storeTiming={postgres_ms:payload.postgres_ms,qdrant_ms:payload.qdrant_ms,neo4j_ms:payload.neo4j_ms};
+    if(S.activeIdx===payload.index) renderDetailPanel();
+  }
+  else if(event==='gold.conflict.check'){
+    const gc=S.goldChunks[payload.index];
+    if(gc) gc.conflict={checked:true,candidates:payload.candidates,found:false,threshold:payload.threshold};
+    if(S.activeIdx===payload.index) renderDetailPanel();
+  }
+  else if(event==='gold.conflict.found'){
+    const gc=S.goldChunks[payload.index];
+    if(gc) gc.conflict={checked:true,found:true,type:payload.conflict_type,severity:payload.severity,explanation:payload.explanation,similarity:payload.similarity,existingSummary:payload.existing_summary,rawAnswer:payload.raw_answer||''};
+    if(S.activeIdx===payload.index) renderDetailPanel();
+  }
+  else if(event==='gold.commit.ok'){
+    const gc=S.goldChunks[payload.index];
+    if(gc){gc.status='committed';gc.blockId=payload.block_id;}
+    S.goldDone++;
+    updateGoldItem(payload.index);
+    updateGoldStats();
+    if(S.activeIdx===payload.index) renderDetailPanel();
+  }
+  else if(event==='gold.chunk.skipped'){
+    const gc=S.goldChunks[payload.index];
+    if(gc){gc.status='skipped';gc.skipReason=payload.reason;}
+    S.goldDone++;
+    updateGoldItem(payload.index);
+    updateGoldStats();
+    if(S.activeIdx===payload.index) renderDetailPanel();
+  }
+  else if(event==='gold.chunk.failed'){
+    const gc=S.goldChunks[payload.index];
+    if(gc){gc.status='failed';gc.error=payload.error;}
+    S.goldDone++;
+    updateGoldItem(payload.index);
+    updateGoldStats();
+    if(S.activeIdx===payload.index) renderDetailPanel();
+  }
+  else if(event==='gold.complete'){
+    S.goldStats=payload;
+    S.t.gold.e=Date.now();
+    S.t.pipelineEnd=S.t.gold.e;
+    setStage('gold','complete');
+    updateGoldStats();
+    setProgress(100);
+    $id('totalBarSub').textContent='Pipeline complete';
+    stopTicker();
+  }
+  else if(event==='pipeline.done'){
+    if(!S.t.gold.e) S.t.gold.e=Date.now();
+    if(!S.t.pipelineEnd) S.t.pipelineEnd=Date.now();
+    $id('totalBarSub').textContent='Pipeline complete';
+    stopTicker();
+    S.pipelineDone=true;
+    if(S.eventSource){ S.eventSource.close(); S.eventSource=null; }
+  }
+  else if(event==='pipeline.error'){
+    const stage=payload.stage||'unknown';
+    setStage(stage,'error');
+    stopTicker();
+    S.pipelineDone=true;
+    if(S.eventSource){ S.eventSource.close(); S.eventSource=null; }
+  }
+}
+
+// ── UI helpers ────────────────────────────────────────────────────────────────
+function setStage(id, status){
+  const el=$id(`stage-${id}`); if(!el) return;
+  el.className=`stage-card ${status}`;
+  const icon=el.querySelector('.stage-icon');
+  if(status==='processing') icon.textContent='⚙';
+  else if(status==='complete') icon.textContent='✓';
+  else if(status==='error') icon.textContent='✗';
+}
+function setProgress(pct){ $id('progressFill').style.width=pct+'%'; $id('progressPct').textContent=pct; }
+function updateGoldProgress(){ if(!S.goldTotal)return; const pct=Math.round(55+(S.goldDone/S.goldTotal)*44); setProgress(Math.min(pct,99)); }
+
+// ── Silver list management ────────────────────────────────────────────────────
+function ensureSilverList(){
+  const body=$id('body-silver');
+  if(!$id('sl-stats')){
+    body.innerHTML=`<div id="sl-stats" style="font-size:.8em;color:#888;margin-bottom:.4rem"></div><div class="silver-list" id="sl-list"></div>`;
+  }
+}
+function updateSilverStats(){
+  ensureSilverList();
+  const el=$id('sl-stats'); if(!el) return;
+  const chunks=Object.values(S.chunks);
+  if(S.silverStats){
+    el.innerHTML=`<span style="color:#166534;font-weight:600">✓ ${S.silverStats.accepted} accepted</span> · <span style="color:#991B1B">${S.silverStats.rejected} rejected</span> of ${S.silverStats.total} parsed`;
+  } else if(chunks.length){
+    const a=chunks.filter(c=>c.status==='accepted').length;
+    const r=chunks.filter(c=>c.status==='rejected').length;
+    const p=chunks.filter(c=>c.status==='pending').length;
+    el.textContent=`${chunks.length} chunks — ${a} accepted, ${r} rejected${p?' · '+p+' pending':''}`;
+  }
+}
+function ensureSilverItem(idx){
+  ensureSilverList();
+  const list=$id('sl-list'); if(!list) return;
+  if(!$id(`si-${idx}`)){
+    const div=document.createElement('div');
+    div.id=`si-${idx}`;
+    div.className='sc-item';
+    div.onclick=()=>selectChunk(idx,'silver');
+    list.appendChild(div);
+  }
+}
+function updateSilverItem(idx){
+  const el=$id(`si-${idx}`); if(!el) return;
+  const c=S.chunks[idx]; if(!c) return;
+  const selected=(S.activeIdx===idx&&S.activeType==='silver')?'selected':'';
+  el.className=`sc-item ${selected}`;
+  el.innerHTML=`<span class="sc-idx">#${idx}</span><span class="sc-prev">${esc(c.preview.substring(0,60))}</span><span class="sc-badge ${c.status}">${c.status.toUpperCase()}</span>`;
+}
+
+// ── Gold list management ──────────────────────────────────────────────────────
+function ensureGoldList(){
+  const body=$id('body-gold');
+  if(!$id('gl-stats')){
+    body.innerHTML=`<div id="gl-stats" style="font-size:.8em;color:#888;margin-bottom:.4rem"></div><div class="gold-list" id="gl-list"></div>`;
+  }
+}
+function updateGoldStats(){
+  ensureGoldList();
+  const el=$id('gl-stats'); if(!el) return;
+  if(S.goldStats){
+    el.innerHTML=`<span style="color:#166534;font-weight:600">✓ ${S.goldStats.committed} committed</span> · <span style="color:#EF4444">${S.goldStats.conflicted} conflicts</span> · ${S.goldStats.failed} failed`;
+  } else if(S.goldTotal){
+    el.textContent=`${S.goldDone}/${S.goldTotal} chunks done`;
+    updateGoldProgress();
+  }
+}
+function ensureGoldItem(idx){
+  ensureGoldList();
+  const list=$id('gl-list'); if(!list) return;
+  if(!$id(`gi-${idx}`)){
+    const div=document.createElement('div');
+    div.id=`gi-${idx}`;
+    div.onclick=()=>selectChunk(idx,'gold');
+    list.appendChild(div);
+  }
+}
+function updateGoldItem(idx){
+  const el=$id(`gi-${idx}`); if(!el) return;
+  const c=S.goldChunks[idx]; if(!c) return;
+  const selected=(S.activeIdx===idx&&S.activeType==='gold')?'selected':'';
+  const labels={processing:'IN PROGRESS',committed:'COMMITTED',skipped:'SKIPPED',failed:'FAILED'};
+  el.className=`gc-item ${c.status} ${selected}`;
+  el.innerHTML=`<div class="gc-dot"></div><span class="gc-idx">#${idx}</span><span class="gc-prev">${esc(c.preview.substring(0,55))}</span><span class="gc-badge">${labels[c.status]||c.status}</span>`;
+}
+
+// ── Select chunk → show in detail panel ──────────────────────────────────────
+function selectChunk(idx, type){
+  const prevIdx=S.activeIdx, prevType=S.activeType;
+  S.activeIdx=idx; S.activeType=type;
+  // update previous item selection state
+  if(prevType==='silver'&&prevIdx!=null) updateSilverItem(prevIdx);
+  if(prevType==='gold'&&prevIdx!=null) updateGoldItem(prevIdx);
+  // update current item
+  if(type==='silver') updateSilverItem(idx);
+  if(type==='gold') updateGoldItem(idx);
+  renderDetailPanel();
+}
+
+// ── Detail panel renderer ─────────────────────────────────────────────────────
+function renderDetailPanel(){
+  const idx=S.activeIdx, type=S.activeType;
+  if(idx==null){ return; }
+
+  const c = type==='silver' ? S.chunks[idx] : S.goldChunks[idx];
+  if(!c){ return; }
+
+  $id('dpEmpty').classList.add('hidden');
+  $id('dpBody').classList.remove('hidden');
+
+  if(type==='silver'){
+    $id('dpTitle').textContent=`Silver Chunk #${idx}`;
+    $id('dpSubtitle').textContent=`${c.length} chars · ${c.tableInvolved?'table: '+c.tableName:'text'} · status: ${c.status}${c.filterReason?' · '+c.filterReason:''}`;
+  } else {
+    const gc=c;
+    $id('dpTitle').textContent=`Gold Chunk #${idx}`;
+    $id('dpSubtitle').textContent=`${gc.length} chars · ${gc.status}${gc.blockId?' · '+gc.blockId.substring(0,12)+'…':''}`;
+  }
+
+  let html='';
+
+  // ── Full content ────────────────────────────────────────────────────────────
+  const text = type==='silver' ? (c.preview||'') : (c.fullContent||c.preview||'');
+  const needsExpand = text.length > 400;
+  const expandId = `expand-${type}-${idx}`;
+  html += `<div class="d-section">
+    <div class="d-sec-hdr" onclick="toggleSection(this)">
+      <span class="dot" style="background:#6B7280"></span>CONTENT
+      <span style="margin-left:.5rem;font-size:.85em;color:#AAA">${c.length} chars</span>
+    </div>
+    <div class="d-sec-body">
+      <div class="full-text-wrap">
+        <div class="full-text${needsExpand?'':' expanded'}" id="${expandId}">${esc(text)}</div>
+        ${needsExpand?`<button class="expand-btn" onclick="toggleExpand('${expandId}',this)">▼ Show more</button>`:''}
+      </div>
+    </div>
+  </div>`;
+
+  // Silver-only: filter reason
+  if(type==='silver' && c.filterReason){
+    html += `<div class="d-section">
+      <div class="d-sec-hdr"><span class="dot" style="background:#EF4444"></span>FILTER DECISION</div>
+      <div class="d-sec-body"><div class="info-line warn"><span class="icon">⚠</span>${esc(c.filterReason)}</div></div>
+    </div>`;
+  }
+
+  // Gold-only detail sections
+  if(type==='gold'){
+    const gc=c;
+
+    // EXTRACTION
+    if(gc.stage1){
+      const s1=gc.stage1;
+      const fbWarn=s1.fallback?`<span style="color:#F59E0B;font-size:.85em"> ⚠ heuristic fallback</span>`:'';
+      const attNote=s1.attempts>1?`<span style="color:#F59E0B;font-size:.85em"> · ${s1.attempts} attempts</span>`:`<span style="color:#6B7280;font-size:.85em"> · 1 attempt</span>`;
+      const rawId1=`raw-s1-${idx}`;
+      html+=`<div class="d-section">
+        <div class="d-sec-hdr" onclick="toggleSection(this)">
+          <span class="dot" style="background:#7C3AED"></span>EXTRACTION ${fbWarn}${attNote}
+          ${s1.duration_ms!=null?`<span class="dtimer">${fmtMs(s1.duration_ms)}</span>`:''}
+        </div>
+        <div class="d-sec-body">
+          <div class="sec-lbl">Summary</div>
+          <div class="summary-box">${esc(s1.summary)}</div>
+          <div class="sec-lbl">Entities (${s1.entities.length})</div>
+          <div class="tag-row">${s1.entities.map(e=>`<span class="tag entity" title="${esc(e.description)}">${esc(e.name)}</span>`).join('')}</div>
+          ${s1.entities.some(e=>e.description)?`<div class="ent-list">${s1.entities.filter(e=>e.description).map(e=>`<div class="ent-row"><span class="ename">${esc(e.name)}:</span> ${esc(e.description)}</div>`).join('')}</div>`:''}
+          <div class="sec-lbl">Intents</div>
+          <div class="tag-row">${s1.intents.map(i=>`<span class="tag intent">${esc(i)}</span>`).join('')}</div>
+          ${renderRawAnswers(s1.rawAnswers||[], `s1-${idx}`)}
+        </div>
+      </div>`;
+    } else if(gc.status==='processing'){
+      html+=`<div class="d-section">
+        <div class="d-sec-hdr"><span class="dot" style="background:#7C3AED"></span>EXTRACTION</div>
+        <div class="d-sec-body"><div style="color:#888">Running LLM entity extraction…</div></div>
+      </div>`;
+    }
+
+    // RELATIONSHIPS
+    if(gc.stage2){
+      const rels=gc.stage2.relationships||[];
+      const retryNote=gc.stage2.retries>0?`<span style="color:#F59E0B;font-size:.85em"> · ${gc.stage2.retries} retr${gc.stage2.retries===1?'y':'ies'}</span>`:'';
+      html+=`<div class="d-section">
+        <div class="d-sec-hdr" onclick="toggleSection(this)">
+          <span class="dot" style="background:#2563EB"></span>RELATIONSHIPS (${rels.length}) ${retryNote}
+          ${gc.stage2.duration_ms!=null?`<span class="dtimer">${fmtMs(gc.stage2.duration_ms)}</span>`:''}
+        </div>
+        <div class="d-sec-body">
+          ${rels.length?`<div class="rel-list">${rels.map(r=>`<div class="rel-item"><span class="rel-from">${esc(r.from)}</span><span class="rel-arrow">→</span><span class="rel-to">${esc(r.to)}</span><span class="rel-type">${esc(r.type)}</span></div>`).join('')}</div>`
+          :`<div style="color:#888;font-size:.85em">No relationships extracted</div>`}
+          ${renderRawAnswers(gc.stage2.rawAnswers||[], `s2-${idx}`)}
+        </div>
+      </div>`;
+    }
+
+    // CANONICALIZATION
+    if(gc.canonicalize){
+      const maps=gc.canonicalize;
+      html+=`<div class="d-section">
+        <div class="d-sec-hdr" onclick="toggleSection(this)">
+          <span class="dot" style="background:#0891B2"></span>CANONICALIZATION (${maps.length})
+        </div>
+        <div class="d-sec-body">
+          <table class="canon-table">
+            <tr style="font-size:.7em;color:#888;font-weight:700"><td>Raw</td><td></td><td>Canonical</td><td>Action</td><td>Sim</td></tr>
+            ${maps.map(m=>`<tr>
+              <td class="canon-raw">${esc(m.raw)}</td>
+              <td style="color:#94A3B8;padding:0 .25rem">→</td>
+              <td class="canon-can">${esc(m.canonical)}</td>
+              <td><span class="action-badge ${m.action}">${m.action.replace(/_/g,' ')}</span></td>
+              <td class="canon-sim">${m.similarity!=null?m.similarity.toFixed(3):'—'}</td>
+            </tr>`).join('')}
+          </table>
+        </div>
+      </div>`;
+    }
+
+    // EMBEDDING
+    if(gc.embed){
+      html+=`<div class="d-section">
+        <div class="d-sec-hdr" onclick="toggleSection(this)">
+          <span class="dot" style="background:#059669"></span>EMBEDDING
+          ${gc.embed.duration_ms!=null?`<span class="dtimer">${fmtMs(gc.embed.duration_ms)}</span>`:''}
+        </div>
+        <div class="d-sec-body">
+          <div class="info-line ok"><span class="icon">✓</span> ${gc.embed.dim}-dim vector · ${gc.embed.entityCount} entity vectors</div>
+        </div>
+      </div>`;
+    }
+
+    // CONFLICT
+    if(gc.conflict){
+      const cf=gc.conflict;
+      html+=`<div class="d-section">
+        <div class="d-sec-hdr" onclick="toggleSection(this)">
+          <span class="dot" style="background:#DC2626"></span>CONFLICT ${cf.found?'DETECTED':'CHECK'}
+        </div>
+        <div class="d-sec-body">
+          ${!cf.found
+            ?`<div class="info-line ok"><span class="icon">✓</span> No conflicts — ${cf.candidates} candidates checked (threshold ${cf.threshold??'0.92'})</div>`
+            :`<div class="info-line warn"><span class="icon">⚠</span><span><strong>${esc(cf.type)}</strong> · severity: <strong>${esc(cf.severity)}</strong> · sim: ${cf.similarity}</span></div>
+             <div style="font-size:.8em;color:#5A5A5A;margin-top:.35rem">${esc(cf.explanation)}</div>
+             ${cf.existingSummary?`<div style="font-size:.78em;color:#888;margin-top:.3rem"><strong>Existing:</strong> ${esc(cf.existingSummary)}</div>`:''}
+             ${cf.rawAnswer?renderRawAnswers([{attempt:1,temp:0.1,text:cf.rawAnswer}],`cf-${idx}`):''}
+            `
+          }
+        </div>
+      </div>`;
+    }
+
+    // COMMIT / SKIP / FAIL + STORE TIMING
+    if(gc.status==='committed'&&gc.blockId){
+      html+=`<div class="d-section">
+        <div class="d-sec-hdr"><span class="dot" style="background:#16A34A"></span>COMMIT OK</div>
+        <div class="d-sec-body">
+          <div class="info-line ok"><span class="icon">✓</span> block_id: <code style="font-family:monospace">${esc(gc.blockId)}</code></div>
+          ${gc.storeTiming?`<div class="store-chips">
+            <div class="store-chip pg"><span class="sicon">🐘</span> Postgres ${fmtMs(gc.storeTiming.postgres_ms)}</div>
+            <div class="store-chip qd"><span class="sicon">🔍</span> Qdrant ${fmtMs(gc.storeTiming.qdrant_ms)}</div>
+            <div class="store-chip n4"><span class="sicon">🕸</span> Neo4j ${fmtMs(gc.storeTiming.neo4j_ms)}</div>
+          </div>`:'<div style="font-size:.78em;color:#666;margin-top:.25rem">Postgres · Qdrant · Neo4j committed</div>'}
+        </div>
+      </div>`;
+    } else if(gc.status==='skipped'){
+      html+=`<div class="d-section">
+        <div class="d-sec-hdr"><span class="dot" style="background:#94A3B8"></span>SKIPPED</div>
+        <div class="d-sec-body"><div class="info-line warn"><span class="icon">⚠</span>${esc((gc.skipReason||'').replace(/_/g,' '))}</div></div>
+      </div>`;
+    } else if(gc.status==='failed'){
+      html+=`<div class="d-section">
+        <div class="d-sec-hdr"><span class="dot" style="background:#EF4444"></span>FAILED</div>
+        <div class="d-sec-body"><div class="info-line err"><span class="icon">✗</span>${esc(gc.error||'Unknown error')}</div></div>
+      </div>`;
+    }
+  }
+
+  $id('dpBody').innerHTML=html;
+}
+
+// ── Section collapse toggle ───────────────────────────────────────────────────
+function toggleSection(hdr){
+  const body=hdr.nextElementSibling;
+  if(body) body.classList.toggle('collapsed');
+}
+
+// ── Raw LLM answer list renderer ─────────────────────────────────────────────
+// rawAnswers: [{attempt, temp, text}], prefix: unique id prefix
+function renderRawAnswers(rawAnswers, prefix){
+  if(!rawAnswers||!rawAnswers.length) return '';
+  const items = rawAnswers.map((a,i)=>{
+    const id=`raw-${prefix}-${i}`;
+    const label=rawAnswers.length>1
+      ? `Attempt ${a.attempt} · temp ${a.temp}`
+      : `LLM answer`;
+    return `<div class="raw-answer-item">
+      <div class="sec-lbl raw-lbl" onclick="toggleRaw('${id}',this)" style="cursor:pointer;user-select:none">▶ ${label}</div>
+      <pre class="raw-llm collapsed" id="${id}">${esc(a.text||'(empty)')}</pre>
+    </div>`;
+  }).join('');
+  return `<div class="raw-answer-list">${items}</div>`;
+}
+
+// ── Raw LLM answer toggle ─────────────────────────────────────────────────────
+function toggleRaw(id, lbl){
+  const el=$id(id);
+  if(!el) return;
+  const collapsed=el.classList.toggle('collapsed');
+  lbl.textContent=lbl.textContent.replace(collapsed?'▼':'▶', collapsed?'▶':'▼');
+}
+
+// ── Text expand/collapse ──────────────────────────────────────────────────────
+function toggleExpand(textId, btn){
+  const el=$id(textId); if(!el) return;
+  const expanded=el.classList.toggle('expanded');
+  btn.textContent=expanded?'▲ Show less':'▼ Show more';
+}
+
+// Initial subtitle
+$id('totalBarSub').textContent='Waiting for upload…';
+</script>
+</body>
+</html>

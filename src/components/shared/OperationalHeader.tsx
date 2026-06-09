@@ -29,10 +29,10 @@ export const OperationalHeader = ({
         )}
         {breadcrumbs.map((crumb, i) => (
           <React.Fragment key={crumb.label}>
-            {i > 0 && <span className="text-[#777777] text-xs">/</span>}
+            {i > 0 && <span className="text-white/40 text-xs">/</span>}
             <span className={cn(
               'text-xs font-semibold',
-              i === breadcrumbs.length - 1 ? 'text-[#3F3F3F]' : 'text-[#5F5F5F]',
+              i === breadcrumbs.length - 1 ? 'text-white' : 'text-white/60',
             )}>
               {crumb.label}
             </span>
@@ -43,13 +43,13 @@ export const OperationalHeader = ({
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div className="space-y-1.5 min-w-0">
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl sm:text-3xl font-bold text-[#111111] tracking-tight leading-none font-display">
+            <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight leading-none font-display">
               {title}
             </h1>
             {status}
           </div>
           {subtitle && (
-            <p className="text-sm text-[#3F3F3F] leading-relaxed max-w-2xl">{subtitle}</p>
+            <p className="text-sm text-white/70 leading-relaxed max-w-2xl">{subtitle}</p>
           )}
         </div>
         {actions && (

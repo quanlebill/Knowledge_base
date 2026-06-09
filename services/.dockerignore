@@ -1,0 +1,14 @@
+.git
+.gitignore
+.idea
+.venv
+venv
+__pycache__
+.pytest_cache
+*.pyc
+*.pyo
+*.log
+logs
+dist
+build
+.DS_Store

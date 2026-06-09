@@ -1,0 +1,24 @@
+# syntax=docker/dockerfile:1.4
+FROM node:20-alpine
+WORKDIR /app
+
+# Tune npm for flaky networks before install. Without these, a single ECONNRESET
+# mid-install kills the whole layer and forces a full retry from scratch.
+#   fetch-retries: how many times to retry a failed fetch
+#   fetch-retry-mintimeout: starting backoff in ms (exponential)
+#   fetch-retry-maxtimeout: ceiling for backoff
+RUN npm config set fetch-retries 5 \
+ && npm config set fetch-retry-mintimeout 20000 \
+ && npm config set fetch-retry-maxtimeout 120000
+
+COPY package*.json ./
+
+# `--mount=type=cache` persists ~/.npm across builds — re-builds after network
+# failures pick up cached tarballs instead of re-fetching everything. Skip
+# `npm audit` here — it makes an extra network call, isn't worth blocking the
+# build for, and runs locally via `npm audit` when devs want it.
+RUN --mount=type=cache,target=/root/.npm npm install --no-audit --no-fund
+
+COPY . .
+EXPOSE 5173
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

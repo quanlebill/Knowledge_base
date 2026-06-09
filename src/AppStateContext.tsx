@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { Role, Industry, TenantContext, User, Environment } from './types';
+import { Role, Industry, TenantContext, User, Environment, KnowledgeDocument } from './types';
+import { mockGet } from './lib/mockApi';
+import { useAuth } from './lib/AuthProvider';
 
 interface AppStateContextType {
   role: Role;
@@ -21,6 +23,17 @@ interface AppStateContextType {
 
   /* Navigation imperatives */
   navigate: (moduleId: string, subId?: string) => void;
+
+  /* Documents — loaded on mount, mutated in-place */
+  documents: KnowledgeDocument[];
+  docsLoading: boolean;
+  addDocument: (doc: KnowledgeDocument) => void;
+  updateDocument: (id: string, patch: Partial<KnowledgeDocument>) => void;
+  deleteDocument: (id: string) => void;
+
+  /* Wizard trigger — sidebar action buttons */
+  pendingAction: string | null;
+  setPendingAction: (action: string | null) => void;
 }
 
 const AppStateContext = createContext<AppStateContextType | undefined>(undefined);
@@ -37,7 +50,8 @@ const writeHash = (module: string, sub?: string) => {
   if (typeof window === 'undefined') return;
   const next = sub ? `#${module}/${sub}` : `#${module}`;
   if (window.location.hash !== next) {
-    window.history.replaceState(null, '', next);
+    // Preserve query params so Keycloak can read ?code=&state= on auth redirect
+    window.history.replaceState(null, '', window.location.search + next);
   }
 };
 
@@ -52,12 +66,19 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
     environment: 'PROD',
   });
 
-  const [user] = useState<User>({
-    id: 'u_123',
-    name: 'Alex Rivera',
-    email: 'alex.rivera@globalcorp.ai',
-    role: 'AI_ENGINEER',
-  });
+  const { user: authUser } = useAuth();
+  const user: User = {
+    id:    authUser?.id    ?? 'u_anon',
+    name:  authUser?.name  ?? authUser?.email ?? 'User',
+    email: authUser?.email ?? '',
+    role:  (() => {
+      const normalized = authUser?.roles?.map(r => r.toUpperCase().replace(/-/g, '_')) ?? [];
+      if (normalized.includes('PLATFORM_ADMIN')) return 'PLATFORM_ADMIN';
+      if (normalized.includes('AI_ENGINEER')) return 'AI_ENGINEER';
+      if (normalized.includes('EXECUTIVE_VIEWER')) return 'EXECUTIVE';
+      return 'AI_ENGINEER';
+    })() as Role,
+  };
 
   /* Routing state — initialized from URL hash */
   const initial = parseHash();
@@ -86,7 +107,7 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  /* Keep URL hash in sync with state (replaceState — doesn't add to history) */
+  /* Keep URL hash in sync with state */
   useEffect(() => {
     writeHash(activeModule, subTab[activeModule]);
   }, [activeModule, subTab]);
@@ -106,6 +127,37 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
     setTenantState(prev => ({ ...prev, ...newTenant }));
   };
 
+  /* Documents */
+  const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
+  const [docsLoading, setDocsLoading] = useState(true);
+
+  useEffect(() => {
+    mockGet<KnowledgeDocument[]>('/api/data/documents')
+      .then(data => setDocuments(data ?? []))
+      .catch(() => setDocuments([]))
+      .finally(() => setDocsLoading(false));
+  }, []);
+
+  const addDocument = useCallback((doc: KnowledgeDocument) => {
+    setDocuments(prev => [doc, ...prev]);
+  }, []);
+
+  const updateDocument = useCallback((data_id: string, patch: Partial<KnowledgeDocument>) => {
+    setDocuments(prev => prev.map(d => {
+      if (d.data_id !== data_id) return d;
+      const updated = { ...d, ...patch };
+      if (patch.metadata) updated.metadata = { ...d.metadata, ...patch.metadata };
+      return updated;
+    }));
+  }, []);
+
+  const deleteDocument = useCallback((data_id: string) => {
+    setDocuments(prev => prev.filter(d => d.data_id !== data_id));
+  }, []);
+
+  /* Wizard trigger */
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+
   return (
     <AppStateContext.Provider
       value={{
@@ -124,6 +176,13 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
         setSubTab,
         getSubTab,
         navigate,
+        documents,
+        docsLoading,
+        addDocument,
+        updateDocument,
+        deleteDocument,
+        pendingAction,
+        setPendingAction,
       }}
     >
       {children}
