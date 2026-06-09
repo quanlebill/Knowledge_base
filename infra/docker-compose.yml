@@ -387,6 +387,23 @@ services:
       mongo:
         condition: service_started
 
+  model-service:
+    build:
+      context: ./model-service
+    container_name: dataagent-model-service
+    restart: unless-stopped
+    ports:
+      - "8600:8001"
+    environment:
+      EMBED_MODEL: BAAI/bge-large-en-v1.5
+      RERANK_MODEL: cross-encoder/ms-marco-MiniLM-L-6-v2
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
   kb-backend:
     build:
       context: ../..
@@ -399,12 +416,47 @@ services:
       POSTGRES_URL: postgresql+asyncpg://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-dev123}@postgres/${POSTGRES_DB:-dataagent}
       QDRANT_URL: http://qdrant:6333
       NEO4J_URI: bolt://neo4j:7687
+      MODEL_SERVICE_URL: http://model-service:8001
     depends_on:
       postgres:
         condition: service_healthy
       qdrant:
         condition: service_started
       neo4j:
+        condition: service_healthy
+      model-service:
+        condition: service_healthy
+
+  kb-ingestion-worker:
+    build:
+      context: ../..
+      dockerfile: infra/kb-ingestion-worker/Dockerfile
+    container_name: dataagent-kb-ingestion-worker
+    restart: unless-stopped
+    environment:
+      POSTGRES_URL: postgresql+asyncpg://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-dev123}@postgres/${POSTGRES_DB:-dataagent}
+      MONGO_URL: mongodb://mongo:27017/dataagent
+      MINIO_URL: http://${MINIO_ROOT_USER:-minio}:${MINIO_ROOT_PASSWORD:-minio_secret}@minio:9000
+      KAFKA_URL: kafka:9092
+      QDRANT_URL: http://qdrant:6333
+      NEO4J_URI: bolt://neo4j:7687
+      MODEL_SERVICE_URL: http://model-service:8001
+      LITELLM_BASE_URL: http://litellm:4000
+      USE_VLM: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      neo4j:
+        condition: service_healthy
+      model-service:
         condition: service_healthy
 
 

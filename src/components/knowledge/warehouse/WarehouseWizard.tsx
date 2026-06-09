@@ -23,6 +23,7 @@ export const WarehouseWizard = ({ onCancel, onComplete }: WarehouseWizardProps) 
   const [warehouseType, setWarehouseType] = useState<WarehouseType | null>(null);
   const [fields, setFields] = useState<Record<string, string>>({});
   const [testingConnection, setTestingConnection] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
   const [discoveringTables, setDiscoveringTables] = useState(false);
   const [tables, setTables] = useState<TableRow[]>([]);
   const [customTableInput, setCustomTableInput] = useState('');
@@ -30,17 +31,68 @@ export const WarehouseWizard = ({ onCancel, onComplete }: WarehouseWizardProps) 
 
   const fieldDefs = warehouseType === 'snowflake' ? SNOWFLAKE_FIELDS : DATABRICKS_FIELDS;
 
-  const handleNext2to3 = () => {
+  const handleNext2to3 = async () => {
+    if (!warehouseType) return;
     setTestingConnection(true);
-    setTimeout(() => {
+    setConnectionError(null);
+
+    try {
+      const payload = warehouseType === 'snowflake'
+        ? {
+            account_identifier: fields.account,
+            user: fields.username,
+            password: fields.password,
+            warehouse: fields.warehouse,
+            database: fields.database,
+            schema: fields.schema || 'PUBLIC',
+            role: fields.role || null,
+          }
+        : {
+            account_identifier: fields.host,
+            user: fields.username || 'token',
+            password: fields.accessToken,
+            warehouse: '',
+            database: fields.catalog,
+            schema: fields.schema || 'default',
+            role: null,
+          };
+
+      const result = await mockMutate<{ success: boolean; message: string; tables: Array<{ table_name: string; row_count: number }> }>(
+        'POST',
+        '/api/knowledge/warehouses/connect',
+        payload,
+      );
+
       setTestingConnection(false);
+      setStep(3);
+      setDiscoveringTables(true);
+
+      const discoveredTables: TableRow[] = result.tables.length > 0
+        ? result.tables.map(t => ({
+            name: t.table_name,
+            schema: fields.schema || 'PUBLIC',
+            rowCount: t.row_count != null ? t.row_count.toLocaleString() : '—',
+            selected: false,
+            description: '',
+          }))
+        : MOCK_TABLES[warehouseType].map(t => ({ ...t, selected: false, description: '' }));
+
+      setTimeout(() => {
+        setDiscoveringTables(false);
+        setTables(discoveredTables);
+      }, 400);
+    } catch (err: unknown) {
+      setTestingConnection(false);
+      const msg = err instanceof Error ? err.message : 'Connection failed';
+      setConnectionError(msg);
+      // Fall back to mock tables so the wizard can still proceed
       setStep(3);
       setDiscoveringTables(true);
       setTimeout(() => {
         setDiscoveringTables(false);
         setTables(MOCK_TABLES[warehouseType!].map(t => ({ ...t, selected: false, description: '' })));
       }, 1400);
-    }, 1200);
+    }
   };
 
   const toggleTable = (name: string) =>
@@ -62,29 +114,47 @@ export const WarehouseWizard = ({ onCancel, onComplete }: WarehouseWizardProps) 
     if (!warehouseType) return;
     setSaving(true);
     const { name, ...connectionFields } = fields;
-    const id = `wh-${Date.now()}`;
+    const displayName = name || `${warehouseType === 'snowflake' ? 'Snowflake' : 'Databricks'} Connection`;
+    const now = new Date().toISOString();
 
-    addDocument({
-      name: name || `${warehouseType === 'snowflake' ? 'Snowflake' : 'Databricks'} Connection`,
-      layer: 'GOLD',
-      author: 'platform-admin',
-      metadata: {
-        tenant: 'GlobalCorp',
-        type: `Warehouse/${warehouseType}`,
-        language: 'N/A',
-        warehouseType,
-      },
-    });
+    let docId = `wh-${Date.now()}`;
 
     try {
-      await mockMutate('POST', `/api/knowledge/documents/${id}/configs`, {
-        version_number: 'v1.0',
-        connection: connectionFields,
-        tables: selectedTables.map(({ name: n, schema, rowCount, description }) => ({
-          name: n, schema, rowCount, description,
-        })),
-      });
-    } catch { /* fire-and-forget in mock mode */ }
+      const result = await mockMutate<{ warehouse_id: string; connection_name: string; warehouse_type: string }>(
+        'POST',
+        '/api/knowledge/warehouses/select-tables',
+        {
+          connection_name: displayName,
+          warehouse_type: warehouseType === 'snowflake' ? 'Snowflake' : 'Databricks',
+          account_identifier: connectionFields.account || connectionFields.host,
+          user: connectionFields.username || 'token',
+          password: connectionFields.password || connectionFields.accessToken,
+          warehouse: connectionFields.warehouse || '',
+          database: connectionFields.database || connectionFields.catalog,
+          schema: connectionFields.schema || 'PUBLIC',
+          selected_table_ids: selectedTables.map(t => t.name),
+          role: connectionFields.role || null,
+        },
+      );
+      docId = result.warehouse_id;
+    } catch {
+      // Backend unavailable — still add the document client-side with a temporary ID
+    }
+
+    addDocument({
+      data_id: docId,
+      name: displayName,
+      source_type: 'warehouse',
+      current_tier: 'gold',
+      status: 'PUBLISHED',
+      added_on: now,
+      added_by: 'platform-admin',
+      metadata: {
+        doc_type: `Warehouse/${warehouseType}`,
+        language: null,
+        warehouse_type: warehouseType,
+      },
+    });
 
     setSaving(false);
     onComplete();
@@ -169,6 +239,12 @@ export const WarehouseWizard = ({ onCancel, onComplete }: WarehouseWizardProps) 
               <div className="flex items-center gap-2.5 text-[11px] font-mono text-[#8A5A00] font-bold">
                 <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#B88719]" />
                 Testing connection to {warehouseType === 'snowflake' ? fields.account : fields.host}...
+              </div>
+            )}
+            {connectionError && (
+              <div className="flex items-start gap-2 text-[11px] font-mono text-red-600 bg-red-50 border border-red-200 rounded-xl px-3.5 py-2.5">
+                <X className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                <span>Connection failed — {connectionError}. Proceeding with sample tables.</span>
               </div>
             )}
           </div>

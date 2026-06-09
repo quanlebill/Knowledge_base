@@ -17,6 +17,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../../lib/utils';
 import { useAppState } from '../../../AppStateContext';
 import { STEPS, SOURCES, formatBytes } from './ingest.data';
+import { mockUpload } from '../../../lib/mockApi';
 
 export const IngestionWizard = ({ onComplete, onCancel }: { onComplete: () => void, onCancel: () => void }) => {
   const { addDocument, user } = useAppState();
@@ -41,18 +42,18 @@ export const IngestionWizard = ({ onComplete, onCancel }: { onComplete: () => vo
   // Locked parameters
   const [imageMetadata, setImageMetadata] = useState({
     type: 'PNG',
-    fileSize: '3.4 MB',
+    file_size: '3.4 MB',
     height: '1080px',
     width: '1920px',
-    colorSpace: 'sRGB (Display P3)'
+    color_space: 'sRGB (Display P3)'
   });
 
   const [videoMetadata, setVideoMetadata] = useState({
     type: 'MP4 / H.264',
-    fileSize: '52.4 MB',
+    file_size: '52.4 MB',
     height: '2160p (4K)',
     width: '3840px',
-    totalFrame: '24,800'
+    total_frame: '24,800'
   });
 
   const handleSourceSelect = (sourceId: 'video' | 'image' | 'doc' | 'web') => {
@@ -83,25 +84,25 @@ export const IngestionWizard = ({ onComplete, onCancel }: { onComplete: () => vo
       if (selectedSource === 'image') {
         setImageMetadata({
           type: file.name.split('.').pop()?.toUpperCase() || 'PNG',
-          fileSize: sizeFormatted,
+          file_size: sizeFormatted,
           height: '1440px',
           width: '2560px',
-          colorSpace: 'sRGB (Display P3)'
+          color_space: 'sRGB (Display P3)'
         });
       } else if (selectedSource === 'video') {
         setVideoMetadata({
           type: file.name.split('.').pop()?.toUpperCase() || 'MP4',
-          fileSize: sizeFormatted,
+          file_size: sizeFormatted,
           height: '1080px',
           width: '1920px',
-          totalFrame: '11,250'
+          total_frame: '11,250'
         });
       }
       setErrorMsg(null);
     }
   };
 
-  const executeAddData = () => {
+  const executeAddData = async () => {
     if (!selectedSource) return;
 
     if (selectedSource === 'web') {
@@ -120,6 +121,10 @@ export const IngestionWizard = ({ onComplete, onCancel }: { onComplete: () => vo
     } else {
       if (!assetName.trim()) {
         setErrorMsg('A valid file name is required.');
+        return;
+      }
+      if (!uploadedFile) {
+        setErrorMsg('Please select a file to upload.');
         return;
       }
     }
@@ -144,41 +149,65 @@ export const IngestionWizard = ({ onComplete, onCancel }: { onComplete: () => vo
         setIngestionLogs(prev => [...prev, logList[pointer]]);
       } else {
         clearInterval(interval);
-        
-        // Build final document name
-        const finalName = selectedSource === 'web' 
-          ? assetName
-          : `${assetName}.${uploadedFile?.type?.toLowerCase() || (selectedSource === 'doc' ? 'pdf' : selectedSource === 'image' ? 'png' : 'mp4')}`;
-
-        // Construct customized metadata
-        const metadataRecord: Record<string, any> = {
-          tenant: 'GlobalCorp',
-          type: selectedSource === 'doc' ? 'PDF' : selectedSource === 'image' ? 'Image' : selectedSource === 'video' ? 'Video' : 'Web Index',
-        };
-
-        if (selectedSource === 'image') {
-          Object.assign(metadataRecord, imageMetadata);
-        } else if (selectedSource === 'video') {
-          Object.assign(metadataRecord, videoMetadata);
-        } else if (selectedSource === 'doc') {
-          metadataRecord.author = author || 'Anonymous';
-          metadataRecord.publishedDate = publishedDate || 'N/A';
-        } else if (selectedSource === 'web') {
-          metadataRecord.url = webUrl;
-        }
-
-        addDocument({
-          name: finalName,
-          layer: 'BRONZE',
-          author: selectedSource === 'doc' && author ? author : user.name || 'AI Engineer',
-          metadata: metadataRecord
-        });
-
-        setTimeout(() => {
-          onComplete();
-        }, 800);
       }
     }, 550);
+
+    try {
+      // Upload to real backend API via mockUpload (auto-injects context headers)
+      if (selectedSource !== 'web' && fileInputRef.current?.files?.[0]) {
+        const file = fileInputRef.current.files[0];
+        const formData = new FormData();
+
+        formData.append('file', file);
+        // NOTE: Do NOT include role_id, tenant_id, or user_id in body
+        // They are auto-injected as headers (X-Role, X-Tenant-Id, X-User-Id)
+        formData.append('abstract', assetName);
+        formData.append('language', 'english');
+        formData.append('source_type', selectedSource);
+        formData.append('doc_metadata', JSON.stringify({
+          type: selectedSource === 'doc' ? 'Doc/PDF' : selectedSource === 'image' ? 'image' : 'video',
+          author: selectedSource === 'doc' ? author || 'Anonymous' : user.name,
+          published_date: publishedDate || new Date().toISOString().split('T')[0],
+        }));
+
+        const result = await mockUpload<{ data_id: string; name: string; path: string; layer: string }>(
+          '/api/pipeline/ingestion/bronze',
+          formData
+        );
+
+        // Update logs with success
+        setIngestionLogs(prev => [...prev, `Document registered in database: ${result.data_id}`]);
+
+        // Start progress monitoring in the overlay
+        const overlay = (window as any).__ingestionProgressOverlay;
+        if (overlay?.startMonitoring) {
+          overlay.startMonitoring(result.data_id, result.name);
+        }
+
+        // Add to local state
+        addDocument({
+          data_id: result.data_id,
+          name: result.name,
+          source_type: selectedSource ?? 'doc',
+          current_tier: 'bronze',
+          status: 'RAW',
+          added_on: new Date().toISOString(),
+          added_by: user.name || 'AI Engineer',
+          metadata: {
+            doc_type: selectedSource === 'doc' ? 'Doc/PDF' : selectedSource === 'image' ? 'Image' : 'Video',
+            author: selectedSource === 'doc' ? (author || null) : null,
+            published_date: publishedDate || new Date().toISOString().split('T')[0],
+          },
+        });
+      }
+
+      setTimeout(() => {
+        onComplete();
+      }, 800);
+    } catch (error) {
+      setErrorMsg(`Upload failed: ${(error as Error).message}`);
+      setIsAddingInProcess(false);
+    }
   };
 
   const prevStep = () => {
@@ -205,23 +234,44 @@ export const IngestionWizard = ({ onComplete, onCancel }: { onComplete: () => vo
 
       {/* Header and Step Indicators */}
       <div className="px-8 py-4 bg-[#FFFDF6] border-b border-[#D6C79F]">
+        {/* Progress Bar */}
+        <div className="mb-4">
+          <div className="w-full h-2 bg-[#E8DCC8] rounded-full overflow-hidden">
+            <motion.div
+              initial={{ width: "0%" }}
+              animate={{ width: `${((currentStep + 1) / STEPS.length) * 100}%` }}
+              transition={{ duration: 0.4, ease: "easeOut" }}
+              className="h-full bg-gradient-to-r from-[#B88719] to-[#8A5A00] rounded-full shadow-sm"
+            />
+          </div>
+          <div className="flex justify-between mt-1.5 px-1">
+            <span className="text-[9px] font-black text-[#5A5A5A] uppercase tracking-wider">Progress</span>
+            <span className="text-[9px] font-bold text-[#8A5A00]">{currentStep + 1} of {STEPS.length}</span>
+          </div>
+        </div>
+
+        {/* Step Indicators */}
         <div className="flex justify-between items-center relative max-w-sm mx-auto">
           <div className="absolute left-0 right-0 h-0.5 bg-[#D6C79F] top-1/2 -translate-y-1/2 z-0" />
           {STEPS.map((step, idx) => (
             <div key={step.id} className="relative z-10 flex flex-col items-center gap-1">
-              <div className={cn(
-                "w-7 h-7 rounded-full border-2 flex items-center justify-center text-[11px] font-black transition-all duration-300",
-                currentStep === idx 
-                  ? "bg-[#B88719] border-[#8A5A00] text-white scale-110 shadow-md shadow-[#B88719]/20" 
-                  : currentStep > idx 
-                  ? "bg-[#2F4F0B] border-[#6B8E23] text-white" 
-                  : "bg-white border-[#BFA66A] text-[#5A5A5A]"
-              )}>
+              <motion.div
+                animate={{
+                  scale: currentStep === idx ? 1.15 : 1,
+                }}
+                className={cn(
+                  "w-7 h-7 rounded-full border-2 flex items-center justify-center text-[11px] font-black transition-all duration-300",
+                  currentStep === idx
+                    ? "bg-[#B88719] border-[#8A5A00] text-white shadow-md shadow-[#B88719]/30"
+                    : currentStep > idx
+                    ? "bg-[#2F4F0B] border-[#6B8E23] text-white"
+                    : "bg-white border-[#BFA66A] text-[#5A5A5A]"
+                )}>
                 {currentStep > idx ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : idx + 1}
-              </div>
+              </motion.div>
               <span className={cn(
-                "text-[9px] font-bold uppercase tracking-wider",
-                currentStep === idx ? "text-[#8A5A00]" : "text-[#5A5A5A]"
+                "text-[9px] font-bold uppercase tracking-wider transition-colors",
+                currentStep === idx ? "text-[#8A5A00]" : currentStep > idx ? "text-[#2F4F0B]" : "text-[#5A5A5A]"
               )}>{step.label}</span>
             </div>
           ))}
@@ -437,10 +487,10 @@ export const IngestionWizard = ({ onComplete, onCancel }: { onComplete: () => vo
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 bg-[#FFFDF6] border border-[#BFA66A] p-3 rounded-xl">
                       {[
                         { label: 'format', val: imageMetadata.type },
-                        { label: 'file_size', val: imageMetadata.fileSize },
+                        { label: 'file_size', val: imageMetadata.file_size },
                         { label: 'height', val: imageMetadata.height },
                         { label: 'width', val: imageMetadata.width },
-                        { label: 'color_space', val: imageMetadata.colorSpace }
+                        { label: 'color_space', val: imageMetadata.color_space }
                       ].map(item => (
                         <div key={item.label} className="p-2 border border-[#EBE3CD] rounded-lg bg-white">
                           <span className="text-[9px] font-bold text-[#5A5A5A] uppercase tracking-wider block mb-0.5">{item.label}</span>
@@ -461,10 +511,10 @@ export const IngestionWizard = ({ onComplete, onCancel }: { onComplete: () => vo
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 bg-[#FFFDF6] border border-[#BFA66A] p-3 rounded-xl">
                       {[
                         { label: 'type', val: videoMetadata.type },
-                        { label: 'file_size', val: videoMetadata.fileSize },
+                        { label: 'file_size', val: videoMetadata.file_size },
                         { label: 'height', val: videoMetadata.height },
                         { label: 'width', val: videoMetadata.width },
-                        { label: 'total_frame', val: videoMetadata.totalFrame }
+                        { label: 'total_frame', val: videoMetadata.total_frame }
                       ].map(item => (
                         <div key={item.label} className="p-2 border border-[#EBE3CD] rounded-lg bg-white">
                           <span className="text-[9px] font-bold text-[#5A5A5A] uppercase tracking-wider block mb-0.5">{item.label}</span>

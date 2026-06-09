@@ -11,17 +11,6 @@ model_list:
     litellm_params:
       model: ollama/llama3
       api_base: http://llama:11434
-
-  - model_name: reranker
-    litellm_params:
-      model: ollama/llama3
-      api_base: http://llama:11434
-
-  - model_name: embedder
-    litellm_params:
-      model: ollama/llama3
-      api_base: http://llama:11434
-
 general_settings:
   forward_client_headers_to_llm_api: true
 

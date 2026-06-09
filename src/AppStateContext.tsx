@@ -142,17 +142,17 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
     setDocuments(prev => [doc, ...prev]);
   }, []);
 
-  const updateDocument = useCallback((id: string, patch: Partial<KnowledgeDocument>) => {
+  const updateDocument = useCallback((data_id: string, patch: Partial<KnowledgeDocument>) => {
     setDocuments(prev => prev.map(d => {
-      if (d.id !== id) return d;
+      if (d.data_id !== data_id) return d;
       const updated = { ...d, ...patch };
       if (patch.metadata) updated.metadata = { ...d.metadata, ...patch.metadata };
       return updated;
     }));
   }, []);
 
-  const deleteDocument = useCallback((id: string) => {
-    setDocuments(prev => prev.filter(d => d.id !== id));
+  const deleteDocument = useCallback((data_id: string) => {
+    setDocuments(prev => prev.filter(d => d.data_id !== data_id));
   }, []);
 
   /* Wizard trigger */

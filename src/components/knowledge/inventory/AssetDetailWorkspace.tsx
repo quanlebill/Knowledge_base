@@ -56,7 +56,7 @@ export const AssetDetailWorkspace = ({
 }: AssetDetailWorkspaceProps) => {
   const { updateDocument } = useAppState();
 
-  const currentAccessRole = document.metadata.accessRole || 'all';
+  const currentAccessRole = document.metadata.access_role || 'all';
 
   // ── Chunks state ─────────────────────────────────────────────────
   const [chunks, setChunks] = useState<Chunk[]>([]);
@@ -88,9 +88,9 @@ export const AssetDetailWorkspace = ({
 
   // Fetch chunks when tab is CHUNKS and doc changes
   useEffect(() => {
-    if (activeTab !== 'CHUNKS' || document.layer === 'BRONZE') return;
+    if (activeTab !== 'CHUNKS' || document.current_tier === 'bronze') return;
     setChunksLoading(true);
-    mockGet<Chunk[]>(`/api/knowledge/documents/${document.id}/chunks`)
+    mockGet<Chunk[]>(`/api/knowledge/documents/${document.data_id}/chunks`)
       .then(data => {
         const result = (data ?? []).map(chunk => ({
           ...chunk,
@@ -107,13 +107,13 @@ export const AssetDetailWorkspace = ({
       })
       .catch(() => setChunks([]))
       .finally(() => setChunksLoading(false));
-  }, [activeTab, document.id, document.layer]);
+  }, [activeTab, document.data_id, document.current_tier]);
 
   // Fetch tables when tab is TABLES and doc changes
   useEffect(() => {
-    if (activeTab !== 'TABLES' || document.layer === 'BRONZE') return;
+    if (activeTab !== 'TABLES' || document.current_tier === 'bronze') return;
     setTablesLoading(true);
-    mockGet<DocTable[]>(`/api/knowledge/documents/${document.id}/tables`)
+    mockGet<DocTable[]>(`/api/knowledge/documents/${document.data_id}/tables`)
       .then(data => {
         const result = data && data.length > 0 ? data : [];
         setTables(result);
@@ -121,13 +121,13 @@ export const AssetDetailWorkspace = ({
       })
       .catch(() => setTables([]))
       .finally(() => setTablesLoading(false));
-  }, [activeTab, document.id, document.layer]);
+  }, [activeTab, document.data_id, document.current_tier]);
 
   // Fetch warehouse configs when CONFIGS tab active
   useEffect(() => {
     if (activeTab !== 'CONFIGS') return;
     setConfigsLoading(true);
-    mockGet<WarehouseConfigVersion[]>(`/api/knowledge/documents/${document.id}/configs`)
+    mockGet<WarehouseConfigVersion[]>(`/api/knowledge/documents/${document.data_id}/configs`)
       .then(data => {
         const result = data && data.length > 0 ? data : [];
         setConfigs(result);
@@ -135,13 +135,13 @@ export const AssetDetailWorkspace = ({
       })
       .catch(() => setConfigs([]))
       .finally(() => setConfigsLoading(false));
-  }, [activeTab, document.id]);
+  }, [activeTab, document.data_id]);
 
   const handleActivateConfig = async () => {
     if (!selectedConfig) return;
     setActivatingConfig(true);
     try {
-      await mockMutate('PATCH', `/api/knowledge/documents/${document.id}/configs/${selectedConfig.id}/activate`, {});
+      await mockMutate('PATCH', `/api/knowledge/documents/${document.data_id}/configs/${selectedConfig.id}/activate`, {});
       setConfigs(prev => prev.map(c => ({
         ...c, status: c.id === selectedConfig.id ? 'Active' : 'Inactive'
       })));
@@ -158,7 +158,7 @@ export const AssetDetailWorkspace = ({
   const startNewConfigFlow = () => {
     setShowNewConfigFlow(true);
     setDiscoveringNewTables(true);
-    const warehouseType = document.metadata?.warehouseType as string ?? 'snowflake';
+    const warehouseType = document.metadata?.warehouse_type as string ?? 'snowflake';
     const mockSource = MOCK_DISCOVERY[warehouseType] ?? MOCK_DISCOVERY['snowflake'];
     setTimeout(() => {
       setDiscoveringNewTables(false);
@@ -182,7 +182,7 @@ export const AssetDetailWorkspace = ({
     try {
       const created = await mockMutate<WarehouseConfigVersion>(
         'POST',
-        `/api/knowledge/documents/${document.id}/configs`,
+        `/api/knowledge/documents/${document.data_id}/configs`,
         {
           version_number: nextVersion,
           connection: selectedConfig?.connection ?? {},
@@ -219,7 +219,7 @@ export const AssetDetailWorkspace = ({
     try {
       await mockMutate(
         'PATCH',
-        `/api/knowledge/documents/${document.id}/chunks/${selectedChunk.id}/activate`,
+        `/api/knowledge/documents/${document.data_id}/chunks/${selectedChunk.id}/activate`,
         { version_number: selectedVersion.version_number }
       );
       // Update local state
@@ -257,7 +257,7 @@ export const AssetDetailWorkspace = ({
     try {
       await mockMutate(
         'PATCH',
-        `/api/knowledge/documents/${document.id}/tables/${selectedTable.id}/rows/${editingCell.rowIndex}`,
+        `/api/knowledge/documents/${document.data_id}/tables/${selectedTable.id}/rows/${editingCell.rowIndex}`,
         { column: editingCell.column, value: editingValue }
       );
       setTables(prev => prev.map(t => {
@@ -287,7 +287,7 @@ export const AssetDetailWorkspace = ({
 
   const extension = document.name.split('.').pop() || 'N/A';
   const language = document.metadata.language || 'English';
-  const sourceType = document.metadata.type || 'Raw Data';
+  const sourceType = document.metadata.doc_type || 'Raw Data';
   const isWarehouse = sourceType.startsWith('Warehouse/');
 
   const showFileMetadata = activeTab === 'PREVIEW' && !isWarehouse;
@@ -330,14 +330,14 @@ export const AssetDetailWorkspace = ({
 
                      <div className="flex flex-col">
                         <span className="text-[9px] font-black text-[#5A4209]/60 uppercase tracking-widest mb-1.5">Added On</span>
-                        <span className="text-xs text-slate-600 font-mono bg-white border border-[#BFA66A]/20 px-3 py-2 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.02)]">{document.lastUpdated}</span>
+                        <span className="text-xs text-slate-600 font-mono bg-white border border-[#BFA66A]/20 px-3 py-2 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.02)]">{document.added_on}</span>
                      </div>
 
                      <div className="flex flex-col">
                         <span className="text-[9px] font-black text-[#5A4209]/60 uppercase tracking-widest mb-1.5">Added By</span>
                         <div className="text-xs text-[#111111] font-medium bg-white border border-[#BFA66A]/20 px-3 py-2 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.02)] flex items-center gap-2">
-                          <span className="w-5 h-5 rounded-full bg-[#B88719]/10 text-[#8A5A00] flex items-center justify-center text-[9px] font-black uppercase">{document.author[0]}</span>
-                          {document.author}
+                          <span className="w-5 h-5 rounded-full bg-[#B88719]/10 text-[#8A5A00] flex items-center justify-center text-[9px] font-black uppercase">{(document.metadata?.author ?? document.added_by ?? '')[0]}</span>
+                          {(document.metadata?.author ?? document.added_by ?? '')}
                         </div>
                      </div>
                   </div>
@@ -360,7 +360,7 @@ export const AssetDetailWorkspace = ({
                        <div className="flex flex-col">
                           <span className="text-[9px] font-black text-[#5A4209]/60 uppercase tracking-widest mb-1.5">Published Date</span>
                           <span className="text-xs text-slate-600 font-mono bg-white border border-[#BFA66A]/20 px-3 py-2 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-                             {document.metadata.publishedDate || '2026-01-10'}
+                             {document.metadata.published_date || '2026-01-10'}
                           </span>
                        </div>
                      </>
@@ -386,13 +386,13 @@ export const AssetDetailWorkspace = ({
                        <div className="flex flex-col">
                           <span className="text-[9px] font-black text-[#5A4209]/60 uppercase tracking-widest mb-1.5">Color Space</span>
                           <span className="text-xs text-slate-600 font-mono bg-white border border-[#BFA66A]/20 px-3 py-2 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-                             {document.metadata.colorSpace || 'sRGB (Display P3)'}
+                             {document.metadata.color_space || 'sRGB (Display P3)'}
                           </span>
                        </div>
                        <div className="flex flex-col">
                           <span className="text-[9px] font-black text-[#5A4209]/60 uppercase tracking-widest mb-1.5">File Size</span>
                           <span className="text-xs text-slate-600 font-mono bg-white border border-[#BFA66A]/20 px-3 py-2 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-                             {document.metadata.fileSize || '3.4 MB'}
+                             {document.metadata.file_size || '3.4 MB'}
                           </span>
                        </div>
                      </div>
@@ -409,13 +409,13 @@ export const AssetDetailWorkspace = ({
                        <div className="flex flex-col">
                           <span className="text-[9px] font-black text-[#5A4209]/60 uppercase tracking-widest mb-1.5">Extraction Frames</span>
                           <span className="text-xs text-slate-600 font-mono bg-white border border-[#BFA66A]/20 px-3 py-2 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-                             {document.metadata.totalFrame || '24,800 frames'}
+                             {document.metadata.total_frame || '24,800 frames'}
                           </span>
                        </div>
                        <div className="flex flex-col">
                           <span className="text-[9px] font-black text-[#5A4209]/60 uppercase tracking-widest mb-1.5">Storage Allocation</span>
                           <span className="text-xs text-slate-600 font-mono bg-white border border-[#BFA66A]/20 px-3 py-2 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-                             {document.metadata.fileSize || '52.4 MB'}
+                             {document.metadata.file_size || '52.4 MB'}
                           </span>
                        </div>
                      </div>
@@ -424,7 +424,7 @@ export const AssetDetailWorkspace = ({
                </section>
 
                <section className="space-y-4 pt-6 border-t border-[#BFA66A]/20">
-                  {document.layer === 'BRONZE' ? (
+                  {document.current_tier === 'bronze' ? (
                     <div className="flex flex-col">
                        <span className="text-[9px] font-black text-[#5A4209]/60 uppercase tracking-widest mb-2 flex items-center gap-1.5">
                          <Lock className="w-3.5 h-3.5 text-[#B88719]" />
@@ -434,8 +434,8 @@ export const AssetDetailWorkspace = ({
                           <select
                             value={currentAccessRole}
                             onChange={(e) => {
-                              updateDocument(document.id, {
-                                metadata: { accessRole: e.target.value }
+                              updateDocument(document.data_id, {
+                                metadata: { access_role: e.target.value }
                               });
                             }}
                             className="w-full bg-white border border-[#BFA66A]/40 hover:border-[#B88719]/60 rounded-xl px-3.5 py-2.5 text-xs text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#B88719] appearance-none font-mono cursor-pointer shadow-xs"
@@ -491,7 +491,7 @@ export const AssetDetailWorkspace = ({
                           </div>
                        </div>
                        <div className="flex-1 p-10 overflow-y-auto custom-scrollbar flex justify-center bg-[#FCFBF7]/50">
-                          {document.layer === 'BRONZE' ? (
+                          {document.current_tier === 'bronze' ? (
                              <div className="max-w-2xl w-full bg-[#FFFFFF] rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.03)] p-12 text-slate-800 font-serif leading-relaxed min-h-[500px] border border-[#BFA66A]/30">
                                 <h1 className="text-2xl font-bold mb-8 border-b pb-4 border-slate-100 text-[#111111]">{document.name}</h1>
                                 <p className="mb-6 text-sm text-[#2A2A2A]">This structural pipeline resource serves as the direct source of truth for regional data ingestion. Raw strings and properties are cataloged on local, low-latency cold-storage sectors prior to chunking and token vectorizations.</p>
@@ -502,7 +502,7 @@ export const AssetDetailWorkspace = ({
                                 </div>
                                 <p className="mb-6 text-sm text-[#2A2A2A]">Future promotions to the Silver layer will automatically segment raw blocks into discrete semantic chunks, stripping metadata noise and scrubbing properties for candidate PII leaks.</p>
                              </div>
-                          ) : document.layer === 'SILVER' ? (
+                          ) : document.current_tier === 'silver' ? (
                              <div className="max-w-2xl w-full space-y-6">
                                 <div className="p-5 bg-[#FFF9E8] border border-[#BFA66A]/45 rounded-2xl text-[10px] font-black text-[#8A5A00] uppercase tracking-widest flex items-center justify-center gap-3 shadow-xs">
                                    <Zap className="w-4 h-4 text-[#B88719]" /> AI-Assisted Normalization Active
@@ -535,7 +535,7 @@ export const AssetDetailWorkspace = ({
                   )}
 
                   {/* ─── CHUNKS TAB — SILVER ─────────────────────────────────── */}
-                  {activeTab === 'CHUNKS' && document.layer === 'SILVER' && (
+                  {activeTab === 'CHUNKS' && document.current_tier === 'silver' && (
                     <motion.div
                       key="chunks-silver"
                       initial={false}
@@ -606,7 +606,7 @@ export const AssetDetailWorkspace = ({
                   )}
 
                   {/* ─── CHUNKS TAB — GOLD ───────────────────────────────────── */}
-                  {activeTab === 'CHUNKS' && document.layer === 'GOLD' && (
+                  {activeTab === 'CHUNKS' && document.current_tier === 'gold' && (
                     <motion.div
                       key="chunks-gold"
                       initial={false}
@@ -819,7 +819,7 @@ export const AssetDetailWorkspace = ({
                   )}
 
                   {/* ─── TABLES TAB ───────────────────────────────────────────── */}
-                  {activeTab === 'TABLES' && (document.layer === 'SILVER' || document.layer === 'GOLD') && (
+                  {activeTab === 'TABLES' && (document.current_tier === 'silver' || document.current_tier === 'gold') && (
                     <motion.div
                       key="tables"
                       initial={false}
@@ -891,7 +891,7 @@ export const AssetDetailWorkspace = ({
                                   <span className="text-[10px] font-bold text-red-600">Save failed</span>
                                 )}
                                 <span className="text-[9px] font-black uppercase text-[#B88719] bg-[#FFF9E9] border border-[#BFA66A]/30 px-2.5 py-1 rounded-lg">
-                                  {document.layer} EXTRACTED TABLE
+                                  {document.current_tier} EXTRACTED TABLE
                                 </span>
                               </div>
                             </div>
@@ -1032,21 +1032,21 @@ export const AssetDetailWorkspace = ({
                       <div className="max-w-md w-full space-y-5">
                         <div className={cn(
                           'flex items-center gap-4 p-6 rounded-2xl border',
-                          document.metadata?.warehouseType === 'snowflake'
+                          document.metadata?.warehouse_type === 'snowflake'
                             ? 'bg-blue-50 border-blue-200' : 'bg-red-50 border-red-200'
                         )}>
                           <div className={cn(
                             'w-14 h-14 rounded-2xl flex items-center justify-center border',
-                            document.metadata?.warehouseType === 'snowflake'
+                            document.metadata?.warehouse_type === 'snowflake'
                               ? 'bg-white border-blue-200' : 'bg-white border-red-200'
                           )}>
-                            {document.metadata?.warehouseType === 'snowflake'
+                            {document.metadata?.warehouse_type === 'snowflake'
                               ? <Database className="w-7 h-7 text-blue-500" />
                               : <Zap className="w-7 h-7 text-red-500" />}
                           </div>
                           <div>
                             <p className="text-sm font-black text-[#111111]">{document.name}</p>
-                            <p className="text-[11px] font-mono text-slate-500 uppercase mt-0.5">{document.metadata?.warehouseType}</p>
+                            <p className="text-[11px] font-mono text-slate-500 uppercase mt-0.5">{document.metadata?.warehouse_type}</p>
                             <span className={cn(
                               'text-[9px] font-black uppercase px-2 py-0.5 rounded border mt-1 inline-block',
                               document.status === 'PUBLISHED'
@@ -1135,7 +1135,7 @@ export const AssetDetailWorkspace = ({
                               {discoveringNewTables ? (
                                 <div className="h-full flex flex-col items-center justify-center gap-3 text-[#8A5A00]">
                                   <RefreshCw className="w-5 h-5 animate-spin text-[#B88719]" />
-                                  <p className="text-xs font-mono font-bold">Discovering tables from {document.metadata?.warehouseType}...</p>
+                                  <p className="text-xs font-mono font-bold">Discovering tables from {document.metadata?.warehouse_type}...</p>
                                 </div>
                               ) : (
                                 <div className="space-y-3">
@@ -1310,7 +1310,7 @@ export const AssetDetailWorkspace = ({
                             { t: '12:04:31', lvl: 'DEBUG', msg: 'Cleaning redundant whitespace and metadata headers', color: 'text-slate-500' },
                             { t: '12:04:32', lvl: 'INFO', msg: 'Starting PII scan (LLM-based detection)', color: 'text-amber-300/80' },
                             { t: '12:04:35', lvl: 'WARN', msg: 'Found potential email address in metadata field "author_mail". Auto-masking...', color: 'text-amber-500 font-bold' },
-                            { t: '12:04:38', lvl: 'SUCCESS', msg: `Pipeline stage ${document.layer} -> COMPLETED`, color: 'text-[#D9B86C] font-black' },
+                            { t: '12:04:38', lvl: 'SUCCESS', msg: `Pipeline stage ${document.current_tier} -> COMPLETED`, color: 'text-[#D9B86C] font-black' },
                           ].map((log, idx) => (
                             <div key={`${log.t}-${log.lvl}-${idx}`} className="flex gap-4 group">
                                <span className="text-slate-500 shrink-0">{log.t}</span>
@@ -1335,8 +1335,8 @@ export const AssetDetailWorkspace = ({
                        <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar relative bg-[#FCFBF7]/30">
                           <div className="absolute left-[39px] top-6 bottom-6 w-0.5 bg-[#BFA66A]/20" />
                           {[
-                            { ver: 'v4.2.0', date: 'Today, 12:04', title: `Promoted to ${document.layer} Layer`, actor: 'System (Sync Worker)', icon: Database, color: 'border-[#B88719] text-[#B88719]', current: true },
-                            { ver: 'v4.1.2', date: 'Today, 10:30', title: 'Metadata Configuration Registered', actor: document.author, icon: FileCode, color: 'border-amber-600 text-amber-600', current: false },
+                            { ver: 'v4.2.0', date: 'Today, 12:04', title: `Promoted to ${document.current_tier} Layer`, actor: 'System (Sync Worker)', icon: Database, color: 'border-[#B88719] text-[#B88719]', current: true },
+                            { ver: 'v4.1.2', date: 'Today, 10:30', title: 'Metadata Configuration Registered', actor: (document.metadata?.author ?? document.added_by ?? ''), icon: FileCode, color: 'border-amber-600 text-amber-600', current: false },
                             { ver: 'v4.0.0', date: 'Yesterday, 14:22', title: 'Initial Ingestion & Hash Created', actor: 'Worker.04', icon: ChevronRight, color: 'border-slate-400 text-slate-500', current: false }
                           ].map((evt) => (
                              <div key={evt.ver} className="relative pl-12 group text-left">

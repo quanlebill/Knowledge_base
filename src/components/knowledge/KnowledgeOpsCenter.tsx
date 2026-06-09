@@ -63,9 +63,9 @@ const KnowledgeOpsCenter = () => {
 
   const handleSelectAsset = (asset: KnowledgeDocument) => {
     setSelectedAsset(asset);
-    setSelectedAssetReadOnly(activeSubTab === 'INVENTORY' && asset.layer === 'GOLD');
+    setSelectedAssetReadOnly(activeSubTab === 'INVENTORY' && asset.current_tier === 'gold');
     // Always reset to a valid default tab for the asset type
-    setAssetTab(isWarehouse(asset.metadata?.type) ? 'CONFIGS' : 'PREVIEW');
+    setAssetTab(isWarehouse(asset.metadata?.doc_type) ? 'CONFIGS' : 'PREVIEW');
   };
 
   const subTabs = [
@@ -149,24 +149,24 @@ const KnowledgeOpsCenter = () => {
           setAssetTab('PREVIEW');
         }}
         title={selectedAsset?.name || 'Asset Detail'}
-        subtitle={selectedAsset ? `${selectedAsset.layer} LAYER • ${selectedAsset.version} • ${selectedAsset.id}` : ''}
-        icon={selectedAsset?.layer === 'GOLD' ? Zap : selectedAsset?.layer === 'SILVER' ? Edit2 : Database}
+        subtitle={selectedAsset ? `${selectedAsset.current_tier.toUpperCase()} LAYER • ${""} • ${selectedAsset.data_id}` : ''}
+        icon={selectedAsset?.current_tier === 'gold' ? Zap : selectedAsset?.current_tier === 'silver' ? Edit2 : Database}
         size="xwide"
         persistKey="kb-asset-detail"
         fixedHeight
         tabs={
-          isWarehouse(selectedAsset?.metadata?.type) ? [
+          isWarehouse(selectedAsset?.metadata?.doc_type) ? [
             { id: 'PREVIEW',  label: 'Preview',  icon: Eye },
             { id: 'CONFIGS',  label: 'Configs',  icon: Settings },
             { id: 'TIMELINE', label: 'Timeline', icon: Clock },
-          ] : selectedAsset?.layer === 'BRONZE' ? [
+          ] : selectedAsset?.current_tier === 'bronze' ? [
             { id: 'PREVIEW',  label: 'Preview',  icon: Eye },
             { id: 'LOGS',     label: 'Logs',     icon: Terminal },
             { id: 'TIMELINE', label: 'Timeline', icon: Clock },
           ] : [
             { id: 'PREVIEW',  label: 'Preview',  icon: Eye },
             { id: 'CHUNKS',   label: 'Chunks',   icon: Layers },
-            ...(hasTables(selectedAsset?.metadata?.type)
+            ...(hasTables(selectedAsset?.metadata?.doc_type)
               ? [{ id: 'TABLES', label: 'Tables', icon: Table2 }]
               : []),
             { id: 'LOGS',     label: 'Logs',     icon: Terminal },
@@ -177,20 +177,20 @@ const KnowledgeOpsCenter = () => {
         onTabChange={(id) => setAssetTab(id as any)}
         footer={
           <div className="flex gap-3 justify-end w-full">
-            {selectedAsset && selectedAsset.layer !== 'GOLD' && !isWarehouse(selectedAsset.metadata?.type) && !selectedAssetReadOnly && (
+            {selectedAsset && selectedAsset.current_tier !== 'gold' && !isWarehouse(selectedAsset.metadata?.doc_type) && !selectedAssetReadOnly && (
               <button
                 onClick={async () => {
-                  const targetL = selectedAsset.layer === 'BRONZE' ? 'SILVER' : 'GOLD';
-                  const nextStatus = targetL === 'SILVER' ? 'EMBEDDING' : 'PUBLISHED';
+                  const targetL = selectedAsset.current_tier === 'bronze' ? 'silver' : 'gold';
+                  const nextStatus = targetL === 'silver' ? 'EMBEDDING' : 'PUBLISHED';
                   try {
-                    await mockMutate('PATCH', `/api/data/documents/${selectedAsset.id}`, { layer: targetL, status: nextStatus });
-                    updateDocument(selectedAsset.id, { layer: targetL, status: nextStatus });
-                    setSelectedAsset(prev => prev ? { ...prev, layer: targetL, status: nextStatus } : null);
+                    await mockMutate('PATCH', `/api/data/documents/${selectedAsset.data_id}`, { current_tier: targetL, status: nextStatus });
+                    updateDocument(selectedAsset.data_id, { current_tier: targetL, status: nextStatus });
+                    setSelectedAsset(prev => prev ? { ...prev, current_tier: targetL, status: nextStatus } : null);
                   } catch { /* ForbiddenToast handles 403 */ }
                 }}
                 className="btn-primary"
               >
-                Process to {selectedAsset.layer === 'BRONZE' ? 'Silver Data Layer' : 'Gold Data Layer'}
+                Process to {selectedAsset.current_tier === 'bronze' ? 'Silver Data Layer' : 'Gold Data Layer'}
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             )}

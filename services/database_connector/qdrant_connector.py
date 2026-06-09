@@ -81,6 +81,10 @@ def _build_qdrant_filters(
 
 
     matching_require = build_matching_tenant()
+    # Always exclude soft-deleted points from every search and scroll
+    matching_require.append(
+        models.FieldCondition(key="is_deleted", match=models.MatchValue(value=False))
+    )
     matching_field = build_matching_field()
     if pagination_config is not None and pagination_config.pagination_cursor is not None:
         matching_require += build_paginating()
@@ -108,7 +112,7 @@ def _build_batch_points(tenant_id: str, points: List[PointData]):
 
     return [
         models.PointStruct(
-            id=p.payload.data_id,
+            id=p.payload.block_id,   # block_id is 1-to-1 with KBTextBlock in Postgres
             vector=p.vector,
             payload=add_tenant(p.payload).model_dump(mode="json"),
         )
@@ -353,7 +357,7 @@ async def vector_search(client: AsyncQdrantClient, item: SearchRequest) -> Respo
 
     results = await client.query_points(
         collection_name=item.collection_name,
-        query_vector=item.query_vector,
+        query=item.query_vector,
         limit=item.limit,
         query_filter=query_filter,
         with_payload=True,

@@ -27,16 +27,16 @@ export const KnowledgeHubView = () => {
   /* â"€â"€ Database: derive GOLD docs from shared context (same source as Data Layers) â"€â"€ */
   const docs = useMemo<DBDocument[]>(
     () => documents
-      .filter(d => d.layer === 'GOLD')
+      .filter(d => d.current_tier === 'gold')
       .map(d => ({
-        id: d.id,
+        id: d.data_id,
         name: d.name,
-        type: d.metadata?.type ?? 'Unknown',
-        added_date: d.lastUpdated,
+        type: d.metadata?.doc_type ?? 'Unknown',
+        added_date: d.added_on ?? '',
         language: d.metadata?.language ?? 'N/A',
-        author: d.author,
-        version: d.version,
-        subType: getSubType(d.metadata?.type ?? ''),
+        author: d.metadata?.author ?? d.added_by ?? '',
+        version: '',
+        subType: getSubType(d.metadata?.doc_type ?? ''),
       })),
     [documents],
   );
@@ -579,7 +579,7 @@ export const KnowledgeHubView = () => {
                               <div className="text-sm font-bold text-[#111111] group-hover:text-[#B88719] transition-colors uppercase tracking-tight truncate">
                                 {doc.name}
                               </div>
-                              <div className="text-[10px] text-slate-500 mt-0.5">{doc.version} Â· Added by {doc.author}</div>
+                              <div className="text-[10px] text-slate-500 mt-0.5">Added by {doc.author || '—'}</div>
                             </div>
                           </div>
                         </td>

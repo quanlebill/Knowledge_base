@@ -5,12 +5,13 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TYPE KBLanguage        AS ENUM ('english', 'vietnamese');
 CREATE TYPE KBSourceType      AS ENUM ('doc', 'web', 'image', 'video', 'warehouse');
 CREATE TYPE KBTier            AS ENUM ('bronze', 'silver', 'gold');
-CREATE TYPE KBPolicyFormat    AS ENUM ('Natural Language', 'Exact Match For Word or Phrase');
-CREATE TYPE KBPolicyType      AS ENUM ('Entity', 'Relationship Edge');
+CREATE TYPE KBPolicyFormat    AS ENUM ('natural_language', 'exact_word');
+CREATE TYPE KBPolicyType      AS ENUM ('entity_node', 'relationship_edge');
 CREATE TYPE KBConflictType    AS ENUM ('content_contradiction','content_conflict','content_duplicate','content_update','table_schema');
 CREATE TYPE KBConflictSeverity AS ENUM ('low', 'medium', 'high');
 CREATE TYPE KBConflictStatus  AS ENUM ('pending', 'awaiting', 'resolved');
-CREATE TYPE KBTaskType        AS ENUM ('embedding', 'Vision Language Model');
+CREATE TYPE KBConflictResolution AS ENUM ('keep_existing', 'keep_incoming', 'merge', 'no_action');
+CREATE TYPE KBTaskType        AS ENUM ('embedding', 'vision_language_model');
 CREATE TYPE KBSimilarityMetric AS ENUM ('cosine', 'euclidean', 'dot');
 CREATE TYPE KBHttpMethod      AS ENUM ('GET', 'POST', 'PUT', 'PATCH', 'DELETE');
 CREATE TYPE KBAPIType         AS ENUM ('NEO4J', 'QDRANT', 'RETRIEVE');
@@ -127,7 +128,7 @@ CREATE TABLE IF NOT EXISTS KBConflict (
     resolution_instruction TEXT,
     resolved_at            TIMESTAMPTZ,
     resolved_by            UUID,
-    selected_resolution_method VARCHAR(50)
+    selected_resolution_method KBConflictResolution
 );
 -- Used when joining KBConflictBatch with its pending conflicts
 CREATE INDEX IF NOT EXISTS idx_conflict_batch_pending       ON KBConflict (batch_id) WHERE status = 'pending';

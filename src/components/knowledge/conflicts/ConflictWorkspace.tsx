@@ -23,6 +23,7 @@ import {
   ConflictSummary, ConflictBatchGroup, ConflictsResponse, ConflictDetail,
   CONFLICT_TYPE_LABELS,
 } from './conflicts.data';
+import { RESOLUTION_LABELS } from '../../../lib/enums';
 
 
 export const ConflictWorkspace = () => {
@@ -78,19 +79,19 @@ export const ConflictWorkspace = () => {
 
   const renderSeverityBadge = (sev: SeverityType) => {
     const styles: Record<SeverityType, string> = {
-      High:   'bg-red-500/10 text-red-700 border-red-500/20 px-2 py-0.5 rounded text-[10px] uppercase font-bold border font-mono',
-      Medium: 'bg-amber-500/10 text-amber-700 border-amber-500/20 px-2 py-0.5 rounded text-[10px] uppercase font-bold border font-mono',
-      Low:    'bg-slate-100 text-slate-600 border-slate-200 px-2 py-0.5 rounded text-[10px] uppercase font-bold border font-mono',
+      high:   'bg-red-500/10 text-red-700 border-red-500/20 px-2 py-0.5 rounded text-[10px] uppercase font-bold border font-mono',
+      medium: 'bg-amber-500/10 text-amber-700 border-amber-500/20 px-2 py-0.5 rounded text-[10px] uppercase font-bold border font-mono',
+      low:    'bg-slate-100 text-slate-600 border-slate-200 px-2 py-0.5 rounded text-[10px] uppercase font-bold border font-mono',
     };
     return <span className={styles[sev]}>{sev}</span>;
   };
 
   const isMethodDisabled = (method: ResolutionMethod, type: ConflictType): boolean => {
-    if (type === 'Content Contradiction' || type === 'Table Schema') {
-      return method === 'Merge' || method === 'No Action';
+    if (type === 'content_contradiction' || type === 'table_schema') {
+      return method === 'merge' || method === 'no_action';
     }
-    if (type === 'Content Update') return method === 'Merge';
-    if (type === 'Content Duplicate') return method === 'No Action';
+    if (type === 'content_update') return method === 'merge';
+    if (type === 'content_duplicate') return method === 'no_action';
     return false;
   };
 
@@ -130,7 +131,7 @@ export const ConflictWorkspace = () => {
       // Re-fetch to keep cache in sync with server
       const fresh = await mockGet<ConflictsResponse>('/api/knowledge/conflicts');
       setCached(fresh);
-      const nextTab: ConflictStatusType = selectedMethod === 'Merge' ? 'awaiting' : 'resolved';
+      const nextTab: ConflictStatusType = selectedMethod === 'merge' ? 'awaiting' : 'resolved';
       setActiveTab(nextTab);
       handleCloseDrawer();
     } catch { /* error handled by unwrapEnvelope */ }
@@ -144,7 +145,7 @@ export const ConflictWorkspace = () => {
       <DetailDrawer
         isOpen={!!selectedConflictId}
         onClose={handleCloseDrawer}
-        title={conflictDetail?.conflict_type ?? (detailLoading ? 'Loading...' : 'Conflict Detail')}
+        title={conflictDetail ? (CONFLICT_TYPE_LABELS[conflictDetail.conflict_type]?.title ?? conflictDetail.conflict_type) : (detailLoading ? 'Loading...' : 'Conflict Detail')}
         subtitle={conflictDetail ? conflictDetail.status.toUpperCase() : ''}
         icon={ShieldAlert}
         size="wide"
@@ -303,9 +304,9 @@ export const ConflictWorkspace = () => {
                   <div className="grid grid-cols-1 gap-2 pt-1 font-sans">
                     {(
                       [
-                        { method: 'Keep Existing' as ResolutionMethod, label: 'Keep Stored (Canonical Snapshot A)',         desc: 'Retains local Snapshot A, discarding incoming files completely.' },
-                        { method: 'Keep Incoming' as ResolutionMethod, label: 'Over-write (Active Snapshot B)',             desc: 'Supersedes database values and commits new ingestion stream raw records directly.' },
-                        { method: 'Merge'         as ResolutionMethod, label: 'Guided Merge (Coexisting Hybrid Synthesis)', desc: 'Invokes AI-assisted pipeline to fuse Snapshot A and B using your custom prompt instructions.' },
+                        { method: 'keep_existing' as ResolutionMethod, label: 'Keep Stored (Canonical Snapshot A)',         desc: 'Retains local Snapshot A, discarding incoming files completely.' },
+                        { method: 'keep_incoming' as ResolutionMethod, label: 'Over-write (Active Snapshot B)',             desc: 'Supersedes database values and commits new ingestion stream raw records directly.' },
+                        { method: 'merge'         as ResolutionMethod, label: 'Guided Merge (Coexisting Hybrid Synthesis)', desc: 'Invokes AI-assisted pipeline to fuse Snapshot A and B using your custom prompt instructions.' },
                       ] as const
                     ).map(({ method, label, desc }) => {
                       const disabled = isMethodDisabled(method, conflictDetail.conflict_type);
@@ -363,7 +364,7 @@ export const ConflictWorkspace = () => {
                     <span className="text-[8px] font-mono text-slate-400 font-bold uppercase block">Determined Canonical Action</span>
                     <div className="text-xs font-bold text-[#111111] flex items-center gap-1.5">
                       <CheckCircle2 className="w-4 h-4 text-green-600" />
-                      <span>{conflictDetail.selected_resolution_method}</span>
+                      <span>{conflictDetail.selected_resolution_method ? RESOLUTION_LABELS[conflictDetail.selected_resolution_method] : ''}</span>
                     </div>
                   </div>
 
